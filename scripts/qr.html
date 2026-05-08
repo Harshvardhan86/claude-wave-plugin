@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>QR generator — claude-wave-plugin</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        max-width: 560px;
+        margin: 40px auto;
+        padding: 0 20px;
+        color: #14141a;
+      }
+      h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+      p.subtitle { color: #5b5b66; margin: 0 0 24px; }
+      label { display: block; font-size: 14px; font-weight: 500; margin: 16px 0 6px; }
+      input[type="text"], select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #e6e6ea;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 15px;
+      }
+      .row { display: flex; gap: 12px; }
+      .row > div { flex: 1; }
+      button {
+        margin-top: 16px;
+        padding: 10px 16px;
+        background: #2d6cdf;
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #fff;
+        color: #14141a;
+        border: 1px solid #e6e6ea;
+      }
+      .qr-out {
+        margin-top: 28px;
+        padding: 24px;
+        background: #fff;
+        border: 1px solid #e6e6ea;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .qr-out canvas, .qr-out img { display: block; }
+      .url-preview { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #5b5b66; word-break: break-all; }
+      .actions { display: flex; gap: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>QR generator — claude-wave-plugin</h1>
+    <p class="subtitle">Paste your repo URL, generate the QR for the closing slide. Save as PNG, embed.</p>
+
+    <label for="url">Repo URL</label>
+    <input
+      id="url"
+      type="text"
+      value="https://github.com/harshvardhanc-1986/claude-wave-plugin"
+      autocomplete="off"
+      spellcheck="false"
+    />
+
+    <div class="row">
+      <div>
+        <label for="size">Size (px)</label>
+        <input id="size" type="text" value="512" />
+      </div>
+      <div>
+        <label for="ec">Error correction</label>
+        <select id="ec">
+          <option value="L">L (low)</option>
+          <option value="M" selected>M (medium)</option>
+          <option value="Q">Q (quartile)</option>
+          <option value="H">H (high — recommended for projection)</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="generate">Generate</button>
+
+    <div class="qr-out" id="out" hidden>
+      <div id="canvas-wrap"></div>
+      <div class="url-preview" id="urlPreview"></div>
+      <div class="actions">
+        <button class="secondary" id="downloadPng">Download PNG</button>
+      </div>
+    </div>
+
+    <!--
+      Pinned QRious 4.0.2 from cdnjs.
+      If offline at the venue, run this once with internet beforehand and save
+      the rendered PNG; the slide deck only needs a static image.
+    -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const out = $("out");
+      const canvasWrap = $("canvas-wrap");
+      const urlPreview = $("urlPreview");
+
+      function render() {
+        const url = $("url").value.trim();
+        const size = parseInt($("size").value, 10) || 512;
+        const ec = $("ec").value;
+        if (!url) return;
+
+        canvasWrap.innerHTML = "";
+        const canvas = document.createElement("canvas");
+        canvasWrap.appendChild(canvas);
+
+        new QRious({
+          element: canvas,
+          value: url,
+          size,
+          level: ec,
+          background: "#ffffff",
+          foreground: "#14141a",
+          padding: Math.round(size * 0.04),
+        });
+
+        urlPreview.textContent = url;
+        out.hidden = false;
+      }
+
+      $("generate").addEventListener("click", render);
+      $("url").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") render();
+      });
+
+      $("downloadPng").addEventListener("click", () => {
+        const canvas = canvasWrap.querySelector("canvas");
+        if (!canvas) return;
+        const a = document.createElement("a");
+        a.download = "claude-wave-plugin-qr.png";
+        a.href = canvas.toDataURL("image/png");
+        a.click();
+      });
+
+      // Auto-render on load with the placeholder URL
+      window.addEventListener("DOMContentLoaded", render);
+    </script>
+  </body>
+</html>

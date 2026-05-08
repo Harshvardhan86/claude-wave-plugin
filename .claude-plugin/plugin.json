@@ -1,0 +1,28 @@
+{
+  "name": "claude-wave-plugin",
+  "description": "Wave-based engineering execution for Claude Code. Vendors the full v2 framework — 17-phase pipeline plus conditional [DR] (UI waves) and [CR] (opt-in) gates, model-routed across Opus/Sonnet/Haiku, hook-enforced invariants, worktree isolation — plus a polished 5-phase demo subset for live segments and small UI features.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Harshvardhan Singh Chouhan",
+    "email": "harshvardhanc.1986@gmail.com"
+  },
+  "contributors": [
+    {
+      "name": "Harshvardhan Singh Chouhan",
+      "email": "harshvardhanc.1986@gmail.com"
+    },
+    {
+      "name": "Harshvardhan Singh Chouhan",
+      "email": "proharsh@gmail.com"
+    }
+  ],
+  "keywords": [
+    "tdd",
+    "orchestration",
+    "wave-framework",
+    "design-review",
+    "visual-verification",
+    "production-grade"
+  ],
+  "license": "MIT"
+}

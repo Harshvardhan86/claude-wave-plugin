@@ -1,0 +1,26 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+*.bak
+
+# Node (in case dev tooling is added later)
+node_modules/
+
+# Wave runtime artifacts (if anyone runs a wave inside the plugin repo)
+.wave/
+
+# Logs
+*.log
+
+# Claude Code session state
+.claude-session/
+
+# Build artifacts
+dist/
+build/
