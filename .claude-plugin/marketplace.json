@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-wave-plugin",
+  "description": "Wave-based engineering execution for Claude Code. Vendors the full v2 framework (17 base phases plus conditional [DR] for UI waves and optional [CR] code-review gate) plus a polished 5-phase demo subset for live segments and small UI features.",
+  "owner": {
+    "name": "Harshvardhan Singh Chouhan",
+    "email": "harshvardhanc.1986@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "claude-wave-plugin",
+      "description": "Run Claude Code like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no \"tsc passes\" lies. Vendors the full Wave Execution Framework v2 (17 base phases + conditional [DR] and [CR] gates, max 19) plus a polished 5-phase demo subset for live segments and small UI features.",
+      "author": {
+        "name": "Harshvardhan Singh Chouhan",
+        "email": "harshvardhanc.1986@gmail.com"
+      },
+      "category": "development",
+      "source": ".",
+      "homepage": "https://github.com/Harshvardhan86/claude-wave-plugin",
+      "license": "MIT",
+      "keywords": [
+        "tdd",
+        "orchestration",
+        "wave-framework",
+        "design-review",
+        "visual-verification",
+        "production-grade",
+        "agent-frameworks"
+      ]
+    }
+  ]
+}
