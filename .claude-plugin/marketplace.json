@@ -15,7 +15,10 @@
         "email": "harshvardhanc.1986@gmail.com"
       },
       "category": "development",
-      "source": ".",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Harshvardhan86/claude-wave-plugin.git"
+      },
       "homepage": "https://github.com/Harshvardhan86/claude-wave-plugin",
       "license": "MIT",
       "keywords": [
