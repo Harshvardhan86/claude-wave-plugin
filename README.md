@@ -46,7 +46,7 @@ This plugin packages that workflow.
 
 ```bash
 # Add this repo as a plugin source
-/plugins marketplace add https://github.com/<your-username>/claude-wave-plugin
+/plugins marketplace add https://github.com/Harshvardhan86/claude-wave-plugin
 
 # Then install the plugin
 /plugins install claude-wave-plugin
@@ -64,7 +64,7 @@ After installation you should see two new slash commands available:
 If you'd rather install directly:
 
 ```bash
-git clone https://github.com/<your-username>/claude-wave-plugin.git \
+git clone https://github.com/Harshvardhan86/claude-wave-plugin.git \
   ~/.claude/plugins/local/claude-wave-plugin
 ```
 
