@@ -1,11 +1,11 @@
 # claude-wave-plugin
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
-[![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
 
 > Run Claude Code like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
+
+<!-- HERO GIF: record a 30-60s screen capture of `/wave-start --demo` end-to-end and save as assets/demo.gif. Keep under 10MB so GitHub renders inline. -->
+![claude-wave in action](assets/demo.gif)
 
 The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin optimises for *time-to-shippable*.
 
@@ -13,6 +13,7 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 
 ## Table of contents
 
+- [How is this different?](#how-is-this-different)
 - [Why this exists](#why-this-exists)
 - [Prerequisites](#prerequisites)
 - [Install](#install)
@@ -21,11 +22,28 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 - [The 10 invariants](#the-10-invariants-verbatim-from-v1-preserved-in-v2)
 - [The 5 hard-won rules](#the-5-hard-won-rules-the-demo-skills-add-on-top)
 - [Repository structure](#repository-structure)
+- [Community](#community)
+- [Used in production by](#used-in-production-by)
+- [Talks & writing](#talks--writing)
 - [Status](#status)
 - [Contributing](#contributing)
 - [License](#license)
 
 ---
+
+## How is this different?
+
+|                              | claude-wave-plugin           | Superpowers              | Vanilla Claude Code |
+|------------------------------|------------------------------|--------------------------|---------------------|
+| Workflow philosophy          | Evidence-first verification  | Brainstorm → plan → execute | One-shot prompts |
+| Phases per feature           | 17 base + 2 conditional      | 7 stages                 | None                |
+| TDD enforcement              | Hook-enforced                | Recommended              | None                |
+| Visual verification gates    | ✅ Computed-style assertions | ❌                       | ❌                  |
+| Sub-agent isolation          | ✅ Per-phase, lean context   | ✅                       | ❌                  |
+| Auto-compact recovery        | ✅ Checkpoint resume          | ❌                       | ❌                  |
+| Best for                     | Production codebases where bugs cost money | Greenfield features, creative flow | Prototypes |
+
+Both `claude-wave-plugin` and Superpowers are serious frameworks built by people shipping real code with Claude Code. They optimise for different problems. If you're brainstorming a new product feature, Superpowers' creative flow is excellent. If you're shipping into a production codebase where "the agent said it's done" is not acceptable evidence, this plugin is for you.
 
 ## Why this exists
 
@@ -74,7 +92,7 @@ Restart Claude Code. The plugin should be picked up automatically.
 
 In any project you want to ship a feature in:
 
-```
+```bash
 /wave-start --demo "make the save button show a loading spinner"
 ```
 
@@ -91,7 +109,7 @@ If the agent says "done" without showing you a screenshot, refuse the hand-off �
 
 Once you've shipped two or three waves with `--demo` successfully, drop the flag:
 
-```
+```bash
 /wave-start "implement the new payment flow"
 ```
 
@@ -110,7 +128,7 @@ This plugin **vendors the complete Wave Execution Framework v2** — refined ove
 For first-time users, small features, and live-demo segments, the plugin ships **five polished entry skills** plus the orchestrator:
 
 | Skill | Phase | Owns |
-|---|---|---|
+| --- | --- | --- |
 | `wave-orchestrator` | Router | Mode dispatch (`full` vs `demo`), hand-off gates |
 | `ac-writer` | 1. Acceptance Criteria | Brutal, testable ACs grounded in real visual vocabulary |
 | `design-reviewer` | UI: pre-RED gate (matches Phase 1.5) | Component API audit, per-route mockup, visual ACs |
@@ -139,7 +157,7 @@ These run as `/wave-start --demo "<feature>"`. The recommended starting point.
 9. No hanging the system — teams must not deadlock or block indefinitely.
 10. The orchestrator is the single throat to choke — all decisions and user interactions flow through it.
 
-Invariants 6 and 7 are hook-enforced in v2; see [`framework/references/11-hooks-and-automation.md`](framework/references/11-hooks-and-automation.md).
+Invariants 6 and 7 are hook-enforced in v2; see [`framework/references/11-hooks-and-automation.md`](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/framework/references/11-hooks-and-automation.md).
 
 ## The 5 hard-won rules the demo skills add on top
 
@@ -197,13 +215,28 @@ claude-wave-plugin/
     └── qr.html                                  # parametric QR-code generator
 ```
 
+## Community
+
+- **X / Twitter:** [@Anim1986](https://x.com/Anim1986) — DM open for questions, suggestions, war stories
+- **Issues & ideas:** Open an issue with the `.wave/<phase>.md` excerpt that surfaced the question
+- **Discussions:** [GitHub Discussions](https://github.com/Harshvardhan86/claude-wave-plugin/discussions) for design questions and patterns
+
+## Used in production by
+
+This plugin is in early public release. If you're shipping with `claude-wave-plugin` in a real engineering org, [open an issue](https://github.com/Harshvardhan86/claude-wave-plugin/issues/new) or DM [@Anim1986](https://x.com/Anim1986) — I'll add your team here and would love to hear what's working, what's not, and what's missing.
+
+## Talks & writing
+
+- 🎤 **[Beyond Vibe Coding — Claude Builders Delhi NCR, May 2026](https://www.linkedin.com/posts/harshvardhan-chouhan_claude-delhi-event-recap-ugcPost-7459117381680881664-tJ1q)** — the talk that introduced this framework. Recap with photos and the core thesis.
+- ✍️ *Coming soon:* TDD with sub-agents — the patterns from `claude-wave`. Acceptance criteria, evidence-first verification, brutal silent-error scans.
+
 ## Status
 
 **v0.1.0** — initial public release. The framework itself is battle-tested in private production work; this is its first public packaging. Expect rough edges around platform integration as Claude Code's plugin system evolves. Issues and PRs are welcome.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
+See [CONTRIBUTING.md](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md). Short version:
 
 - Bug reports and rule clarifications: open an issue with the `.wave/<phase>.md` excerpt that surfaced the problem
 - New rules to the framework: come with a real incident behind them
@@ -212,9 +245,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
 ## Author
 
 **Harshvardhan Singh Chouhan**
-- harshvardhanc.1986@gmail.com
-- proharsh@gmail.com
+
+- X: [@Anim1986](https://x.com/Anim1986)
+- LinkedIn: [harshvardhan-chouhan](https://www.linkedin.com/in/harshvardhan-chouhan)
+- Email: harshvardhanc.1986@gmail.com / proharsh@gmail.com
 
 ## License
 
-[MIT](LICENSE) — fork it, ship it, mutate it.
+[MIT](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) — fork it, ship it, mutate it.
