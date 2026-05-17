@@ -4,8 +4,9 @@
 
 > Run Claude Code like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
 
-<!-- HERO GIF: record a 30-60s screen capture of `/wave-start --demo` end-to-end and save as assets/demo.gif. Keep under 10MB so GitHub renders inline. -->
-![claude-wave in action](assets/demo.gif)
+![A complete wave run — 17 phases, 4h 56m, 483.2k tokens, all checks green](assets/wave-run-output.png)
+
+*A real `/wave-start` run end-to-end: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
 
 The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin optimises for *time-to-shippable*.
 
