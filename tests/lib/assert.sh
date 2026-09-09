@@ -127,7 +127,7 @@ _wv_apply_seed() {
     mkdir -p "$WV_PROJECT/$(dirname "$k")"
     printf '%s' "$content" > "$WV_PROJECT/$k"
   done <<<"$file_keys"
-  local staged
+  local staged p
   staged="$(jq -r '.seed.staged // [] | .[]' "$case_json" 2>/dev/null)"
   while IFS= read -r p; do
     [ -z "$p" ] && continue
