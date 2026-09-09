@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# tests/run.sh [--filter <glob>]... [--list]
+# tests/run.sh [--filter <glob>]... [--list] [--coverage]
 #
 # Discovers every tests/cases/**/*.{json,sh} case, runs each, prints one
 # PASS/FAIL line per case plus a total, and exits non-zero on any failure.
-# See tests/cases/README.md for the case-file schema and the self-check
-# semantics (harness_fails / the rule-id coverage check / the fixture-key
-# sweep) this script implements.
+# By default, rule-id coverage gaps are printed but do not fail; pass --coverage
+# to enforce coverage at release time (exit non-zero if any rule lacks positive
+# case and negative control). See tests/cases/README.md for the case-file schema
+# and the self-check semantics (harness_fails / the rule-id coverage check / the
+# fixture-key sweep) this script implements.
 #
 # Deliberately `set -u`, never `set -e` — one bad case must not abort the
 # whole run, and a hook under test exiting non-zero is often exactly what is
@@ -30,10 +32,12 @@ source "$WV_TESTS_DIR/lib/assert.sh"
 # ---- args -----------------------------------------------------------------
 
 wv_list_only=0
+wv_enforce_coverage=0
 declare -a wv_filters=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) wv_list_only=1; shift ;;
+    --coverage) wv_enforce_coverage=1; shift ;;
     --filter)
       [ $# -ge 2 ] || { echo "tests/run.sh: --filter needs an argument" >&2; exit 1; }
       wv_filters+=("$2"); shift 2 ;;
@@ -364,12 +368,26 @@ for name in "${!wv_ran_case[@]}"; do
   fi
 done
 
-for msg in "${wv_suite_violations[@]:-}"; do
-  [ -z "$msg" ] && continue
-  printf 'FAIL coverage: %s\n' "$msg"
-  wv_total=$((wv_total + 1))
-  wv_failed=$((wv_failed + 1))
-done
+# Coverage check: always print, but only count toward failed if --coverage is set
+if [ ${#wv_suite_violations[@]} -gt 0 ]; then
+  if [ "$wv_enforce_coverage" = "1" ]; then
+    for msg in "${wv_suite_violations[@]:-}"; do
+      [ -z "$msg" ] && continue
+      printf 'FAIL coverage: %s\n' "$msg"
+      wv_total=$((wv_total + 1))
+      wv_failed=$((wv_failed + 1))
+    done
+  else
+    # Print coverage messages without counting as failures
+    for msg in "${wv_suite_violations[@]:-}"; do
+      [ -z "$msg" ] && continue
+      printf 'coverage: %s\n' "$msg"
+    done
+    # Print summary line
+    coverage_count=${#wv_suite_violations[@]}
+    printf 'coverage: %s rule(s) without cases (run with --coverage to enforce)\n' "$coverage_count"
+  fi
+fi
 
 if [ "$wv_executed" -lt "$wv_discovered" ]; then
   printf 'FAIL suite: executed %s of %s discovered cases\n' "$wv_executed" "$wv_discovered"

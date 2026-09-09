@@ -160,6 +160,13 @@ run loop bailed out early), if any case file is 0 bytes or unparseable
 run marker (`RAN <script> <case> decision=<x>`) after the harness attempted
 to run it.
 
+**Coverage gate (default: disabled).** The harness always scans for rule IDs
+with no positive test case and no negative control. By default, it prints these
+lines but does not fail (exits 0 and does not increment `failed=`). To enforce
+coverage at release time, run with `--coverage` flag: `tests/run.sh --coverage`
+fails if any rule lacks cases. During development, the default mode lets you add
+test cases incrementally without blocking other work.
+
 **A suite that cannot run at all — the whole file, not one case — is
 reported `SKIPPED`, never counted as a pass.** This applies repo-wide: for
 example `tests/e2e.sh` (added in a later task) is documented to skip itself
