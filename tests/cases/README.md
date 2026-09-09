@@ -97,6 +97,11 @@ present (a case does not need to assert every field).
   must *name* something (the active wave id, the offending prefix, the roles a
   phase defines) — `reason_template` only checks the `[<rule>] ` prefix. A
   substring cannot span a newline (the list is read line by line).
+- **`expect.stderr_contains`** — a list of **literal** substrings stderr must
+  contain. `SubagentStop` and `PreCompact` have no `additionalContext` channel, so
+  a warning on those events reaches the operator on stderr and nowhere else; this
+  is how a case asserts that it was actually emitted rather than merely that it
+  did not break the decision.
 - **`expect.stdout_absent`** — a list of literal substrings that must **not**
   appear anywhere in stdout. This is how a case proves a rule did not fire (no
   `W-MODEL-UNKNOWN` token) and how an injection case proves the hook treated

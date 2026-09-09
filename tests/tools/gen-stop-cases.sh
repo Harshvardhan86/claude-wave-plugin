@@ -330,6 +330,7 @@ mk name=stop-modes-demo-bc ac=AC-227 \
   seed="$(files .wave/findings/BC.md 'FINDINGS: 0
 ')" \
   expect="$(jq -nc '{exit:0, decision:"allow", stdout_absent:["block"], ledger_lines:1,
+    stderr_contains:["W-STATE", "BC", "demo"],
     ledger_assert: ".phase == \"BC\" and .role == \"scanner\" and .tier_ok == null",
     state_assert: ".phases == {} and .rounds == {}"}')"
 

@@ -210,6 +210,16 @@ _wv_compare_expect() {
     assert_reason_contains "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
   done
 
+  local -a err_needles=()
+  while IFS= read -r s; do
+    [ -z "$s" ] && continue
+    err_needles+=("$s")
+  done < <(jq -r '.expect.stderr_contains // [] | .[]' "$path" 2>/dev/null)
+  for s in "${err_needles[@]:-}"; do
+    [ -z "$s" ] && continue
+    assert_stderr_contains "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  done
+
   local -a absent_needles=()
   while IFS= read -r s; do
     [ -z "$s" ] && continue

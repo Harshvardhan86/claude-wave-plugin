@@ -496,11 +496,17 @@ wv_budget_value() {
   return 1
 }
 
-wv_scan_count_text() {
-  # wv_scan_count_text <text> <extended-regex> <label> -> the match count.
-  # wv_scan_count's contract (Global Constraint 7) against a string rather than
-  # a file: an ABSENT count is a FAILED scan — it warns, prints nothing and
-  # returns 1 — never a clean zero.
+wv_scan_text() {
+  # wv_scan_text <text> <extended-regex> <label> — sets WV_SCAN_COUNT to the
+  # match count and returns 0. lib.sh's `wv_scan` contract (Global Constraint 7)
+  # against a string rather than a file: an ABSENT count is a FAILED scan — it
+  # warns, leaves WV_SCAN_COUNT empty and returns 1 — never a clean zero.
+  #
+  # Sets a global rather than printing, for the reason lib.sh's wv_scan gives at
+  # length: read through `$(...)` the W-STATE it queues is queued in a SUBSHELL
+  # and dies with it, so the caller allows having silently dropped the one line
+  # that said it could not measure the file.
+  WV_SCAN_COUNT=""
   local text="$1" regex="$2" label="$3" count
   count="$(command grep -cE -- "$regex" <<<"$text" 2>/dev/null)"
   case "$count" in
@@ -509,7 +515,7 @@ wv_scan_count_text() {
       return 1
       ;;
   esac
-  printf '%s' "$count"
+  WV_SCAN_COUNT="$count"
   return 0
 }
 
@@ -522,20 +528,27 @@ wv_first_line() {
   return 0
 }
 
+WV_FINDINGS_N=""     # wv_findings_count's answer, readable without a subshell
+
 wv_findings_count() {
-  # wv_findings_count <file> -> the count on the FIRST `^FINDINGS: [0-9]+$`
-  # line, base 10 (so `FINDINGS: 08` is 8, not an octal 0).
+  # wv_findings_count <file> — sets WV_FINDINGS_N to the count on the FIRST
+  # `^FINDINGS: [0-9]+$` line, base 10 (so `FINDINGS: 08` is 8, not an octal 0).
   #
   # Returns 1 when the gating scan did not run at all (it has already warned
   # W-STATE, and the caller must fail open), and 2 when the file is present but
   # carries no such line — which is a W-MARKER for the caller to report.
-  local file="$1" n line
-  n="$(wv_scan_count "$file" '^FINDINGS: [0-9]+$')" || return 1
-  [ "$n" != "0" ] || return 2
+  #
+  # NEVER call this through a command substitution: it runs a gating scan, and
+  # the W-STATE that scan queues when it could not read the file has to reach the
+  # caller's queue, not a subshell's copy of it.
+  WV_FINDINGS_N=""
+  local file="$1" line
+  wv_scan "$file" '^FINDINGS: [0-9]+$' || return 1
+  [ "$WV_SCAN_COUNT" != "0" ] || return 2
   line="$(command grep -m1 -E '^FINDINGS: [0-9]+$' "$file" 2>/dev/null)"
   line="${line#FINDINGS: }"
   case "$line" in ''|*[!0-9]*) return 2 ;; esac
-  printf '%s' "$((10#$line))"
+  WV_FINDINGS_N="$((10#$line))"
   return 0
 }
 
@@ -648,12 +661,15 @@ wv_condition_met() {
         WV_COND_PENDING="$src"
         return 3
       fi
-      count="$(wv_findings_count "$file")"
+      # Not a command substitution: this runs a gating scan, and its W-STATE has
+      # to survive into this shell's warning queue.
+      wv_findings_count "$file"
       rc=$?
+      count="$WV_FINDINGS_N"
       case "$rc" in
         1)
-          # The scan itself did not run; wv_scan_count has warned. A hook that
-          # measured nothing allows, so the condition is treated as met.
+          # The scan itself did not run; wv_scan has warned, in THIS shell. A hook
+          # that measured nothing allows, so the condition is treated as met.
           return 0
           ;;
         2)
@@ -945,13 +961,20 @@ wv_dr_open_gate() {
   local stripped
   stripped="$(command awk '/^```/ { fence = !fence; next } !fence' "$file" 2>/dev/null)"
 
+  # Both counts are read through the global-setting scan forms, never through a
+  # command substitution: a scan that could not run has to be able to say so
+  # (Global Constraint 7), and `$(...)` would strand that warning in a subshell.
   local open_n
-  open_n="$(wv_scan_count_text "$stripped" '^OPEN:' "$rel")" || return 0
+  wv_scan_text "$stripped" '^OPEN:' "$rel" || return 0
+  open_n="$WV_SCAN_COUNT"
   [ "$open_n" -gt 0 ] || return 0
 
   local approval="$WV_WAVE_DIR/approvals/dr-open.md" resolved_n=0
   if [ -f "$approval" ]; then
-    resolved_n="$(wv_scan_count "$approval" '^RESOLVED:')" || return 0
+    # wv_scan warns W-STATE itself, in THIS shell, naming the file it could not
+    # read — so there is nothing to add here and no second warning to add it with.
+    wv_scan "$approval" '^RESOLVED:' || return 0
+    resolved_n="$WV_SCAN_COUNT"
   fi
   [ "$resolved_n" -ge "$open_n" ] && return 0
 

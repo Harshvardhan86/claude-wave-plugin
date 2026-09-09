@@ -37,6 +37,11 @@
       "block"
     ],
     "ledger_lines": 1,
+    "stderr_contains": [
+      "W-STATE",
+      "BC",
+      "demo"
+    ],
     "ledger_assert": ".phase == \"BC\" and .role == \"scanner\" and .tier_ok == null",
     "state_assert": ".phases == {} and .rounds == {}"
   }

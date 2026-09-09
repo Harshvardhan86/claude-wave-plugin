@@ -450,12 +450,26 @@ PY
 
 # --- 25. a findings file with no marker line is accepted ------------------
 wv_body_markerignored() { cat <<'PY'
-old = '  [ "$n" != "0" ] || return 2'
-new = '  [ "$n" != "0" ] || return 0'
+old = '  [ "$WV_SCAN_COUNT" != "0" ] || return 2'
+new = '  [ "$WV_SCAN_COUNT" != "0" ] || return 0'
 assert old in s, "anchor missing: the findings marker check"
 s = s.replace(old, new)
 PY
 }
+
+# --- 27. a gating-scan warning is read back through a command substitution ---
+#
+# The success path is unchanged (the count is printed and read as before); what
+# the mutant removes is the WARNING's route out of the subshell, which is the
+# false-allow this round exists to close.
+wv_body_scanwarnlost() { cat <<'PY'
+old = '      wv_findings_count "$file"\n      rc=$?\n      count="$WV_FINDINGS_N"'
+new = '      count="$(wv_findings_count "$file"; printf \'%s\' "$WV_FINDINGS_N")"\n      rc=$?'
+assert old in s, "anchor missing: the findings-count call"
+s = s.replace(old, new)
+PY
+}
+
 
 wv_run_mutant offbyone     wv_body_offbyone     'tier-*' 'model-13*'
 wv_run_mutant anchor       wv_body_anchor       'tag-*'
@@ -490,6 +504,7 @@ wv_run_mutant pastethreshold    wv_body_pastethreshold    'paste-*' 'prompt-182*
 wv_run_mutant artifactpending   wv_body_artifactpending   'gate-083*' 'gate-160b*'
 wv_run_mutant markerignored     wv_body_markerignored     'gate-083b*' 'gate-160*'
 wv_run_mutant unknownisfalse    wv_body_unknownisfalse    'scope-11*' 'order-071*' 'order-074b*'
+wv_run_mutant scanwarnlost      wv_body_scanwarnlost      'gate-scan-warning*' 'cond-080*'
 
 # --- the table ------------------------------------------------------------
 

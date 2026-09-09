@@ -370,6 +370,22 @@ assert_reason_contains() {
   esac
 }
 
+assert_stderr_contains() {
+  # assert_stderr_contains <literal-substring> — stderr must contain <substring>
+  # byte for byte. Matching is literal, never glob or regex, for the same reason
+  # assert_reason_contains is: the text quotes paths, regexes and agent ids.
+  #
+  # SubagentStop and PreCompact have no `additionalContext` channel, so a warning
+  # on those events reaches the operator on stderr and NOWHERE else. Without this,
+  # a case can only assert that such a warning did not break the decision — never
+  # that it was actually emitted, which is the whole content of the claim.
+  local needle="$1"
+  case "${WV_LAST_STDERR:-}" in
+    *"$needle"*) return 0 ;;
+    *) _wv_die_diff "stderr_contains: '$needle' is absent from '${WV_LAST_STDERR:-}'" ;;
+  esac
+}
+
 assert_stdout_absent() {
   # assert_stdout_absent <literal-substring> — the whole of stdout must NOT
   # contain <substring>. This is how a case proves a rule did *not* fire (no
