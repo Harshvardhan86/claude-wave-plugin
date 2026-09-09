@@ -1,4 +1,7 @@
-.wave/**
-CHANGELOG.md
-README.md
-CONTINUE-HERE.md
+.wave/**	wave-state-and-artifacts
+tasks/todo.md	task-tracking
+analysis/**	analysis-documents
+.claude/plans/**	claude-plans
+**/plan-*.md	planning-documents
+notes.plan.md	planning-notes
+docs/wave[0-9]*-design-review.md	wave-design-review

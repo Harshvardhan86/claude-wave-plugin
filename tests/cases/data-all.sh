@@ -81,9 +81,13 @@ haiku_rank=$(awk -F'\t' '/^haiku\t/ {print $2}' hooks/models.tsv)
 budget_count=$(command grep -v '^#' hooks/budgets.tsv | tail -n +2 | wc -l)
 [ "$budget_count" = "26" ] || fail "budgets.tsv should have 26 rows, got $budget_count"
 
-# AC-351: planning-paths.tsv starts with .wave/**
-first_path=$(head -n1 hooks/planning-paths.tsv)
-[ "$first_path" = ".wave/**" ] || fail "first path should be .wave/**, got '$first_path'"
+# AC-351: planning-paths.tsv is glob<TAB>label, first row's glob is .wave/**
+# (full row-completeness + bidirectional fixture coverage: tests/cases/data-planning-paths.sh)
+first_row=$(head -n1 hooks/planning-paths.tsv)
+first_glob=$(printf '%s' "$first_row" | awk -F'\t' '{print $1}')
+first_label=$(printf '%s' "$first_row" | awk -F'\t' '{print $2}')
+[ "$first_glob" = ".wave/**" ] || fail "first row's glob should be .wave/**, got '$first_glob'"
+[ -n "$first_label" ] || fail "first row is missing its label column: '$first_row'"
 
 # AC-352: orchestrator-writable.tsv
 has_readme=$(command grep -c '^README.md$' hooks/orchestrator-writable.tsv || echo 0)

@@ -4,7 +4,7 @@ framework_role	tag_role
 Implementer	executor
 Verifier	reviewer
 Auditor	executor
-Comparator	reviewer
+Comparator	executor
 Tester	executor
 Test Writer	writer
 Mockup Writer	writer
