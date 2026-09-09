@@ -1,0 +1,167 @@
+# `tests/cases/` — case-file schema
+
+`tests/run.sh` discovers every file under `tests/cases/**` (excluding this
+README) whose extension is `.json` or `.sh`, runs it, and prints one
+`PASS <name>` or `FAIL <name>: <reason>` line per case. A case's **name** is
+its basename with the extension stripped (`lib-foo.json` -> `lib-foo`),
+regardless of which subdirectory it lives in — names must be unique across
+the whole tree.
+
+## JSON case schema
+
+```json
+{
+  "script": "pre-agent.sh",
+  "env": { "SOME_VAR": "value" },
+  "seed": {
+    "state": "state/valid-full.json",
+    "files": { "relative/path.txt": "file contents" },
+    "staged": ["relative/path.txt"]
+  },
+  "stdin": { "hook_event_name": "PreToolUse", "...": "..." },
+  "expect": {
+    "exit": 0,
+    "decision": "deny|block|warn|allow|silent",
+    "rule": "W-TAG",
+    "reason_template": "W-TAG",
+    "state_assert": ".status == \"active\"",
+    "ledger_lines": 1,
+    "files_absent": ["some/path"],
+    "negative_control_for": "W-TAG",
+    "harness_fails": true
+  }
+}
+```
+
+All fields are optional except `stdin`; `expect` fields are checked only when
+present (a case does not need to assert every field).
+
+- **`script`** — a hook script name. A bare name (no `/`) resolves to
+  `scripts/hooks/<name>`; a path containing `/` resolves relative to the repo
+  root (used by the harness's own fixture scripts under `tests/fixtures/`,
+  never by a real hook case).
+- **`env`** — extra environment variables exported to the script's process.
+- **`seed.state`** — a path relative to `tests/fixtures/` (or an absolute
+  path) copied to `<tmp-project>/.wave/state.json` before the run; an empty
+  `.wave/lock` file is also created (mirroring `wave-init.sh`, which does not
+  exist yet).
+- **`seed.files`** — a map of project-relative path -> file contents, written
+  before the run.
+- **`seed.staged`** — paths (already written via `seed.files`) that are
+  `git add`-ed in the temp project before the run, for cases that need a
+  file to be staged rather than merely present.
+- **`stdin`** — the exact JSON object piped to the script on stdin. Every
+  top-level key, and every key under `tool_input`, must appear in
+  `tests/fixtures/measured-keys.txt` — see that file for how to extend it.
+  No field name may be invented (AC-405).
+- **`expect.decision`** — one of:
+  - `silent`: exit 0, empty stdout, empty stderr.
+  - `allow`: exit 0 and the output is not a deny or block shape (may still
+    carry a warn-style `additionalContext`).
+  - `deny`: `{"hookSpecificOutput":{"hookEventName":"...","permissionDecision":"deny","permissionDecisionReason":"..."}}`.
+  - `block`: `{"decision":"block","reason":"..."}` (SubagentStop only).
+  - `warn`: `{"hookSpecificOutput":{"hookEventName":"...","additionalContext":"..."}}`
+    — the same object as a deny/warn but with `additionalContext` and no
+    `permissionDecision` (Global Constraint 5). A `SubagentStop` warn is a
+    state/ledger side effect rather than an stdout shape; assert that kind
+    with `assert_state` / `assert_ledger_lines` instead of `assert_warn`.
+- **`expect.rule`** — the rule id (`W-...`) the rendered reason must carry.
+  Declaring this makes the case the **positive** case for that rule id.
+- **`expect.negative_control_for`** — the rule id this case proves does
+  *not* fire on a neighbouring, otherwise-similar input (paired with
+  `expect.decision: "allow"` or `"silent"`). Declaring this makes the case
+  the rule's **negative control**.
+- **`expect.reason_template`** — asserts the rendered reason starts with
+  `[<rule>] ` (Interfaces: every `reasons.tsv` template starts that way).
+  Byte-exact template comparison against `hooks/reasons.tsv` is Task 13's
+  job, not this harness's.
+- **`expect.state_assert`** — a `jq` boolean filter evaluated against the
+  temp project's `.wave/state.json` after the run.
+- **`expect.ledger_lines`** — the exact line count of
+  `.wave/ledger.jsonl` after the run (0 if the file never got created).
+- **`expect.files_absent`** — project-relative paths that must not exist
+  after the run.
+- **`expect.harness_fails`** — see "Self-check cases" below.
+
+A case may instead be a `tests/cases/<area>-<name>.sh` script for multi-step
+or concurrency scenarios. It is executed directly (not sourced); it must
+`source "$(dirname "$0")/../lib/assert.sh"`, drive `run_hook` itself as many
+times as it needs (e.g. to fire N concurrent callers against one seeded
+project), and exit 0 for PASS / non-zero for PASS, printing its own diff on
+failure. Every `run_hook` call it makes writes the same positive run marker
+as the JSON path, so the harness's "case log carries its run marker" check
+covers `.sh` cases too.
+
+## The rule-id coverage self-check
+
+The id universe is the union of every `expect.rule` / `expect.negative_control_for`
+value declared anywhere under `tests/cases/`, plus every id in
+`hooks/reasons.tsv` when that file exists (it does not yet — Task 3 creates
+it; until then the file simply contributes nothing to the universe). For
+every id in that universe, at least one case must declare it via
+`expect.rule` (a positive case) **and** at least one case must declare it via
+`expect.negative_control_for` (a negative control on a neighbouring valid
+input). `tests/run.sh` fails, naming the id, when either is missing
+(AC-402).
+
+## `tests/fixtures/state/` and `tests/fixtures/transcripts/`
+
+`tests/fixtures/state/example-active.json` is a minimal `{"status":"active"}`
+placeholder used only by this task's own smoke test
+(`tests/fixtures/fake-hook.sh` only ever looks at `status`). The real,
+schema-complete state fixtures (`valid-full`, `invalid`, `schema2`, `no-mode`,
+`enforce-typo`, `no-enforce`, `closed`) are added in Task 2 once
+`scripts/hooks/lib.sh` defines the schema they exercise.
+
+`tests/fixtures/transcripts/example.jsonl` is one line in the shape measured
+in spec section 2 (`type":"assistant"`, `message.model`, `message.usage.{input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens}`),
+kept only to document that shape. It is not read by anything yet — Task 8
+adds the real scenario fixtures (`all-opus`, `one-haiku`, `all-haiku`,
+`zero-assistant`, `model-less`, a truncated final line, an over-cap file)
+that `wv_transcript_stats` is tested against.
+
+## Self-check cases (`tests/cases/_selfcheck/`)
+
+These cases test the harness itself, not any hook. Each one is a
+deliberately broken or incomplete fixture that exercises one of the four
+built-in detections:
+
+1. a case naming a script that does not exist,
+2. a case file that is exactly 0 bytes,
+3. a case whose `stdin` uses a key absent from `measured-keys.txt`,
+4. a rule id with a positive case (`expect.rule`) and no negative control.
+
+For (1), (3) and (4) the case JSON carries `"expect": {"harness_fails": true, ...}`.
+A case with `harness_fails: true` inverts the normal PASS/FAIL meaning: it
+PASSes when the harness's own checks correctly rejected it, and FAILs if the
+harness let the defect through undetected.
+
+(2) cannot carry that field — a 0-byte file cannot carry any JSON — so the
+inversion is instead keyed on location: **a 0-byte case file is always a
+plain failure of the suite, except when it lives under
+`tests/cases/_selfcheck/`, where it is understood to be the deliberate
+self-check of the "0 bytes" detector** and is reported PASS once that
+detector correctly flags it. A 0-byte file anywhere else in the corpus is a
+real bug and is never inverted.
+
+`tests/cases/_selfcheck/` also carries one ordinary (non-inverted) case
+proving the plumbing end to end — seeding an active state fixture, running a
+throwaway test-only script (`tests/fixtures/fake-hook.sh`, never wired into
+`hooks/hooks.json`), and asserting the deny JSON shape, the single-rule-token
+rule, the reason-template prefix, the ledger line count and the state
+assertion all in one pass.
+
+## Suite-level behaviour
+
+`tests/run.sh` exits non-zero if any case fails, if the number of cases it
+executed is fewer than the number of case files it discovered (a sign the
+run loop bailed out early), if any case file is 0 bytes or unparseable
+(outside the exemption above), or if a case's log is missing its positive
+run marker (`RAN <script> <case> decision=<x>`) after the harness attempted
+to run it.
+
+**A suite that cannot run at all — the whole file, not one case — is
+reported `SKIPPED`, never counted as a pass.** This applies repo-wide: for
+example `tests/e2e.sh` (added in a later task) is documented to skip itself
+loudly when `claude` is not on `PATH`; a `SKIPPED` suite must never be
+reported or logged as if it had passed.

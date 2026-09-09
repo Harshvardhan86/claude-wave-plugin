@@ -1,0 +1,49 @@
+# Measured field names for hook stdin payloads.
+#
+# SOURCE OF TRUTH: this list is transcribed field-for-field from two probe
+# logs captured against a live Claude Code session (2.1.266, 2026-09-09) and
+# kept outside this repo:
+#   ~/WAVE_PLUGIN_ANALYSIS/probe-hooks.log
+#   ~/WAVE_PLUGIN_ANALYSIS/probe2-worktree-stopblock.log
+#
+# Every top-level key and every `tool_input.<key>` that appears in any
+# `tests/cases/**` fixture's `stdin` object MUST be present in this file.
+# tests/run.sh enforces this (the fixture-key sweep, AC-405) so a fixture can
+# never silently drift from what the real platform actually sends.
+#
+# Nested `tool_input` keys are listed dotted (`tool_input.foo`); every other
+# line is a top-level key of the stdin JSON object.
+#
+# To add a key: capture it in a fresh probe against a real session, append
+# the exact key here, and cite the probe log + date in a comment. Never add a
+# key because a spec/plan/AC document mentions it in prose — spec section 2
+# of docs/design/2026-09-09-hook-enforcement.md documents more fields
+# (`trigger` on PreCompact, `tool_input.file_path` on file-editing tools)
+# that were NOT captured in the two logs above; they are intentionally
+# absent here until they are actually probed, and any fixture using them
+# will correctly fail the sweep until then.
+agent_id
+agent_transcript_path
+agent_type
+background_tasks
+cwd
+duration_ms
+hook_event_name
+last_assistant_message
+permission_mode
+prompt_id
+session_crons
+session_id
+stop_hook_active
+tool_input
+tool_input.command
+tool_input.description
+tool_input.isolation
+tool_input.model
+tool_input.prompt
+tool_input.run_in_background
+tool_input.subagent_type
+tool_name
+tool_response
+tool_use_id
+transcript_path
