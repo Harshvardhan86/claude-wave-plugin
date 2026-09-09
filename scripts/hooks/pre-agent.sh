@@ -778,6 +778,38 @@ wv_required_because() {
   return 0
 }
 
+wv_taint_warn() {
+  # The dispatch-time half of the transcript tier check (spec section 7, AC-241).
+  #
+  # `subagent-stop.sh` records `tainted: true` on a phase whose agents actually
+  # ran below the tier the table required — a platform quota fallback, or a
+  # settings override — together with the model that ran and the tier that was
+  # required. This warns every LATER dispatch that depends on such a phase, and
+  # it is a warning and never a deny: the work may be perfectly good, and the
+  # remedy of a gate here is paid rework on a correct wave.
+  #
+  # Warn-only, and queued before every part-2 deny, so a deny carries it as
+  # additionalContext instead of losing it.
+  local codes c row used req model
+  codes="$(printf '%s' "$WV_STATE" | jq -r \
+    'try ((.phases // {}) | to_entries[] | select(.value.tainted == true) | .key) catch empty' 2>/dev/null)"
+  for c in $codes; do
+    [ -n "$c" ] || continue
+    wv_ordered_after "$WV_TAG_PHASE" "$c" || continue
+    row="$(printf '%s' "$WV_STATE" | jq -r --arg c "$c" \
+      'try (((.phases // {})[$c]) as $p
+            | [ ($p.tainted_used // "an unmapped tier"),
+                ($p.tainted_required // "-"),
+                ($p.tainted_model // "unknown") ] | join("\u001f")) catch ""' 2>/dev/null)"
+    IFS=$'\x1f' read -r used req model <<<"$row"
+    [ -n "$used" ] || used="an unmapped tier"
+    [ -n "$req" ] || req="-"
+    [ -n "$model" ] || model="unknown"
+    wv_rule_warn W-TAINT "$used" "$req" "$model (phase $c)"
+  done
+  return 0
+}
+
 WV_UNMET=""           # the comma list the W-ORDER reason quotes
 WV_ORDER_DETAIL=""    # the same list with each entry's "required because" clause
 WV_UNMET_SEEN=""      # blockers already named, so each is named exactly once
@@ -1375,6 +1407,10 @@ wv_main() {
   #    client sent as something other than a string, which is the one case
   #    where the size and paste rules measured nothing.
   wv_prompt_warn
+
+  # 9b. A predecessor phase whose agents really ran below their required tier.
+  #     Warn-only, queued here so a later deny carries it (spec section 7).
+  wv_taint_warn
 
   # 10. Scope: TDE-RED is the first phase whose predecessor set depends on the
   #     answers, so it is where an unanswered scope question stops the wave.

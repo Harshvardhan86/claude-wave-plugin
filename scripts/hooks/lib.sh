@@ -402,6 +402,19 @@ wv_lock_release() {
   return 0
 }
 
+wv_ledger_terminate_locked() {
+  # Makes sure the ledger ends in a newline before anything is appended to it.
+  # A file whose last byte is not a newline is one somebody's write was cut off
+  # part-way through; appending onto it MERGES the new line into that one and
+  # destroys both, leaving one unparseable line where there were two good ones.
+  # Must be called with the lock held. (`$(tail -c 1)` strips a trailing newline,
+  # so an already-terminated file gives the empty string and nothing is written.)
+  [ -s "$WV_WAVE_DIR/ledger.jsonl" ] || return 0
+  [ -n "$(tail -c 1 "$WV_WAVE_DIR/ledger.jsonl" 2>/dev/null)" ] || return 0
+  printf '\n' >> "$WV_WAVE_DIR/ledger.jsonl" 2>/dev/null
+  return $?
+}
+
 wv_ledger_drain_locked() {
   # Drains .wave/ledger.pending/*.json into the ledger exactly once. Must be
   # called with the lock held.
@@ -410,10 +423,17 @@ wv_ledger_drain_locked() {
   local f
   for f in "$spool"/*.json; do
     [ -f "$f" ] || continue
+    wv_ledger_terminate_locked
     if cat "$f" >> "$WV_WAVE_DIR/ledger.jsonl" 2>/dev/null; then
       rm -f "$f"
     fi
   done
+  # Once more AFTER the drain: the terminator above protects the ledger from an
+  # unterminated tail of its own, and this protects it from an unterminated tail
+  # that arrived WITH the spooled content (a spool file a crash cut short, or one
+  # a tool wrote without a final newline). Either way the next append must start
+  # on a line of its own.
+  wv_ledger_terminate_locked
   return 0
 }
 
@@ -464,6 +484,28 @@ wv_state_update() {
   return $rc
 }
 
+wv_ledger_spool() {
+  # wv_ledger_spool <json line> — the no-lock path: write the line to
+  # .wave/ledger.pending/<agent_id>.json for the next acquisition to drain.
+  # Exposed separately from wv_ledger_append because a caller that has ALREADY
+  # waited out the lock timeout must not wait a second time: two `flock -w 10`
+  # calls in one hook is twenty seconds, and a SubagentStop hook has to be back
+  # inside the timeout it advertises.
+  #
+  # Appended, not overwritten: the spool file is per agent, so a second timeout
+  # for the same agent would otherwise drop the first line. The drain cats the
+  # whole file and removes it, so appending is still drained exactly once.
+  local line="$1"
+  local spool="$WV_WAVE_DIR/ledger.pending"
+  local id="${WV_AGENT_ID:-unknown}"
+  if mkdir -p "$spool" 2>/dev/null && printf '%s\n' "$line" >> "$spool/$id.json" 2>/dev/null; then
+    wv_warn W-STATE "the wave state lock was busy, so this ledger line was spooled to $spool/$id.json and will be merged by the next hook that takes the lock"
+    return 0
+  fi
+  wv_warn W-STATE "the wave state lock was busy and $spool/$id.json could not be written, so this step is missing from the token ledger"
+  return 1
+}
+
 wv_ledger_append() {
   # wv_ledger_append '<json line>' — one printf under the same lock. On a lock
   # timeout the line is spooled to .wave/ledger.pending/<agent_id>.json and the
@@ -477,6 +519,7 @@ wv_ledger_append() {
   if wv_lock_acquire; then
     wv_ledger_drain_locked
     local rc=0
+    wv_ledger_terminate_locked
     printf '%s\n' "$line" >> "$WV_WAVE_DIR/ledger.jsonl" 2>/dev/null || rc=1
     wv_lock_release
     if [ "$rc" != "0" ]; then
@@ -485,16 +528,7 @@ wv_ledger_append() {
     return $rc
   fi
 
-  local spool="$WV_WAVE_DIR/ledger.pending"
-  local id="${WV_AGENT_ID:-unknown}"
-  # Appended, not overwritten: the spool file is per agent, so a second timeout
-  # for the same agent would otherwise drop the first line. The drain cats the
-  # whole file and removes it, so appending is still drained exactly once.
-  if mkdir -p "$spool" 2>/dev/null && printf '%s\n' "$line" >> "$spool/$id.json" 2>/dev/null; then
-    wv_warn W-STATE "the wave state lock was busy, so this ledger line was spooled to $spool/$id.json and will be merged by the next hook that takes the lock"
-  else
-    wv_warn W-STATE "the wave state lock was busy and $spool/$id.json could not be written, so this step is missing from the token ledger"
-  fi
+  wv_ledger_spool "$line"
   return 1
 }
 
