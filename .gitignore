@@ -15,6 +15,14 @@ node_modules/
 # Wave runtime artifacts (if anyone runs a wave inside the plugin repo)
 .wave/
 
+# Exception: the planning-paths positive fixture under tests/fixtures/ must
+# stay tracked so tests/cases/data-planning-paths.sh has a real fixture on a
+# fresh clone (hooks/planning-paths.tsv row 1's pattern is literally
+# `.wave/**`, so the fixture must keep this exact leaf name to remain a true
+# positive for that glob).
+!tests/fixtures/**/.wave/
+!tests/fixtures/**/.wave/**
+
 # Logs
 *.log
 
