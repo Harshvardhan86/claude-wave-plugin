@@ -19,6 +19,13 @@
 # construction (spec sections 4 and 6), and empty for solo mode (phases.tsv
 # is not consulted in solo mode at all), so --if-terminal is always a no-op
 # there.
+#
+# STDOUT CONTRACT for Task 8 (subagent-stop.sh): under --if-terminal, this
+# script writes NOTHING to stdout — on a match, a no-match, or an inactive
+# wave alike — only to stderr. subagent-stop.sh is a hook whose stdout must
+# carry exactly one JSON object (or none at all), so a plain human line
+# here would corrupt that channel. The bare (no-argument) form is the only
+# one that ever prints to stdout, because nothing but a human runs it.
 set -u
 
 WV_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,5 +88,9 @@ if ! wv_state_update ".status = \"closed\" | .ended = ${ts_json}"; then
   wv_die "could not write $WV_STATE_FILE"
 fi
 
-printf 'wave-close.sh: wave %s closed at %s\n' "$WV_WAVE" "$WV_STATE_FILE"
+if [ -n "$if_terminal" ]; then
+  printf 'wave-close.sh: wave %s closed at %s\n' "$WV_WAVE" "$WV_STATE_FILE" >&2
+else
+  printf 'wave-close.sh: wave %s closed at %s\n' "$WV_WAVE" "$WV_STATE_FILE"
+fi
 exit 0

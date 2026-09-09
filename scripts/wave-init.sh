@@ -128,17 +128,38 @@ wave_dir="$root/.wave"
 state_file="$wave_dir/state.json"
 
 # ---------------------------------------------------------------------------
-# 3. A pre-existing state.json: archive a closed one, refuse an active one
-#    unless --force, and archive whatever it was when replacing it.
+# 3. The lock, taken BEFORE the archive-or-refuse decision and held through
+#    the final write (step 6). `.wave/lock` is never replaced across a
+#    close/init cycle (scripts/hooks/lib.sh's header), so under --force this
+#    is the SAME lock file a still-finishing subagent's locked
+#    wv_state_update against the OLD wave may be holding; without taking it
+#    here, that write can land after ours and clobber the new wave's state.
+#    WV_WAVE_DIR / wv_lock_acquire / wv_lock_release are scripts/hooks/lib.sh's
+#    (nested-safe); reused rather than re-implemented.
+# ---------------------------------------------------------------------------
+
+mkdir -p "$wave_dir"
+WV_WAVE_DIR="$wave_dir"
+[ -e "$wave_dir/lock" ] || : > "$wave_dir/lock"
+
+wv_lock_acquire || wv_die "could not take the wave lock $wave_dir/lock within 10s; another process is still writing state — retry once it finishes"
+
+# ---------------------------------------------------------------------------
+# 4. A pre-existing state.json: archive a closed one, refuse an active one
+#    unless --force, and archive whatever it was when replacing it. Held
+#    under the lock acquired above, so the read of `.status` and the
+#    subsequent archive/write cannot race a concurrent wv_state_update.
 # ---------------------------------------------------------------------------
 
 if [ -e "$state_file" ]; then
   prior_status="$(jq -r '.status // empty' "$state_file" 2>/dev/null)"
   prior_started="$(jq -r '.started // empty' "$state_file" 2>/dev/null)"
   if [ -z "$prior_status" ]; then
+    wv_lock_release
     wv_die "$state_file exists and is not valid JSON; remove or repair it by hand before running wave-init.sh"
   fi
   if [ "$prior_status" = "active" ] && [ "$force" != "1" ]; then
+    wv_lock_release
     wv_die "an active wave already exists at $state_file; run scripts/wave-close.sh first, or pass --force"
   fi
   mkdir -p "$wave_dir/archive"
@@ -149,13 +170,12 @@ if [ -e "$state_file" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. The directory set + the lock.
+# 5. The rest of the directory set (the lock already exists — step 3).
 # ---------------------------------------------------------------------------
 
 for d in approvals findings checkpoints screenshots reports archive; do
   mkdir -p "$wave_dir/$d"
 done
-[ -e "$wave_dir/lock" ] || : > "$wave_dir/lock"
 
 # ---------------------------------------------------------------------------
 # .git/info/exclude — never .gitignore. Idempotent: running this twice must
@@ -174,7 +194,7 @@ if [ -n "$exclude_rel" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. The repo-local commit-msg guard. .git/ is Write-tool-protected, hence a
+# 6. The repo-local commit-msg guard. .git/ is Write-tool-protected, hence a
 #    heredoc written by this already-running bash process rather than by an
 #    editor. Never overwrites a foreign hook (spec section 10 / AC-314).
 # ---------------------------------------------------------------------------
@@ -214,7 +234,8 @@ WV_COMMIT_MSG_HOOK
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Write the whole state.json in one shot (spec section 4).
+# 7. Write the whole state.json in one shot (spec section 4), still under the
+#    lock taken in step 3.
 # ---------------------------------------------------------------------------
 
 started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -252,9 +273,11 @@ if ! jq -n \
   }' > "$state_tmp"
 then
   rm -f "$state_tmp"
+  wv_lock_release
   wv_die "could not build $state_file (jq failed)"
 fi
 mv -f "$state_tmp" "$state_file"
+wv_lock_release
 
 printf 'wave-init.sh: wave %s started in %s mode at %s\n' "$wave_id" "$mode" "$state_file"
 exit 0
