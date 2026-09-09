@@ -15,7 +15,7 @@ BSEA	full	phase	always	BF-DS	1	opus	opus	opus	.wave/findings/BSEA.md	^FINDINGS: 
 BF-BSEA	full	phase	findings:BSEA	BSEA	1	opus	sonnet	opus	.wave/bf-bsea.md	^BF-VERIFIED	-
 OA	full	phase	always	BF-BSEA	1	opus	opus	opus	.wave/oa.md	^ALIGNMENT: [0-9]+%$	-
 TEET-TC	full	phase	always	OA	3	opus	sonnet	opus	.wave/teet-tc.md	^TEET-TC-VERIFIED$	-
-TEET	full,demo	phase	always	TEET-TC	3	sonnet	sonnet	sonnet	.wave/teet.md	^TEET-VERIFIED$	TEET
+TEET	full,demo	phase	always	TDE-GREEN,TEET-TC	3	sonnet	sonnet	sonnet	.wave/teet.md	^TEET-VERIFIED$	TEET
 BF-TEET	full	phase	findings:TEET	TEET	1	opus	sonnet	opus	.wave/bf-teet.md	^BF-VERIFIED	-
 BTEET	full	phase	always	BF-TEET	1	opus	opus	opus	.wave/bteet.md	^BTEET-VERIFIED$	BTEET
 BTEET-X	full	phase	always	BTEET	3	sonnet	sonnet	sonnet	.wave/bteet-x.md	^BTEET-X-VERIFIED$	-
