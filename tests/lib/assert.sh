@@ -198,6 +198,31 @@ run_hook() {
   return 0
 }
 
+run_cli() {
+  # run_cli <repo-relative-script> [args...]
+  #
+  # For a lifecycle script invoked with real argv (wave-init.sh, wave-set.sh,
+  # wave-close.sh) rather than a hook reading stdin JSON — run_hook (above)
+  # pipes stdin and never argv, so it does not fit these. Runs <script>
+  # inside $WV_PROJECT with the given arguments, sets CLI_STDOUT / CLI_EXIT /
+  # CLI_STDERR, and appends this case's `RAN …` run marker to its log — the
+  # same marker run_hook writes, so tests/run.sh's per-case run-marker check
+  # covers a `.sh` case built entirely on run_cli too.
+  #
+  # Ambient variables the caller must already have set (every tests/cases/
+  # *.sh case sets these near the top, per tests/cases/README.md):
+  #   name          this case's name (basename "$0" .sh)
+  #   log           this case's log path (${WV_CASE_LOG:-$WV_RUN_TMP/logs/$name.log})
+  #   WV_PROJECT    the temp project directory (mkproj)
+  local script="$1"; shift
+  local errf="$WV_RUN_TMP/$name.stderr"
+  CLI_STDOUT="$(cd "$WV_PROJECT" && bash "$WV_REPO_ROOT/$script" "$@" 2>"$errf")"
+  CLI_EXIT=$?
+  CLI_STDERR="$(cat "$errf")"
+  rm -f "$errf"
+  printf 'RAN %s %s exit=%s\n' "$script" "$name" "$CLI_EXIT" >> "$log"
+}
+
 # ---- assertions -----------------------------------------------------------
 
 assert_exit() {
