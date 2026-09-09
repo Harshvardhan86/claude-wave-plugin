@@ -7,6 +7,12 @@
 #
 # Non-negotiable properties, all of them load-bearing:
 #
+#   * Exactly ONE JSON object reaches stdout per invocation. A hook evaluates
+#     many rules in one call, so the first emitter wins and every later one is
+#     refused: two objects mean the client parses one and silently loses the
+#     other. Warnings queued before that object ride on it as
+#     `additionalContext`; warnings queued after it are dropped, because the
+#     event has no second channel.
 #   * `set -u`, and NEVER errexit (`-e`) or `-o pipefail`. A hook must not fail
 #     closed on its own bug; every path returns a status the caller can ignore.
 #   * `jq` or `flock` missing -> exactly one stderr line and `exit 0`. A hook
@@ -19,16 +25,15 @@
 #     across the whole read-modify-write *including* the rename. Locking
 #     `state.json` itself would lose updates silently: `tmp && mv` replaces the
 #     locked inode, so a concurrent holder would be locking a file that is no
-#     longer the state file. Proved by counting in tests/cases/lib-concurrency.sh.
+#     longer the state file.
 #   * Every gating scan goes through `command grep` (a wrapped searcher can
 #     decline a file and print nothing where real grep prints `0`), and an
 #     absent count is a FAILED scan, never a clean zero.
 #
 # Rule reasons are rendered from `hooks/reasons.tsv` (one printf template per
 # rule id). Until that file exists, a built-in fallback renders
-# `[<id>] <detail>; remedy: …` so the shape (`[<id>] ` prefix, exactly one
-# `W-` token, a remedy clause) is right from the start; byte-equality against
-# the real templates is asserted separately.
+# `[<id>] <detail>; remedy: …`, which keeps the shape every reason must have:
+# the `[<id>] ` prefix, exactly one `W-` token, and a remedy clause.
 
 set -u
 
@@ -86,6 +91,7 @@ WV_BC=""            # behaviour_change
 WV_CR=""            # cr_enabled
 WV_STATE_OK=0
 
+WV_EMITTED=0        # 1 once one JSON object has been written to stdout
 WV_WARNINGS=""      # rendered warnings, newline separated, flushed once
 WV_PHASE="${WV_PHASE:-}"   # set by the calling hook when it knows the phase
 WV_SCHEMA_MAX=1
@@ -339,11 +345,23 @@ wv_state_read() {
 # fd 9 (a literal, because bash needs one in `exec 9>>`) is this library's lock
 # handle. The lock file is `.wave/lock`, created by wave-init.sh and never
 # replaced; it is NOT state.json (see the header).
+#
+# WV_LOCK_DEPTH makes acquire/release nest safely. Re-opening fd 9 while it is
+# already held would replace the descriptor, and the kernel drops the lock with
+# the old one: the inner release would then leave the outer caller holding
+# nothing while it still believes the state file is protected. So a nested
+# acquire only counts up, and only the outermost release closes the descriptor.
+
+WV_LOCK_DEPTH=0
 
 wv_lock_acquire() {
   # Returns 0 with the lock held on fd 9. Returns 1 without warning; the
   # caller warns with the message that fits what it was trying to do.
   [ -n "$WV_WAVE_DIR" ] || return 1
+  if [ "$WV_LOCK_DEPTH" -gt 0 ]; then
+    WV_LOCK_DEPTH=$((WV_LOCK_DEPTH + 1))
+    return 0
+  fi
   local lock="$WV_WAVE_DIR/lock"
   if [ ! -e "$lock" ]; then
     { : > "$lock"; } 2>/dev/null || return 1
@@ -351,6 +369,7 @@ wv_lock_acquire() {
   { exec 9>>"$lock"; } 2>/dev/null || return 1
   if flock -w 10 9; then
     printf '%s\n' "$$" > "$lock" 2>/dev/null
+    WV_LOCK_DEPTH=1
     return 0
   fi
   # A stale lock whose recorded holder is dead is taken, not waited on.
@@ -362,17 +381,25 @@ wv_lock_acquire() {
       if ! kill -0 "$holder" 2>/dev/null; then
         if flock -w 1 9; then
           printf '%s\n' "$$" > "$lock" 2>/dev/null
+          WV_LOCK_DEPTH=1
           return 0
         fi
       fi
       ;;
   esac
-  wv_lock_release
+  exec 9>&-
   return 1
 }
 
 wv_lock_release() {
-  exec 9>&-
+  # Only the outermost release closes the descriptor, and closing it is what
+  # releases the lock.
+  [ "$WV_LOCK_DEPTH" -gt 0 ] || return 0
+  WV_LOCK_DEPTH=$((WV_LOCK_DEPTH - 1))
+  if [ "$WV_LOCK_DEPTH" -eq 0 ]; then
+    exec 9>&-
+  fi
+  return 0
 }
 
 wv_ledger_drain_locked() {
@@ -604,12 +631,20 @@ wv_emit_flush() {
   # Emits the queued warnings, once. On an event with an additionalContext
   # channel that is one JSON object; on any other event (SubagentStop,
   # PreCompact) there is no such channel, so they go to stderr.
+  #
+  # Returns 1 when an object has already been written to stdout: those warnings
+  # were either already carried by it or arrived too late for the only channel
+  # this event has.
   [ -n "$WV_WARNINGS" ] || return 0
+  if wv_warn_channel_is_stdout && [ "$WV_EMITTED" = "1" ]; then
+    return 1
+  fi
   local text="$WV_WARNINGS"
   WV_WARNINGS=""
   if wv_warn_channel_is_stdout; then
     jq -nc --arg event "$WV_EVENT" --arg context "$text" \
       '{hookSpecificOutput: {hookEventName: $event, additionalContext: $context}}'
+    WV_EMITTED=1
   else
     printf '%s\n' "$text" >&2
   fi
@@ -624,6 +659,7 @@ wv_deny() {
   shift
   wv_can_emit "$rule" || return 1
   [ "$WV_STATE_OK" = "1" ] || return 1
+  [ "$WV_EMITTED" = "0" ] || return 1   # one object per invocation; first wins
   local text
   text="$(wv_render "$rule" "$@")"
 
@@ -647,6 +683,7 @@ $text"
     jq -nc --arg event "$WV_EVENT" --arg reason "$text" \
       '{hookSpecificOutput: {hookEventName: $event, permissionDecision: "deny", permissionDecisionReason: $reason}}'
   fi
+  WV_EMITTED=1
   return 0
 }
 
@@ -659,6 +696,7 @@ wv_block() {
   shift
   wv_can_emit "$rule" || return 1
   [ "$WV_STATE_OK" = "1" ] || return 1
+  [ "$WV_EMITTED" = "0" ] || return 1   # one rule per invocation; first wins
   local text
   text="$(wv_render "$rule" "$@")"
 
@@ -670,47 +708,14 @@ wv_block() {
       "$(jq -Rn --arg t "$text" '$t')")"
     wv_ledger_append "$(jq -nc --arg agent "${WV_AGENT_ID:-unknown}" --arg phase "$phase" --arg warn "$text" \
       '{event: "warn", agent_id: $agent, phase: $phase, warn: [$warn]}')"
+    # The state row and the ledger line ARE this event's warn channel, so they
+    # count as the invocation's one emission.
+    WV_EMITTED=1
     return 0
   fi
 
   WV_WARNINGS=""
   jq -nc --arg reason "$text" '{decision: "block", reason: $reason}'
+  WV_EMITTED=1
   return 0
 }
-
-# ---------------------------------------------------------------------------
-# 10. Self-drive entry point.
-#
-# Sourced by a hook script, this file only defines functions. Executed
-# directly, it drives one library operation named by WV_DRIVE and exits 0 —
-# which is how tests/cases/lib-*.{json,sh} exercise the library before the
-# hook scripts that use it exist. With no WV_DRIVE it parses, resolves and
-# reads, then exits 0 silently.
-# ---------------------------------------------------------------------------
-
-wv_lib_driver() {
-  wv_parse_stdin || exit 0
-  wv_project_root || exit 0
-  if ! wv_state_read; then
-    wv_emit_flush
-    exit 0
-  fi
-
-  local action="${WV_DRIVE:-}"
-  case "$action" in
-    '') : ;;
-    deny:*) wv_deny "${action#deny:}" "a self-drive check of the deny path" ;;
-    warn:*) wv_warn "${action#warn:}" "a self-drive check of the warn path" ;;
-    block:*) wv_block "${action#block:}" "a self-drive check of the block path" ;;
-    update:*) wv_state_update "${action#update:}" ;;
-    ledger:*) wv_ledger_append "${action#ledger:}" ;;
-    *) wv_stderr "unrecognised WV_DRIVE action: $action" ;;
-  esac
-
-  wv_emit_flush
-  exit 0
-}
-
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  wv_lib_driver "$@"
-fi

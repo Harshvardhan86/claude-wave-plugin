@@ -1,7 +1,11 @@
 {
-  "script": "lib.sh",
-  "env": { "WV_DRIVE": "deny:W-TAG" },
-  "seed": { "state": "state/no-enforce.json" },
+  "script": "tests/fixtures/drive-lib.sh",
+  "env": {
+    "WV_DRIVE": "deny:W-TAG"
+  },
+  "seed": {
+    "state": "state/no-enforce.json"
+  },
   "stdin": {
     "hook_event_name": "PreToolUse",
     "tool_name": "Agent",

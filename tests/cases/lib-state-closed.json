@@ -4,18 +4,12 @@
     "WV_DRIVE": "deny:W-TAG"
   },
   "seed": {
-    "state": "state/valid-full.json",
-    "files": {
-      "vendor/other/keep.txt": "a file so the nested directory exists\n",
-      "vendor/other/.git/HEAD": "ref: refs/heads/main\n",
-      "vendor/other/.git/objects/.keep": "",
-      "vendor/other/.git/refs/.keep": ""
-    }
+    "state": "state/closed.json"
   },
   "stdin": {
     "hook_event_name": "PreToolUse",
     "tool_name": "Agent",
-    "cwd": "vendor/other",
+    "cwd": ".",
     "tool_input": {
       "description": "probe dispatch",
       "prompt": "Do the thing.",
@@ -29,6 +23,11 @@
   "expect": {
     "exit": 0,
     "decision": "silent",
-    "negative_control_for": "W-TAG"
+    "negative_control_for": "W-TAG",
+    "ledger_lines": 0,
+    "files_absent": [
+      ".wave/ledger.jsonl",
+      ".wave/ledger.pending"
+    ]
   }
 }

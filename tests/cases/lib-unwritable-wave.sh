@@ -21,7 +21,7 @@ mkcase() {
   # mkcase <jq-filter> -> path of a JSON case file named after this case.
   local filter="$1" case_file="$WV_RUN_TMP/$name.json"
   jq -n --arg d "update:$filter" '{
-    script: "lib.sh",
+    script: "tests/fixtures/drive-lib.sh",
     env: { WV_DRIVE: $d },
     seed: { state: "state/valid-full.json" },
     stdin: {
@@ -45,7 +45,7 @@ fail() { printf 'ASSERT FAIL: %s\n' "$*" >&2; rc=1; }
 
 # --- positive control: a writable .wave records the update ---------------
 WV_PROJECT=""
-if ! run_hook lib.sh "$(mkcase '.rounds.n = 1')"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase '.rounds.n = 1')"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi
@@ -56,7 +56,7 @@ assert_state '.rounds.n == 1' || rc=1
 # --- AC-29: the same update against a 0555 .wave -------------------------
 chmod 0555 "$WV_PROJECT/.wave" || { echo "chmod failed" >&2; exit 1; }
 
-run_hook lib.sh "$(mkcase '.rounds.n = 2')"
+run_hook tests/fixtures/drive-lib.sh "$(mkcase '.rounds.n = 2')"
 run_rc=$?
 
 chmod 0755 "$WV_PROJECT/.wave"   # restore before asserting, so cleanup works

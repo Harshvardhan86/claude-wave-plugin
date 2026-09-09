@@ -1,5 +1,5 @@
 {
-  "script": "lib.sh",
+  "script": "tests/fixtures/drive-lib.sh",
   "env": {
     "WV_DRIVE": "deny:W-TAG"
   },

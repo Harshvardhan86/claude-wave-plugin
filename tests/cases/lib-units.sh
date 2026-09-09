@@ -24,7 +24,7 @@ jq '.enforce = "warn"' "$WV_TESTS_DIR/fixtures/state/valid-full.json" > "$warn_f
 
 case_file="$WV_RUN_TMP/$name.json"
 jq -n --arg f "$warn_fixture" '{
-  script: "lib.sh",
+  script: "tests/fixtures/drive-lib.sh",
   env: { WV_DRIVE: "deny:W-TAG" },
   seed: { state: $f },
   stdin: {
@@ -42,7 +42,7 @@ jq -n --arg f "$warn_fixture" '{
 }' > "$case_file"
 
 WV_PROJECT=""
-if ! run_hook lib.sh "$case_file"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$case_file"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi
@@ -57,7 +57,7 @@ assert_allow || rc=1
 mkstop() {
   local fixture="$1" case_file="$WV_RUN_TMP/$name.json"
   jq -n --arg f "$fixture" '{
-    script: "lib.sh",
+    script: "tests/fixtures/drive-lib.sh",
     env: { WV_DRIVE: "block:W-ARTIFACT", WV_PHASE: "TDE-RED" },
     seed: { state: $f },
     stdin: {
@@ -74,7 +74,7 @@ mkstop() {
 }
 
 WV_PROJECT=""
-run_hook lib.sh "$(mkstop "$warn_fixture")" || exit 1
+run_hook tests/fixtures/drive-lib.sh "$(mkstop "$warn_fixture")" || exit 1
 assert_exit 0 || rc=1
 assert_allow || rc=1
 [ -z "$WV_LAST_STDOUT" ] || fail "under enforce=warn a SubagentStop must not print a block: '$WV_LAST_STDOUT'"
@@ -87,7 +87,7 @@ case "$ledger_warn" in
 esac
 
 WV_PROJECT=""
-run_hook lib.sh "$(mkstop state/valid-full.json)" || exit 1
+run_hook tests/fixtures/drive-lib.sh "$(mkstop state/valid-full.json)" || exit 1
 assert_exit 0 || rc=1
 assert_block W-ARTIFACT || rc=1
 assert_ledger_lines 0 || rc=1

@@ -15,7 +15,7 @@ name="$(basename "$0" .sh)"
 mkcase() {
   local case_file="$WV_RUN_TMP/$name.json"
   jq -n '{
-    script: "lib.sh",
+    script: "tests/fixtures/drive-lib.sh",
     env: { WV_DRIVE: "update:.rounds.n = 99" },
     stdin: {
       hook_event_name: "PostToolUse",
@@ -46,7 +46,7 @@ mkdir -p "$WV_PROJECT/.wave"
 : > "$WV_PROJECT/.wave/lock"
 ln -s "$outside" "$WV_PROJECT/.wave/state.json"
 
-if ! run_hook lib.sh "$(mkcase)"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase)"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi

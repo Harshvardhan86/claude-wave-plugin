@@ -22,7 +22,7 @@ mkcase() {
   # so run_hook's positive run marker lands in the log tests/run.sh checks.
   local fixture="$1" case_file="$WV_RUN_TMP/$name.json"
   jq -n --arg f "$fixture" '{
-    script: "lib.sh",
+    script: "tests/fixtures/drive-lib.sh",
     env: { WV_DRIVE: "deny:W-TAG" },
     seed: { state: $f },
     stdin: {
@@ -46,7 +46,7 @@ fail() { printf 'ASSERT FAIL: %s\n' "$*" >&2; rc=1; }
 
 # --- AC-19: enforce:"nonsense" ------------------------------------------
 WV_PROJECT=""
-if ! run_hook lib.sh "$(mkcase state/enforce-typo.json)"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase state/enforce-typo.json)"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi
@@ -65,7 +65,7 @@ esac
 
 # --- AC-20's mirror: no enforce key at all ------------------------------
 WV_PROJECT=""
-if ! run_hook lib.sh "$(mkcase state/no-enforce.json)"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase state/no-enforce.json)"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi

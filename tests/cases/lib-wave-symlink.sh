@@ -19,7 +19,7 @@ mkcase() {
   # mkcase <seed-json> -> path of a JSON case file named after this case.
   local seed="$1" case_file="$WV_RUN_TMP/$name.json"
   jq -n --argjson seed "$seed" '{
-    script: "lib.sh",
+    script: "tests/fixtures/drive-lib.sh",
     env: { WV_DRIVE: "deny:W-TAG" },
     seed: $seed,
     stdin: {
@@ -47,7 +47,7 @@ WV_PROJECT="$(mkproj)"
 mkdir -p "$WV_PROJECT/runtime-wave"
 ln -s runtime-wave "$WV_PROJECT/.wave"
 
-if ! run_hook lib.sh "$(mkcase '{"state":"state/valid-full.json"}')"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase '{"state":"state/valid-full.json"}')"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi
@@ -72,7 +72,7 @@ ln -s "$outside" "$WV_PROJECT/.wave"
 
 # no seed: seeding would write *through* the link, which is the very thing
 # this half proves must not happen.
-if ! run_hook lib.sh "$(mkcase '{}')"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase '{}')"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi
@@ -92,5 +92,37 @@ esac
   fail "the state file outside the project was modified through the link"
 [ -e "$outside/ledger.jsonl" ] && fail "a ledger was written through the outside link"
 [ -e "$outside/ledger.pending" ] && fail "a pending ledger spool was written through the outside link"
+
+# --- C. .wave -> outside, and holding no state.json at all ----------------
+# The refusal belongs to the DIRECTORY, not to the state file: with a
+# state.json present the later outside-the-root check on the file would report
+# the same thing, so only an empty outside .wave can show that the directory
+# check does any work of its own. Spec section 4 refuses the directory and
+# writes nothing through it either way.
+empty_outside="$WV_RUN_TMP/elsewhere-empty-wave"
+rm -rf "$empty_outside"
+mkdir -p "$empty_outside"
+
+WV_PROJECT="$(mkproj)"
+ln -s "$empty_outside" "$WV_PROJECT/.wave"
+
+if ! run_hook tests/fixtures/drive-lib.sh "$(mkcase '{}')"; then
+  printf 'run_hook could not run the driver: %s\n' "$WV_LAST_STDERR" >&2
+  exit 1
+fi
+assert_exit 0 || rc=1
+assert_allow || rc=1
+
+ctx="$(printf '%s' "$WV_LAST_STDOUT" | jq -r '.hookSpecificOutput.additionalContext // ""')"
+case "$ctx" in
+  "[W-STATE] "*) : ;;
+  *) fail "outside .wave holding no state.json: additionalContext does not carry a rendered W-STATE: '$ctx'" ;;
+esac
+case "$ctx" in
+  *"$empty_outside"*) : ;;
+  *) fail "outside .wave holding no state.json: the W-STATE warning does not name the resolved path: '$ctx'" ;;
+esac
+[ -z "$(ls -A "$empty_outside")" ] || \
+  fail "something was written through the outside link: $(ls -A "$empty_outside")"
 
 exit $rc

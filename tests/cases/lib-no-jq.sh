@@ -21,7 +21,7 @@ ln -s "$(command -v bash)" "$shim/bash"   # run_hook resolves bash through this 
 
 case_file="$WV_RUN_TMP/$name.json"
 jq -n --arg path "$shim" '{
-  script: "lib.sh",
+  script: "tests/fixtures/drive-lib.sh",
   env: { PATH: $path, WV_DRIVE: "deny:W-TAG" },
   seed: { state: "state/valid-full.json" },
   stdin: {
@@ -42,7 +42,7 @@ rc=0
 fail() { printf 'ASSERT FAIL: %s\n' "$*" >&2; rc=1; }
 
 WV_PROJECT=""
-if ! run_hook lib.sh "$case_file"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$case_file"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi

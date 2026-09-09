@@ -19,7 +19,7 @@ set -u
 source "$(dirname "$0")/../lib/assert.sh"
 
 name="$(basename "$0" .sh)"
-LIB="$WV_REPO_ROOT/scripts/hooks/lib.sh"
+DRIVER="$WV_REPO_ROOT/tests/fixtures/drive-lib.sh"
 
 stdin_json='{"hook_event_name":"PreToolUse","tool_name":"Agent","cwd":"."}'
 
@@ -29,7 +29,7 @@ fail() { printf 'ASSERT FAIL: %s\n' "$*" >&2; rc=1; }
 # ---- one ordinary run: seeds the project and writes the run marker --------
 case_file="$WV_RUN_TMP/$name.json"
 jq -n '{
-  script: "lib.sh",
+  script: "tests/fixtures/drive-lib.sh",
   env: { WV_DRIVE: "update:.rounds.n = 0" },
   seed: { state: "state/valid-full.json" },
   stdin: {
@@ -47,7 +47,7 @@ jq -n '{
 }' > "$case_file"
 
 WV_PROJECT=""
-if ! run_hook lib.sh "$case_file"; then
+if ! run_hook tests/fixtures/drive-lib.sh "$case_file"; then
   printf 'run_hook could not run the library: %s\n' "$WV_LAST_STDERR" >&2
   exit 1
 fi
@@ -93,7 +93,7 @@ locked_burst() {
     (
       cd "$WV_PROJECT" || exit 1
       printf '%s' "$stdin_json" |
-        env WV_DRIVE='update:.rounds.n = ((.rounds.n // 0) + 1)' bash "$LIB" \
+        env WV_DRIVE='update:.rounds.n = ((.rounds.n // 0) + 1)' bash "$DRIVER" \
         >/dev/null 2>>"$errlog"
     ) &
     pids+=("$!")
@@ -132,7 +132,7 @@ ledger_burst() {
     (
       cd "$WV_PROJECT" || exit 1
       printf '%s' "$stdin_json" |
-        env WV_DRIVE="ledger:{\"event\":\"concurrency-probe\",\"i\":$i}" bash "$LIB" \
+        env WV_DRIVE="ledger:{\"event\":\"concurrency-probe\",\"i\":$i}" bash "$DRIVER" \
         >/dev/null 2>>"$errlog"
     ) &
     pids+=("$!")
@@ -160,7 +160,7 @@ sleep 0.5   # let the holder take it before the library tries
 
 timeout_case="$WV_RUN_TMP/$name-timeout.json"
 jq -n '{
-  script: "lib.sh",
+  script: "tests/fixtures/drive-lib.sh",
   env: { WV_DRIVE: "ledger:{\"event\":\"spooled\"}" },
   stdin: {
     hook_event_name: "PreToolUse",
@@ -170,7 +170,7 @@ jq -n '{
   }
 }' > "$timeout_case"
 
-run_hook lib.sh "$timeout_case" || { printf 'run_hook failed: %s\n' "$WV_LAST_STDERR" >&2; exit 1; }
+run_hook tests/fixtures/drive-lib.sh "$timeout_case" || { printf 'run_hook failed: %s\n' "$WV_LAST_STDERR" >&2; exit 1; }
 assert_exit 0 || rc=1
 assert_allow || rc=1
 
@@ -192,7 +192,7 @@ wait "$holder"
 # append: a state update takes the same lock and runs the same drain.
 drain_case="$WV_RUN_TMP/$name-drain.json"
 jq '.env.WV_DRIVE = "update:.rounds.n = 0"' "$timeout_case" > "$drain_case"
-run_hook lib.sh "$drain_case" || { printf 'run_hook failed: %s\n' "$WV_LAST_STDERR" >&2; exit 1; }
+run_hook tests/fixtures/drive-lib.sh "$drain_case" || { printf 'run_hook failed: %s\n' "$WV_LAST_STDERR" >&2; exit 1; }
 drained="$(wc -l < "$WV_PROJECT/.wave/ledger.jsonl")"
 printf 'concurrency: lock timeout spooled 1 line, next acquisition drained -> ledger.jsonl lines = %s (want %s)\n' \
   "$drained" "$((ledger_before + 1))"
