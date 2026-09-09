@@ -4,9 +4,10 @@
 # The mutation control for `scripts/hooks/pre-agent.sh`: proves the suite is not
 # vacuous by breaking one property of the hook at a time and requiring at least
 # one case to go red for each. Mutants 1-11 cover part 1 (dispatch identity);
-# 12-25 cover part 2 (order, conditions, scope, the dispatch-time gates, the
+# 12-26 cover part 2 (order, conditions, scope, the dispatch-time gates, the
 # round ceiling, the budget and the prompt caps), with at least one mutant per
-# rule id part 2 owns so a deleted deny has somewhere to surface.
+# rule id part 2 owns so a deleted deny has somewhere to surface. 26 is the
+# fix-round-1 finding: an unanswered scope flag folded back into `false`.
 #
 # Every mutant is applied to a COPY of the tree in a temp directory, so the
 # working tree is never touched and a killed run cannot leave a mutation behind
@@ -433,6 +434,20 @@ s = s.replace(old, "        :")
 PY
 }
 
+# --- 26. an unanswered scope flag is folded back into `false` --------------
+# The fix-round-1 defect, as a mutant: both condition arms stop consulting
+# wv_unanswered_scope, so `unknown` reads as `false` again. A DR or CR dispatch
+# is then denied W-COND carrying a statement nobody made, and an unanswered
+# condition on a predecessor is silently skipped through to its successor.
+wv_body_unknownisfalse() { cat <<'PY'
+old_ui = '      wv_unanswered_scope "$WV_UI" ui "$WV_BC" behaviour_change && return 2\n'
+old_cr = '      wv_unanswered_scope "$WV_CR" cr_enabled && return 2\n'
+assert old_ui in s, "anchor missing: the ui|behaviour_change unanswered check"
+assert old_cr in s, "anchor missing: the cr unanswered check"
+s = s.replace(old_ui, "").replace(old_cr, "")
+PY
+}
+
 # --- 25. a findings file with no marker line is accepted ------------------
 wv_body_markerignored() { cat <<'PY'
 old = '  [ "$n" != "0" ] || return 2'
@@ -461,13 +476,20 @@ wv_run_mutant ordernottrans     wv_body_ordernottransitive 'order-078*' 'order-1
 wv_run_mutant roundoffbyone     wv_body_roundoffbyone     'round-161*' 'round-162*'
 wv_run_mutant budget2x          wv_body_budget2x          'budget-174*' 'budget-171*'
 wv_run_mutant promptcap         wv_body_promptcap         'prompt-182*'
-wv_run_mutant scoperemoved      wv_body_scoperemoved      'scope-10*'
+# 'scope-1*', not 'scope-10*': the narrower glob never matched scope-110, this
+# rule's own negative control, so every run of this mutant produced coverage
+# artefacts alongside its real red. Widening it also exercises the interaction
+# with fix round 1 — for `ui` and `behaviour_change` the condition arm now denies
+# the same W-SCOPE independently of this gate, so scope-109 (cr_enabled, which no
+# condition in TDE-RED's predecessor set consults) is what uniquely pins it.
+wv_run_mutant scoperemoved      wv_body_scoperemoved      'scope-1*'
 wv_run_mutant visualremoved     wv_body_visualremoved     'gate-153*' 'gate-154*' 'gate-156*'
 wv_run_mutant bfremoved         wv_body_bfremoved         'gate-157*' 'gate-158*'
 wv_run_mutant drfence           wv_body_drfence           'gate-150*'
 wv_run_mutant pastethreshold    wv_body_pastethreshold    'paste-*' 'prompt-182*'
 wv_run_mutant artifactpending   wv_body_artifactpending   'gate-083*' 'gate-160b*'
 wv_run_mutant markerignored     wv_body_markerignored     'gate-083b*' 'gate-160*'
+wv_run_mutant unknownisfalse    wv_body_unknownisfalse    'scope-11*' 'order-071*' 'order-074b*'
 
 # --- the table ------------------------------------------------------------
 

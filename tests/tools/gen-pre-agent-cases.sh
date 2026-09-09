@@ -896,6 +896,12 @@ p2_state p2-acb-ui-unknown.json full '"unknown"' false false '{}' '"1"' $(p2_thr
 p2_state p2-acb-bc-unknown.json full false '"unknown"' false '{}' '"1"' $(p2_through ACB)
 p2_state p2-acb-cr-unknown.json full false false '"unknown"' '{}' '"1"' $(p2_through ACB)
 
+# Both flags of DR's condition unanswered at once, and cr_enabled unanswered with
+# the wave already through TDE-GREEN: the two states that separate "unanswered"
+# from "false" on a condition rather than on the TDE-RED scope gate.
+p2_state p2-acb-ui-bc-unknown.json full '"unknown"' '"unknown"' false '{}' '"1"' $(p2_through ACB)
+p2_state p2-green-cr-unknown.json  full false false '"unknown"' '{}' '"1"' $(p2_through TDE-GREEN)
+
 # rounds: the counter subagent-stop.sh writes and pre-agent.sh only ever reads.
 p2_state p2-red-rounds1.json full false false false '{"TDE-GREEN/executor":1}' '"1"' $(p2_through TDE-RED)
 p2_state p2-red-rounds2.json full false false false '{"TDE-GREEN/executor":2}' '"1"' $(p2_through TDE-RED)
@@ -1425,6 +1431,55 @@ mk name=scope-112b-behaviour-change-true-dr-done-allow ac=AC-112 \
   state=state/p2-dr-bc.json desc='[W:1 P:TDE-RED R:executor] write the failing tests' model=sonnet \
   seed='{".wave/dr.md":"DR-VERIFIED\nEvery item was settled in conversation.\n"}' \
   expect="$(exp_allow)"
+
+# --- fix round 1: "unknown" is UNANSWERED, never false ----------------------
+#
+# `wave-init.sh` writes `ui`, `behaviour_change` and `cr_enabled` as the string
+# "unknown", and every later wave inherits it. A condition arm that read that as
+# `false` denied `W-COND` and told the orchestrator "this wave declares no design
+# review" — a statement nobody had made. The controller's ruling: an unanswered
+# flag denies `W-SCOPE`, naming the flag and the one command that answers it.
+#
+# The W-SCOPE negative control stays `scope-110`; these cases carry
+# `stdout_absent` on `W-COND` instead, because the defect was not "no deny" but
+# "the wrong deny with a false statement in it". "TDE-RED with ui unknown still
+# W-SCOPE" is `scope-107` and needs no new case — it is in this group's mutant
+# filter so it is exercised as a control.
+
+mk name=scope-113a-dr-ui-unknown-scope-deny ac='AC-107 (fix round 1: the controller ruling on "unknown")' \
+  note='ui "unknown" with AC+ACB done: a DR dispatch is denied W-SCOPE naming ui and the command that answers it - NOT W-COND, which would state that the wave declares no design review when nobody has said so.' \
+  state=state/p2-acb-ui-unknown.json desc='[W:1 P:DR R:lead] review the design' model=opus \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without ui set' 'scripts/wave-set.sh ui true|false')" -n '$e + {stdout_absent:["W-COND","declares no design review"]}')"
+
+mk name=scope-113b-dr-both-unknown-scope-deny ac='AC-107 (fix round 1)' \
+  note='both flags of DR condition unanswered: the reason names ui AND behaviour_change, and its remedy names the first one to answer.' \
+  state=state/p2-acb-ui-bc-unknown.json desc='[W:1 P:DR R:lead] review the design' model=opus \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without ui and behaviour_change set' 'scripts/wave-set.sh ui true|false')" -n '$e + {stdout_absent:["W-COND"]}')"
+
+mk name=scope-113c-dr-bc-unknown-scope-deny ac='AC-108 (fix round 1)' \
+  note='ui false and behaviour_change "unknown": the reason names behaviour_change and the hyphenated CLI key, not the underscored state key.' \
+  state=state/p2-acb-bc-unknown.json desc='[W:1 P:DR R:lead] review the design' model=opus \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without behaviour_change set' 'scripts/wave-set.sh behaviour-change true|false')" -n '$e + {stdout_absent:["W-COND"]}')"
+
+mk name=scope-114-cr-unknown-scope-deny ac='AC-109 (fix round 1)' \
+  note='cr_enabled "unknown" with TDE-GREEN done: a CR dispatch is denied W-SCOPE naming cr_enabled, not W-COND claiming the flag is false.' \
+  state=state/p2-green-cr-unknown.json desc='[W:1 P:CR R:reviewer] review the change' model=sonnet \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without cr_enabled set' 'scripts/wave-set.sh cr true|false')" -n '$e + {stdout_absent:["W-COND"]}')"
+
+mk name=scope-115-bc-cr-unknown-not-skipped-deny ac='AC-77, AC-109 (fix round 1: the transitive half)' \
+  note='the load-bearing half of the ruling: BC after CR with cr_enabled "unknown". An unanswered condition must not be SKIPPED THROUGH the way a false one is - before the fix this allowed, because unknown read as false, CR counted as skipped, and the walk carried on to the satisfied TDE-GREEN. It now denies W-SCOPE, and names neither W-COND nor W-ORDER.' \
+  state=state/p2-green-cr-unknown.json desc='[W:1 P:BC R:executor] scan for bugs' model=sonnet \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without cr_enabled set' 'scripts/wave-set.sh cr true|false')" -n '$e + {stdout_absent:["W-COND","W-ORDER"]}')"
+
+mk name=scope-116a-dr-ui-true-allow ac='AC-69 (fix round 1: the answered-true control)' \
+  note='the scope-113a state with ui answered TRUE instead of unknown: the DR dispatch is allowed. It isolates the flag VALUE as the discriminator, with everything else identical.' \
+  state=state/p2-acb-ui.json desc='[W:1 P:DR R:lead] review the design' model=opus \
+  expect="$(exp_allow)"
+
+mk name=scope-116b-dr-both-false-cond-deny ac='AC-75 (fix round 1: the answered-false control)' \
+  note='the same dispatch with both flags answered FALSE: still W-COND, and the reason may still say the wave declares no design review, because now that IS what the state says. The pair 113a/116b is the whole finding: same rule, same phase, different deny, and the difference is answered-versus-unanswered.' \
+  state=state/p2-acb.json desc='[W:1 P:DR R:lead] review the design' model=opus \
+  expect="$(jq -c --argjson e "$(exp_deny W-COND 'condition `ui|behaviour_change` is false' 'DR' 'state.ui and state.behaviour_change are both false')" -n '$e + {stdout_absent:["W-SCOPE"]}')"
 
 # ---------------------------------------------------------------------------
 # P2.E  Dispatch-time gates (AC-83, AC-147..160)

@@ -27,9 +27,11 @@
 #   -> tier                 W-TIER           (or the W-MODEL-UNKNOWN warning)
 #   -> [the W-PROMPT size warning is queued here, before any part-2 deny]
 #   -> scope                 W-SCOPE          (TDE-RED only)
-#   -> own condition         W-COND           (or W-ARTIFACT / W-MARKER, when
-#                                             the condition cannot be read)
-#   -> order                 W-ORDER          (or the same two)
+#   -> own condition         W-COND           (or W-ARTIFACT / W-MARKER when the
+#                                             condition cannot be read, or
+#                                             W-SCOPE when it rests on a flag
+#                                             nobody has answered yet)
+#   -> order                 W-ORDER          (or the same three)
 #   -> DR open items         W-DR-OPEN        (TDE-RED, and only when DR ran)
 #   -> visual approval       W-VISUAL         (ui true, ordered after TDE-GREEN)
 #   -> bug-fix approval      W-BF-APPROVAL    (BF-* only)
@@ -581,6 +583,42 @@ WV_COND_TEXT=""            # the condition exactly as the table writes it
 WV_COND_DETAIL=""          # the remedy clause the W-COND reason carries
 WV_PHASE_DONE_WHY=""       # `done`, `mode` or `condition`: which clause answered
 
+wv_unanswered_scope() {
+  # wv_unanswered_scope <value> <state-key> [<value> <state-key>]... -> true, with
+  # WV_COND_RULE / WV_COND_ARGS set to the W-SCOPE deny, when any of the flags a
+  # condition depends on is the string "unknown".
+  #
+  # "unknown" is UNANSWERED, never false. `wave-init.sh` writes it and every later
+  # wave inherits it, so it is the deploy-day value of all three flags — and the
+  # difference matters in the reason, not just in the rule id. A `W-COND` on an
+  # unanswered flag tells the orchestrator "this wave declares no design review",
+  # which is a statement nobody has made; `W-SCOPE` says the question is open and
+  # names the one command that closes it. Answered `false` still gives `W-COND`,
+  # because then the statement is true.
+  #
+  # The reason names every unanswered flag of the condition (`ui and
+  # behaviour_change` when both are open) and its remedy names the FIRST one, so
+  # there is one command to run rather than a choice to make.
+  local flags="" first="" value key
+  while [ "$#" -ge 2 ]; do
+    value="$1"; key="$2"; shift 2
+    [ "$value" = "unknown" ] || continue
+    flags="${flags:+$flags and }$key"
+    if [ -z "$first" ]; then
+      # The state key is not always the key scripts/wave-set.sh takes.
+      case "$key" in
+        behaviour_change) first="behaviour-change" ;;
+        cr_enabled) first="cr" ;;
+        *) first="$key" ;;
+      esac
+    fi
+  done
+  [ -n "$flags" ] || return 1
+  WV_COND_RULE=W-SCOPE
+  WV_COND_ARGS=("$flags" "$first")
+  return 0
+}
+
 wv_condition_met() {
   # wv_condition_met <code> — the row's `condition` cell, evaluated against the
   # wave state and, for `findings:<CODE>`, against `.wave/findings/<CODE>.md`.
@@ -589,9 +627,12 @@ wv_condition_met() {
   #   0  met: the row runs in this wave.
   #   1  not met: the row is skipped, which every `after` naming it reads as
   #      done (spec section 6's skip rule).
-  #   2  unreadable: WV_COND_RULE is W-ARTIFACT or W-MARKER and WV_COND_ARGS
-  #      carries its arguments. Nothing was measured, so nothing is guessed —
-  #      the wave stops and says which file it could not read.
+  #   2  cannot be answered here: WV_COND_RULE and WV_COND_ARGS carry the deny.
+  #      Either the file the condition reads could not be read (W-ARTIFACT,
+  #      W-MARKER) or a flag it depends on is still unanswered (W-SCOPE).
+  #      Nothing was measured, so nothing is guessed — and note that this status
+  #      propagates through wv_phase_done and the order walk, which is what stops
+  #      an unanswered condition from being SKIPPED THROUGH to a successor.
   #   3  pending: a `findings:<CODE>` condition whose scan has not run yet.
   #      WV_COND_PENDING names that scan and the order rule reports IT as the
   #      blocker: "BF-SEA's condition cannot be read" is never the sentence the
@@ -617,11 +658,13 @@ wv_condition_met() {
     'ui|behaviour_change')
       [ "$WV_UI" = "true" ] && return 0
       [ "$WV_BC" = "true" ] && return 0
+      wv_unanswered_scope "$WV_UI" ui "$WV_BC" behaviour_change && return 2
       WV_COND_DETAIL="state.ui and state.behaviour_change are both false in .wave/state.json, so this wave declares no design review; run \`scripts/wave-set.sh ui true\` or \`scripts/wave-set.sh behaviour-change true\` if that is wrong"
       return 1
       ;;
     cr)
       [ "$WV_CR" = "true" ] && return 0
+      wv_unanswered_scope "$WV_CR" cr_enabled && return 2
       WV_COND_DETAIL="state.cr_enabled is false in .wave/state.json; run \`scripts/wave-set.sh cr true\` if this wave does need a code review"
       return 1
       ;;
@@ -677,8 +720,10 @@ wv_phase_done() {
   # done is done whatever its condition now says, so an all-done fixture cannot
   # be made to depend on a findings file that no longer needs to exist.
   #
-  # Returns 1 not done, and passes wv_condition_met's 2 (unreadable) and 3
-  # (pending) through unchanged, along with its globals.
+  # Returns 1 not done, and passes wv_condition_met's 2 (cannot be answered here:
+  # W-ARTIFACT / W-MARKER / W-SCOPE) and 3 (pending) through unchanged, along with
+  # its globals. A row whose condition is UNANSWERED is therefore neither done nor
+  # skipped: the caller denies instead of walking past it.
   #
   # WV_PHASE_DONE_WHY says which of the three clauses answered: `done`, `mode`
   # or `condition`. The order rule needs the distinction, because only a row the
@@ -745,7 +790,8 @@ wv_after_unmet() {
   # the WV_COND_* deny that comes with status 2.
   #
   # 0 = every predecessor settled, 1 = at least one is not, 2 = a predecessor's
-  # condition could not be read (WV_COND_RULE / WV_COND_ARGS carry the deny).
+  # condition could not be answered here — unreadable, or resting on an
+  # unanswered scope flag (WV_COND_RULE / WV_COND_ARGS carry the deny).
   WV_UNMET=""
   WV_ORDER_DETAIL=""
   WV_UNMET_SEEN=""
@@ -766,8 +812,10 @@ wv_after_unmet_walk() {
   # the state records as `done` ends the walk, because a phase that actually ran
   # already waited for its own predecessors.
   #
-  # It returns 2 the moment a condition cannot be read, so the W-ARTIFACT or
-  # W-MARKER deny naming the file reaches the caller unchanged.
+  # It returns 2 the moment a condition cannot be answered, so the W-ARTIFACT,
+  # W-MARKER or W-SCOPE deny reaches the caller unchanged. That is also why an
+  # unanswered flag on a SKIPPABLE predecessor blocks the successor instead of
+  # being walked past: `unknown` never reaches the skip branch at all.
   local code="$1" after p blocker
   local -a preds=()
   case " $WV_UNMET_VISITED " in *" $code "*) return 0 ;; esac
@@ -844,6 +892,12 @@ wv_scope_ready() {
   # "unknown" — the value wave-init.sh actually writes, and the value every
   # later wave inherits. One flag is reported at a time, in the order the
   # questions are asked, so the reason names one command rather than three.
+  #
+  # This gate is TDE-RED's, and it is deliberately not the only place an
+  # unanswered flag is caught: a dispatch of DR or CR itself, or of anything whose
+  # predecessor set depends on one, is refused by wv_unanswered_scope through the
+  # same rule id. This gate asks "may the wave proceed past the question"; that
+  # one asks "can this particular condition be evaluated at all".
   #
   # The CLI key is not the state key (`behaviour-change` vs
   # `behaviour_change`), which is why the reason carries both.

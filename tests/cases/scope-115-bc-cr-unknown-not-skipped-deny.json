@@ -1,0 +1,38 @@
+{
+  "ac": "AC-77, AC-109 (fix round 1: the transitive half)",
+  "note": "the load-bearing half of the ruling: BC after CR with cr_enabled \"unknown\". An unanswered condition must not be SKIPPED THROUGH the way a false one is - before the fix this allowed, because unknown read as false, CR counted as skipped, and the walk carried on to the satisfied TDE-GREEN. It now denies W-SCOPE, and names neither W-COND nor W-ORDER.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-green-cr-unknown.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:BC R:executor] scan for bugs",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-SCOPE",
+    "reason_template": "W-SCOPE",
+    "reason_contains": [
+      "without cr_enabled set",
+      "scripts/wave-set.sh cr true|false"
+    ],
+    "stdout_absent": [
+      "W-COND",
+      "W-ORDER"
+    ]
+  }
+}
