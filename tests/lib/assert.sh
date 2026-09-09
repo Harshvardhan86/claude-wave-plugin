@@ -127,12 +127,43 @@ _wv_apply_seed() {
     mkdir -p "$WV_PROJECT/$(dirname "$k")"
     printf '%s' "$content" > "$WV_PROJECT/$k"
   done <<<"$file_keys"
+  # seed.transcripts: { "<project-relative destination>": "<fixture path>" }.
+  # An agent transcript is a multi-line JSONL file whose exact bytes are the
+  # thing under test, so it lives once under tests/fixtures/transcripts/ and is
+  # COPIED here rather than restated inline in every case (two copies of a
+  # fixture is two sources of truth). A named fixture that cannot be found is a
+  # LOUD failure, never a silent skip: a case that ran against an absent
+  # transcript would assert "no transcript" behaviour while claiming to test the
+  # opposite.
+  local tkeys
+  tkeys="$(jq -r '.seed.transcripts // {} | keys[]' "$case_json" 2>/dev/null)"
+  local dest src
+  while IFS= read -r dest; do
+    [ -z "$dest" ] && continue
+    src="$(jq -r --arg k "$dest" '.seed.transcripts[$k]' "$case_json")"
+    if [ -f "$WV_TESTS_DIR/fixtures/$src" ]; then
+      src="$WV_TESTS_DIR/fixtures/$src"
+    elif [ -f "$src" ]; then
+      :
+    else
+      printf 'seed.transcripts: fixture not found: %s\n' "$src" >&2
+      return 1
+    fi
+    mkdir -p "$WV_PROJECT/$(dirname "$dest")"
+    cp "$src" "$WV_PROJECT/$dest" || return 1
+  done <<<"$tkeys"
+
   local staged p
   staged="$(jq -r '.seed.staged // [] | .[]' "$case_json" 2>/dev/null)"
   while IFS= read -r p; do
     [ -z "$p" ] && continue
     git -C "$WV_PROJECT" add -- "$p" >/dev/null 2>&1
   done <<<"$staged"
+  # Explicit, so that only the `return 1`s above (a fixture this function was
+  # told to copy and could not find) report a seed failure to run_hook. A
+  # `git add` that declines the last staged path keeps the pre-existing
+  # behaviour it has always had.
+  return 0
 }
 
 # ---- running a hook ------------------------------------------------------
@@ -165,7 +196,17 @@ run_hook() {
   fi
 
   if [ -n "$case_json" ] && [ -f "$case_json" ]; then
-    _wv_apply_seed "$case_json"
+    # A seed that could not be applied must FAIL the case, never run the hook
+    # against a half-seeded project: a missing transcript or state fixture would
+    # otherwise be indistinguishable from the "absent file" behaviour many of
+    # these cases are asserting the hook does NOT take.
+    if ! _wv_apply_seed "$case_json"; then
+      WV_LAST_EXIT=126
+      WV_LAST_STDOUT=""
+      WV_LAST_STDERR="seed could not be applied for $case_name (see stderr above)"
+      printf 'SEED-FAILED %s %s\n' "$script" "$case_name" >> "$log"
+      return 1
+    fi
   fi
 
   local stdin_json="{}"
@@ -361,4 +402,51 @@ assert_ledger_lines() {
   [ -f "$ledger" ] && got="$(wc -l < "$ledger" | tr -d ' ')"
   [ "$got" = "$want" ] && return 0
   _wv_die_diff "ledger_lines: want $want, got $got"
+}
+
+assert_ledger_line() {
+  # assert_ledger_line <jq boolean filter> — evaluated against the LAST line of
+  # .wave/ledger.jsonl, which is the line the run under test appended. The line
+  # must also parse: `jq -e` on a truncated or interleaved line fails, which is
+  # exactly the append-integrity property the concurrency cases assert.
+  local filter="$1"
+  local ledger="$WV_PROJECT/.wave/ledger.jsonl"
+  if [ ! -f "$ledger" ]; then
+    _wv_die_diff "ledger_assert: $ledger does not exist"
+    return 1
+  fi
+  local last
+  last="$(tail -n 1 "$ledger")"
+  if [ -z "$last" ]; then
+    _wv_die_diff "ledger_assert: the last ledger line is empty"
+    return 1
+  fi
+  if printf '%s' "$last" | jq -e "$filter" >/dev/null 2>&1; then
+    return 0
+  fi
+  _wv_die_diff "ledger_assert: filter '$filter' failed against $last"
+}
+
+assert_ledger_prefix() {
+  # assert_ledger_prefix <case-json-path> <n> — the first <n> lines of the
+  # ledger must still be byte-identical to the first <n> lines the case seeded
+  # into .wave/ledger.jsonl. This is what "append, never rewrite" means: a hook
+  # that rewrote the file could still produce the right line COUNT.
+  local case_json="$1" n="$2"
+  local ledger="$WV_PROJECT/.wave/ledger.jsonl"
+  if [ ! -f "$ledger" ]; then
+    _wv_die_diff "ledger_prefix_unchanged: $ledger does not exist"
+    return 1
+  fi
+  local seeded
+  seeded="$(jq -r '.seed.files[".wave/ledger.jsonl"] // empty' "$case_json" 2>/dev/null)"
+  if [ -z "$seeded" ]; then
+    _wv_die_diff "ledger_prefix_unchanged: the case seeds no .wave/ledger.jsonl to compare against"
+    return 1
+  fi
+  local want got
+  want="$(printf '%s' "$seeded" | head -n "$n")"
+  got="$(head -n "$n" "$ledger")"
+  [ "$want" = "$got" ] && return 0
+  _wv_die_diff "ledger_prefix_unchanged: the first $n lines changed; want '$want' got '$got'"
 }

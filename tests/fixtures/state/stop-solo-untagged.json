@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "wave": "1",
+  "mode": "solo",
+  "status": "active",
+  "ui": false,
+  "behaviour_change": false,
+  "cr_enabled": false,
+  "enforce": "block",
+  "feature": "hook enforcement layer",
+  "started": "2026-09-09T12:00:00Z",
+  "ended": null,
+  "base_sha": "2294917",
+  "phases": {},
+  "active": {
+    "a1": {
+      "phase": "SOLO",
+      "role": "unknown",
+      "requested_model": "sonnet",
+      "resolved_model": "claude-sonnet-5",
+      "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+      "status": "launched"
+    }
+  },
+  "pending": {},
+  "rounds": {}
+}

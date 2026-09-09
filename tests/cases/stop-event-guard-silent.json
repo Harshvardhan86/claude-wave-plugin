@@ -1,0 +1,33 @@
+{
+  "ac": "AC-4",
+  "note": "a PreToolUse(Agent) payload delivered to subagent-stop.sh: silent no-op, no ledger, no state change — the event guard, and the negative control for every rule this script can emit.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-ac-reviewer.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "agent_id": "a1",
+    "tool_input": {
+      "description": "[W:1 P:AC R:reviewer] review the criteria",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "ledger_lines": 0,
+    "files_absent": [
+      ".wave/ledger.jsonl"
+    ],
+    "state_assert": ".phases == {} and .active.a1.status == \"launched\""
+  }
+}

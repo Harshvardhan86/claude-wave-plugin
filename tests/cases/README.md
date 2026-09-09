@@ -16,6 +16,7 @@ the whole tree.
   "seed": {
     "state": "state/valid-full.json",
     "files": { "relative/path.txt": "file contents" },
+    "transcripts": { ".wave/tr/agent.jsonl": "transcripts/all-opus.jsonl" },
     "staged": ["relative/path.txt"]
   },
   "stdin": { "hook_event_name": "PreToolUse", "...": "..." },
@@ -52,6 +53,15 @@ present (a case does not need to assert every field).
   exist yet).
 - **`seed.files`** — a map of project-relative path -> file contents, written
   before the run.
+- **`seed.transcripts`** — a map of project-relative destination path ->
+  fixture path (resolved under `tests/fixtures/`, or absolute). Each fixture is
+  copied to that destination before the run. This is how a `SubagentStop` case
+  points `agent_transcript_path` at a real multi-line JSONL transcript without
+  restating its bytes inline: the fixture stays the single source of truth
+  under `tests/fixtures/transcripts/`. A fixture that cannot be found fails the
+  case loudly (`SEED-FAILED` in the case log) rather than running the hook
+  against an absent file — which would silently assert the hook's
+  "no transcript" path while claiming to test the opposite.
 - **`seed.staged`** — paths (already written via `seed.files`) that are
   `git add`-ed in the temp project before the run, for cases that need a
   file to be staged rather than merely present.
@@ -95,6 +105,16 @@ present (a case does not need to assert every field).
   temp project's `.wave/state.json` after the run.
 - **`expect.ledger_lines`** — the exact line count of
   `.wave/ledger.jsonl` after the run (0 if the file never got created).
+  Because `wc -l` counts newlines, `ledger_lines: 1` also proves the file ends
+  in exactly one newline.
+- **`expect.ledger_assert`** — a `jq` boolean filter evaluated against the
+  **last** line of `.wave/ledger.jsonl` (the line the run appended). The line
+  must parse, so this doubles as the append-integrity check: a torn or
+  interleaved line fails `jq -e`.
+- **`expect.ledger_prefix_unchanged`** — an integer *n*: the first *n* lines of
+  `.wave/ledger.jsonl` must still be byte-identical to the first *n* lines the
+  case seeded via `seed.files[".wave/ledger.jsonl"]`. Append-only is a stronger
+  claim than the line count, which a rewrite can also satisfy.
 - **`expect.files_absent`** — project-relative paths that must not exist
   after the run.
 - **`expect.harness_fails`** — see "Self-check cases" below.

@@ -1,0 +1,47 @@
+{
+  "ac": "AC-214",
+  "note": "TDE-GREEN with ui:false, a valid green.md and no .wave/screenshots/ directory at all: done — the screenshot requirement is ui-conditional, so a non-UI wave is never blocked for a missing PNG.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-green-reviewer.json",
+    "files": {
+      ".wave/green.md": "GREEN-VERIFIED passing=42 failing=0\n"
+    },
+    "transcripts": {
+      ".wave/tr/a1.jsonl": "transcripts/all-opus.jsonl"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": [],
+    "agent_transcript_path": ".wave/tr/a1.jsonl"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-MARKER",
+    "stdout_absent": [
+      "W-MARKER"
+    ],
+    "ledger_lines": 1,
+    "state_assert": ".phases[\"TDE-GREEN\"].status == \"done\""
+  }
+}

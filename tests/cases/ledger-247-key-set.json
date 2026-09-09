@@ -1,0 +1,43 @@
+{
+  "ac": "AC-247",
+  "note": "seven assistant lines summing to input 1234, output 5678, cache_read 900, cache_create 12: exactly one appended line whose key set EQUALS the section-9 set (no extra keys), with those exact numbers, turns 7, a boolean tier_ok, an ISO-8601 UTC stopped, and the file ending in exactly one newline (ledger_lines counts newlines).",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-ac-reviewer.json",
+    "files": {
+      ".wave/ac.md": "AC-1 the ledger records the spend of every agent\nAC-2 and the tier that actually ran\n"
+    },
+    "transcripts": {
+      ".wave/tr/a1.jsonl": "transcripts/usage-sum.jsonl"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": [],
+    "agent_transcript_path": ".wave/tr/a1.jsonl"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "ledger_lines": 1,
+    "ledger_assert": "(keys == [\"agent\",\"cache_create\",\"cache_read\",\"input\",\"output\",\"phase\",\"requested\",\"resolved\",\"role\",\"stopped\",\"tier_ok\",\"tier_verified\",\"turns\"]) and .input == 1234 and .output == 5678 and .cache_read == 900 and .cache_create == 12 and .turns == 7 and (.tier_ok | type) == \"boolean\" and (.stopped | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$\")) and .agent == \"a1\" and .phase == \"AC\" and .role == \"reviewer\" and .requested == \"opus\""
+  }
+}

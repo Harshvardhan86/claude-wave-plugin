@@ -232,6 +232,18 @@ _wv_compare_expect() {
     assert_ledger_lines "$want_ledger" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
   fi
 
+  local want_ledger_line
+  want_ledger_line="$(jq -r '.expect.ledger_assert // empty' "$path")"
+  if [ -n "$want_ledger_line" ]; then
+    assert_ledger_line "$want_ledger_line" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  fi
+
+  local want_ledger_prefix
+  want_ledger_prefix="$(jq -r '.expect.ledger_prefix_unchanged // empty' "$path")"
+  if [ -n "$want_ledger_prefix" ]; then
+    assert_ledger_prefix "$path" "$want_ledger_prefix" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  fi
+
   local -a absent_paths=()
   while IFS= read -r p; do
     [ -z "$p" ] && continue

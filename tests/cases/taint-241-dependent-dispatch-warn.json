@@ -1,0 +1,37 @@
+{
+  "ac": "AC-241",
+  "note": "phases.AC.tainted is true and ACB (which depends on AC) is dispatched: allow plus warn(W-TAINT) whose reason names AC, the model that actually ran and the required tier — never a deny, because the remedy of a gate here is paid rework on a correct wave.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/stop-ac-tainted.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:ACB R:lead] harden the acceptance criteria",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "warn",
+    "rule": "W-TAINT",
+    "reason_template": "W-TAINT",
+    "reason_contains": [
+      "phase AC",
+      "claude-haiku-4-5-20251001",
+      "opus"
+    ],
+    "stdout_absent": [
+      "permissionDecision"
+    ]
+  }
+}

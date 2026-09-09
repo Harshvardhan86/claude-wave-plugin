@@ -1,0 +1,46 @@
+{
+  "ac": "AC-254",
+  "note": "a spooled line from an earlier lock timeout, and a stop that appends nothing of its own (the agent is already spooled, so the dedupe suppresses a second line, and it joins no launch record so no phase or round is written either): the pending line still reaches the ledger, and the spool file is gone. This is the leg that makes the DRAIN load-bearing on its own — every other path drains as a side effect of a state write or an append, so without this case a hook that never drained would look correct.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/valid-full.json",
+    "files": {
+      ".wave/ledger.pending/zz9spooled.json": "{\"agent\":\"zz9spooled\",\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-5\",\"tier_ok\":true,\"tier_verified\":true,\"input\":11,\"output\":22,\"cache_read\":0,\"cache_create\":0,\"turns\":2,\"stopped\":\"2026-09-09T12:04:00Z\"}\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "zz9spooled",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "zz9spooled",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "allow",
+    "stdout_absent": [
+      "block"
+    ],
+    "ledger_lines": 1,
+    "files_absent": [
+      ".wave/ledger.pending/zz9spooled.json"
+    ],
+    "ledger_assert": ".agent == \"zz9spooled\" and .input == 11 and .output == 22",
+    "state_assert": ".phases == {} and .active == {}"
+  }
+}
