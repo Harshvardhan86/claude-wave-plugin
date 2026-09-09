@@ -32,6 +32,19 @@
 #
 # Reasons are rendered from `hooks/reasons.tsv` through `wv_render`, never
 # built here; this file only supplies the arguments each template declares.
+#
+# Every one of those arguments goes through `wv_rule_deny` / `wv_rule_warn`,
+# which rewrite the two characters `W-` to `W_` in each argument. A reason must
+# carry exactly one `W-` token, because that token is how a consumer reads
+# which rule fired (`assert_single_rule_token` extracts it with
+# `W-[A-Z0-9-]+`), and several reasons quote the dispatch back to the caller:
+# a description of `[W:1 P:AC R:lead W-FORK] bad`, a model of `W-TIER`, an
+# `agent_id` of `W-FORK` would otherwise each put a second token in the reason
+# and a consumer would read the wrong rule off it. `W_FORK` is visibly the
+# caller's own text, still names what was wrong, and cannot be mistaken for a
+# rule id. The rewrite happens at the emit choke point rather than at the eight
+# places that quote input (the five tag diagnoses, `agent_id`, and the model in
+# both W-TIER and W-MODEL-UNKNOWN), so a rule added by part 2 cannot forget it.
 
 set -u
 
@@ -363,7 +376,46 @@ wv_model_unknown_detail() {
 }
 
 # ---------------------------------------------------------------------------
-# 6. The rules, in the one evaluation order.
+# 6. The emit choke point.
+# ---------------------------------------------------------------------------
+
+wv_rule_deny() {
+  # wv_rule_deny <rule> [args...] — wv_deny with every argument neutralised.
+  # See the header: `W-` becomes `W_` in the arguments, never in the template,
+  # so the rendered reason keeps exactly one `W-` token even when the dispatch
+  # text contains something that looks like a rule id.
+  local rule="$1"
+  shift
+  if [ "$#" -eq 0 ]; then
+    wv_deny "$rule"
+    return
+  fi
+  local -a args=()
+  local arg
+  for arg in "$@"; do
+    args+=("${arg//W-/W_}")
+  done
+  wv_deny "$rule" "${args[@]}"
+}
+
+wv_rule_warn() {
+  # wv_rule_warn <rule> [args...] — wv_warn, neutralised the same way.
+  local rule="$1"
+  shift
+  if [ "$#" -eq 0 ]; then
+    wv_warn "$rule"
+    return
+  fi
+  local -a args=()
+  local arg
+  for arg in "$@"; do
+    args+=("${arg//W-/W_}")
+  done
+  wv_warn "$rule" "${args[@]}"
+}
+
+# ---------------------------------------------------------------------------
+# 7. The rules, in the one evaluation order.
 # ---------------------------------------------------------------------------
 
 wv_solo_rules() {
@@ -376,7 +428,7 @@ wv_solo_rules() {
   wv_tag_parse "$WV_DESC" "$WV_PROMPT_TEXT"
   if ! wv_model_named; then
     local phase="${WV_TAG_PHASE:-SOLO}" role="${WV_TAG_ROLE:-any role}"
-    wv_deny W-MODEL-MISSING "$phase" "$role" \
+    wv_rule_deny W-MODEL-MISSING "$phase" "$role" \
       "$(wv_model_missing_detail 'none, because solo mode does not consult hooks/phases.tsv')"
   fi
   return 0
@@ -391,7 +443,7 @@ wv_tier_rule() {
   requested="$(wv_tier "$WV_MODEL_TRIM")"
   if [ "$requested" = "unknown" ]; then
     # A model the map cannot read is a gap in our table, never a NO-GO.
-    wv_warn W-MODEL-UNKNOWN "$(wv_model_unknown_detail "$WV_MODEL_TRIM")"
+    wv_rule_warn W-MODEL-UNKNOWN "$(wv_model_unknown_detail "$WV_MODEL_TRIM")"
     return 0
   fi
   need_rank="$(wv_tier_rank "$need_name")" || need_rank=""
@@ -400,12 +452,12 @@ wv_tier_rule() {
     *)
       # Our own data files disagree with each other. Fail open, loudly: a hook
       # that cannot rank the requirement has not measured the dispatch.
-      wv_warn W-STATE "hooks/phases.tsv gives $phase/$role the tier name \"$need_name\", which hooks/models.tsv does not rank, so the tier comparison was skipped"
+      wv_rule_warn W-STATE "hooks/phases.tsv gives $phase/$role the tier name \"$need_name\", which hooks/models.tsv does not rank, so the tier comparison was skipped"
       return 0
       ;;
   esac
   if [ "$requested" -lt "$need_rank" ]; then
-    wv_deny W-TIER "$WV_MODEL_TRIM" "$requested" "$phase" "$role" "$need_name" "$need_rank"
+    wv_rule_deny W-TIER "$WV_MODEL_TRIM" "$requested" "$phase" "$role" "$need_name" "$need_rank"
     return 1
   fi
   return 0
@@ -413,7 +465,11 @@ wv_tier_rule() {
 
 wv_main() {
   wv_parse_stdin || return 0
-  # Wired to Agent only; anything else has not been measured and says nothing.
+  # Wired to PreToolUse(Agent) only. Any other event or tool has not been
+  # measured by this script and says nothing: a PostToolUse payload carries a
+  # tool_response this file must not judge, and that event has no deny channel
+  # at all, so a reason emitted there would be silently discarded.
+  [ "$WV_EVENT" = "PreToolUse" ] || return 0
   [ "$WV_TOOL" = "Agent" ] || return 0
   wv_project_root || return 0
   wv_state_read || return 0
@@ -427,38 +483,38 @@ wv_main() {
   # 1. Nested dispatch (spec section 8.4): the orchestrator is the single
   #    dispatcher, and a correct tag does not rescue a nested call.
   if [ -n "$WV_AGENT_ID" ]; then
-    wv_deny W-NESTED "$WV_AGENT_ID"
+    wv_rule_deny W-NESTED "$WV_AGENT_ID"
     return 0
   fi
 
   # 2. Fork (spec section 7): inherits the whole orchestrator context and
   #    cannot be model-routed at all.
   if [ "$WV_SUBAGENT" = "fork" ]; then
-    wv_deny W-FORK
+    wv_rule_deny W-FORK
     return 0
   fi
 
   # 3. The description-length warning is queued before any deny, so a deny
   #    carries it as additionalContext instead of losing it.
   if [ "${#WV_DESC}" -gt 120 ]; then
-    wv_warn W-DESC "${#WV_DESC}"
+    wv_rule_warn W-DESC "${#WV_DESC}"
   fi
 
   # 4. The tag: present and well formed, for this wave, naming a real phase.
   wv_tag_parse "$WV_DESC" "$WV_PROMPT_TEXT"
   if [ "$WV_TAG_OK" != "1" ]; then
-    wv_deny W-TAG "$(wv_tag_arg)"
+    wv_rule_deny W-TAG "$(wv_tag_arg)"
     return 0
   fi
   if [ "$WV_TAG_WAVE" != "$WV_WAVE" ]; then
     # Byte comparison, never numeric: `01` is not `1`.
     WV_TAG_DETAIL="the dispatch said W:$WV_TAG_WAVE"
-    wv_deny W-TAG "$(wv_tag_arg)"
+    wv_rule_deny W-TAG "$(wv_tag_arg)"
     return 0
   fi
   if ! wv_phase_row "$WV_TAG_PHASE"; then
     WV_TAG_DETAIL="P:$WV_TAG_PHASE is not a row in hooks/phases.tsv"
-    wv_deny W-TAG "$(wv_tag_arg)"
+    wv_rule_deny W-TAG "$(wv_tag_arg)"
     return 0
   fi
   # The library records warnings against a phase; from here we know it.
@@ -466,7 +522,7 @@ wv_main() {
 
   # 5. Mode: the row has to run in this wave's mode.
   if ! wv_mode_allows; then
-    wv_deny W-MODE "$WV_TAG_PHASE" "${WV_ROW_MODES//,/ or }" "$WV_MODE"
+    wv_rule_deny W-MODE "$WV_TAG_PHASE" "${WV_ROW_MODES//,/ or }" "$WV_MODE"
     return 0
   fi
 
@@ -475,13 +531,13 @@ wv_main() {
   local need_name
   need_name="$(wv_role_tier "$WV_TAG_PHASE" "$WV_TAG_ROLE")"
   if [ "$need_name" = "-" ]; then
-    wv_deny W-ROLE "$WV_TAG_ROLE" "$WV_TAG_PHASE" "$(wv_row_roles)"
+    wv_rule_deny W-ROLE "$WV_TAG_ROLE" "$WV_TAG_PHASE" "$(wv_row_roles)"
     return 0
   fi
 
   # 7. Model presence: every dispatch names its model.
   if ! wv_model_named; then
-    wv_deny W-MODEL-MISSING "$WV_TAG_PHASE" "$WV_TAG_ROLE" \
+    wv_rule_deny W-MODEL-MISSING "$WV_TAG_PHASE" "$WV_TAG_ROLE" \
       "$(wv_model_missing_detail "$need_name")"
     return 0
   fi

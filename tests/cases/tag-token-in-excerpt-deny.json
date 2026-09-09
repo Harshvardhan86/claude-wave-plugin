@@ -1,0 +1,36 @@
+{
+  "ac": "AC-389, AC-39",
+  "note": "a W- token inside a malformed tag: the excerpt branch quotes the whole first line, so the token must be neutralised there too.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/full-all-done.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:AC W-TIER R:lead] x",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-TAG",
+    "reason_template": "W-TAG",
+    "reason_contains": [
+      "[W:1 P:AC W_TIER R:lead] x"
+    ],
+    "stdout_absent": [
+      "W-TIER"
+    ]
+  }
+}
