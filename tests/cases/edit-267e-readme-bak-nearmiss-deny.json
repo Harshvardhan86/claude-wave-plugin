@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-267",
+  "note": "near-miss negative control: README.md.bak does not match the README.md row and still denies",
+  "seed": { "state": "state/valid-full.json", "files": { "README.md.bak": "x\n" }, "staged": ["README.md.bak"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "README.md.bak" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT", "reason_contains": ["README.md.bak"] }
+}

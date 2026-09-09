@@ -1,0 +1,8 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-274",
+  "note": "negative control for W-READ: a .wave/ac.md read is always permitted",
+  "seed": { "state": "state/valid-full.json", "files": { ".wave/ac.md": "criteria\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": ".wave/ac.md" } },
+  "expect": { "decision": "silent", "negative_control_for": "W-READ" }
+}

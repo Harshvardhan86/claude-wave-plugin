@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-268",
+  "note": "a file_path outside the project root entirely is untouched: denying the orchestrator own analysis/handoff files would be a false NO-GO",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "/tmp/wave-plugin-outside-fixture-268/notes.md" } },
+  "expect": { "decision": "silent" }
+}

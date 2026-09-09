@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-270",
+  "note": "MultiEdit is a declared bound (not a tool this client sends; forward-compatibility only) - exercised via a synthetic file_path-shaped fixture, and still denies",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "MultiEdit", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT" }
+}

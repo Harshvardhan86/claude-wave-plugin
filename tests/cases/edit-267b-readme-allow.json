@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-267",
+  "note": "README.md is allowed via hooks/orchestrator-writable.tsv",
+  "seed": { "state": "state/valid-full.json", "files": { "README.md": "x\n" }, "staged": ["README.md"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "README.md" } },
+  "expect": { "decision": "silent" }
+}

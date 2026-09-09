@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-267",
+  "note": "near-miss negative control: docs2/x.md does not match the docs/** row and still denies",
+  "seed": { "state": "state/valid-full.json", "files": { "docs2/x.md": "x\n" }, "staged": ["docs2/x.md"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "docs2/x.md" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT", "reason_contains": ["docs2/x.md"] }
+}

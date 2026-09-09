@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "AC-285",
+  "note": "a call carrying agent_id is a subagent run; subagents run the suite",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "agent_id": "a6a129f2ae0850db1", "agent_type": "general-purpose", "tool_input": { "command": "npm test" } },
+  "expect": { "decision": "silent" }
+}

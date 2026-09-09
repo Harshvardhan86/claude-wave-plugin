@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "AC-333",
+  "note": "mode:solo, no agent_id: section 8.3 is not enforced, even on a runner sent through npx",
+  "seed": { "state": "state/solo.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "npx jest" } },
+  "expect": { "decision": "silent" }
+}

@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-266",
+  "note": "a path git does not track is never a false NO-GO, even inside the project and outside .wave/",
+  "seed": { "state": "state/valid-full.json", "files": { "src/new.ts": "x\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "src/new.ts" } },
+  "expect": { "decision": "silent" }
+}

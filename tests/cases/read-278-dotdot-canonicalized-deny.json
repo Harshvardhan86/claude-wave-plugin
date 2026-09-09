@@ -1,0 +1,8 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-278",
+  "note": "a .wave/../ traversal is canonicalised before the .wave/ exemption test, so it still denies",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": ".wave/../src/app.ts" } },
+  "expect": { "decision": "deny", "rule": "W-READ", "reason_contains": ["src/app.ts"], "stdout_absent": [".wave/../"] }
+}

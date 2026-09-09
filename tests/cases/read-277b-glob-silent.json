@@ -1,0 +1,8 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-277",
+  "note": "Glob is never gated by this hook",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Glob", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "silent" }
+}
