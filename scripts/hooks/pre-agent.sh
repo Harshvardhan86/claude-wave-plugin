@@ -1214,43 +1214,10 @@ wv_paste_gate() {
 }
 
 # ---------------------------------------------------------------------------
-# 6. The emit choke point.
+# 6. The emit choke point — hoisted into lib.sh (Task 9), which pre-edit.sh,
+#    pre-read.sh and pre-bash.sh now share with this file. See lib.sh
+#    section 10 for wv_rule_deny / wv_rule_warn.
 # ---------------------------------------------------------------------------
-
-wv_rule_deny() {
-  # wv_rule_deny <rule> [args...] — wv_deny with every argument neutralised.
-  # See the header: `W-` becomes `W_` in the arguments, never in the template,
-  # so the rendered reason keeps exactly one `W-` token even when the dispatch
-  # text contains something that looks like a rule id.
-  local rule="$1"
-  shift
-  if [ "$#" -eq 0 ]; then
-    wv_deny "$rule"
-    return
-  fi
-  local -a args=()
-  local arg
-  for arg in "$@"; do
-    args+=("${arg//W-/W_}")
-  done
-  wv_deny "$rule" "${args[@]}"
-}
-
-wv_rule_warn() {
-  # wv_rule_warn <rule> [args...] — wv_warn, neutralised the same way.
-  local rule="$1"
-  shift
-  if [ "$#" -eq 0 ]; then
-    wv_warn "$rule"
-    return
-  fi
-  local -a args=()
-  local arg
-  for arg in "$@"; do
-    args+=("${arg//W-/W_}")
-  done
-  wv_warn "$rule" "${args[@]}"
-}
 
 # ---------------------------------------------------------------------------
 # 7. The rules, in the one evaluation order.

@@ -18,10 +18,23 @@
 # the exact key here, and cite the probe log + date in a comment. Never add a
 # key because a spec/plan/AC document mentions it in prose — spec section 2
 # of docs/design/2026-09-09-hook-enforcement.md documents more fields
-# (`trigger` on PreCompact, `tool_input.file_path` on file-editing tools)
-# that were NOT captured in the two logs above; they are intentionally
-# absent here until they are actually probed, and any fixture using them
-# will correctly fail the sweep until then.
+# (`trigger` on PreCompact) that were NOT captured in any probe below; they
+# are intentionally absent here until they are actually probed, and any
+# fixture using them will correctly fail the sweep until then.
+#
+# Task 9 (2026-09-10) probed `Read`, `Edit`, `Write` and `NotebookEdit` from
+# the main session (none of the two logs above ever fired PreToolUse on a
+# file-editing tool) and kept the raw output outside this repo:
+#   ~/WAVE_PLUGIN_ANALYSIS/probe3-edit-write-read.log
+#   ~/WAVE_PLUGIN_ANALYSIS/probe4-notebookedit.log
+# The measured field is `tool_input.file_path` for Read/Edit/Write, always
+# sent as an absolute path by this client — but `tool_input.notebook_path`
+# for NotebookEdit, NOT `file_path`: the plan brief's assumption of one
+# shared field name across all four tools does not hold on the client of
+# record. `MultiEdit` was not probed — AC-270 already records it as a
+# declared bound (it is not a tool this client sends at all; the matcher
+# entry is forward-compatibility only), so it is exercised only via a
+# synthetic fixture using the `file_path` shape, same as `Edit`/`Write`.
 agent_id
 agent_transcript_path
 agent_type
@@ -38,8 +51,10 @@ stop_hook_active
 tool_input
 tool_input.command
 tool_input.description
+tool_input.file_path
 tool_input.isolation
 tool_input.model
+tool_input.notebook_path
 tool_input.prompt
 tool_input.run_in_background
 tool_input.subagent_type

@@ -190,6 +190,41 @@ wv_inside_root() {
   esac
 }
 
+wv_resolve_input_path() {
+  # wv_resolve_input_path <raw> -> the canonicalised absolute path on stdout.
+  # Shared by pre-edit.sh and pre-read.sh (spec sections 8.1/8.2): a relative
+  # <raw> resolves against WV_CWD (falling back to $PWD, which is what the
+  # test harness's run_hook relies on when a case's stdin sends no `cwd` at
+  # all). Returns 1 — and every caller then treats the input as unmeasured
+  # and exits 0 — when <raw> is empty or carries a literal newline
+  # (Interfaces: "an absent or newline-bearing file_path exits 0"), or when
+  # it cannot be canonicalised at all.
+  #
+  # `-m`: no path component needs to exist. A `Write` routinely targets a
+  # file that does not exist yet, and plain `realpath` refuses unless every
+  # component but the last is already on disk; `-m` still resolves `..` and
+  # any symlink in a prefix that DOES exist (spec section 8.1: "a symlink
+  # under .wave/ pointing at project source does not launder an edit"), it
+  # just does not require the final target itself to be real.
+  local raw="${1:-}"
+  [ -n "$raw" ] || return 1
+  case "$raw" in *$'\n'*) return 1 ;; esac
+  local abs
+  case "$raw" in
+    /*) abs="$raw" ;;
+    *)
+      local base="${WV_CWD:-}"
+      [ -n "$base" ] || base="$PWD"
+      abs="$base/$raw"
+      ;;
+  esac
+  local resolved
+  resolved="$(realpath -m "$abs" 2>/dev/null)"
+  [ -n "$resolved" ] || return 1
+  printf '%s' "$resolved"
+  return 0
+}
+
 wv_project_root() {
   # Sets WV_ROOT. Returns 1 when no project with a wave state could be found,
   # which every caller treats as "no wave" and exits 0 on.
@@ -848,4 +883,51 @@ wv_block() {
   jq -nc --arg reason "$text" '{decision: "block", reason: $reason}'
   WV_EMITTED=1
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# 10. The emit choke point, hoisted from pre-agent.sh (Task 9): every one of
+#     pre-agent.sh, pre-edit.sh, pre-read.sh and pre-bash.sh now calls a
+#     rule through here rather than through wv_deny / wv_warn directly, so
+#     there is exactly one place that neutralises `W-` inside a caller's
+#     argument. `W-` becomes `W_` in the ARGUMENTS only, never in the
+#     template, so a rendered reason keeps exactly one `W-` token even when
+#     the caller quotes dispatch text, a shell command, or a file path that
+#     happens to contain something shaped like a rule id
+#     (`assert_single_rule_token` extracts it with `W-[A-Z0-9-]+`, and a
+#     second token would make a consumer read the wrong rule off it). The
+#     rewrite lives at this one choke point rather than at every call site
+#     that quotes input, so a rule a future script adds cannot forget it.
+# ---------------------------------------------------------------------------
+
+wv_rule_deny() {
+  # wv_rule_deny <rule> [args...] — wv_deny with every argument neutralised.
+  local rule="$1"
+  shift
+  if [ "$#" -eq 0 ]; then
+    wv_deny "$rule"
+    return
+  fi
+  local -a args=()
+  local arg
+  for arg in "$@"; do
+    args+=("${arg//W-/W_}")
+  done
+  wv_deny "$rule" "${args[@]}"
+}
+
+wv_rule_warn() {
+  # wv_rule_warn <rule> [args...] — wv_warn, neutralised the same way.
+  local rule="$1"
+  shift
+  if [ "$#" -eq 0 ]; then
+    wv_warn "$rule"
+    return
+  fi
+  local -a args=()
+  local arg
+  for arg in "$@"; do
+    args+=("${arg//W-/W_}")
+  done
+  wv_warn "$rule" "${args[@]}"
 }

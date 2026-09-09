@@ -21,7 +21,7 @@ W-PASTE	18	[W-PASTE] prompt contains a %s-character block (the threshold is 4000
 W-BUDGET	19	[W-BUDGET] %s exceeded budget (spent %d, limit %d, %sx); remedy: create .wave/approvals/budget-%s.md approving the overage, or refactor the phase.
 W-EDIT	20	[W-EDIT] source file %s is tracked by git and not under .wave/; remedy: this is orchestrator-only session mode; read-only analysis lives outside the project; code edits via subagent dispatch.
 W-READ	21	[W-READ] cannot read %s from orchestrator (inside the project, outside .wave/); remedy: use Grep/Glob to locate it, then read via a subagent that returns conclusions, not file contents.
-W-BASH	22	[W-BASH] build or test command not permitted here; remedy: dispatch a subagent to run tests/builds; the orchestrator drives the workflow, subagents do the work.
+W-BASH	22	[W-BASH] %s is a build/test command not permitted here; remedy: dispatch a subagent to run tests/builds; the orchestrator drives the workflow, subagents do the work.
 W-COMMIT-DOC	23	[W-COMMIT-DOC] cannot commit %s (planning document); remedy: analysis/handoff/checkpoint docs belong outside the repo in .wave/reports/; or create .wave/approvals/commit-doc.md to allow it.
 W-COMMIT-TRAILER	24	[W-COMMIT-TRAILER] commit message carries attribution trailer; remedy: remove Co-Authored-By, Generated with, or session-URL lines; attribute via .wave/approvals/commit-doc.md instead.
 W-LONG-RETURN	25	[W-LONG-RETURN] return message exceeds 2000 characters (has %d); remedy: write the full report to `.wave/reports/%s-%s-%s.md` and return a summary.
