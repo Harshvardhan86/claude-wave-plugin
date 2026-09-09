@@ -1,0 +1,27 @@
+code	modes	when	condition	after	fanout	lead	executor	reviewer	artifact	marker	findings
+AC	full,demo	phase	always		2	opus	sonnet	opus	.wave/ac.md	^AC-[0-9]+	-
+ACB	full	phase	always	AC	1	opus	opus	opus	.wave/acb.md	^ACB-VERIFIED	-
+DR	full,demo	phase	ui|behaviour_change	AC,ACB	2	opus	sonnet	opus	.wave/dr.md	^DR-VERIFIED	-
+TDE-RED	full,demo	phase	always	AC,ACB,DR	1	sonnet	sonnet	sonnet	.wave/red.md	^RED-VERIFIED failing=[1-9][0-9]*$	-
+TDE-GREEN	full,demo	phase	always	TDE-RED	1	sonnet	sonnet	opus	.wave/green.md	^GREEN-VERIFIED passing=[1-9][0-9]* failing=0$	-
+CR	full	phase	cr	TDE-GREEN	1	-	-	sonnet	.wave/cr.md	^CR-VERIFIED	-
+BC	full	phase	always	CR	3	-	sonnet	-	.wave/findings/BC.md	^FINDINGS: [0-9]+$	BC
+BF-BC	full	phase	findings:BC	BC	1	opus	sonnet	opus	.wave/bf-bc.md	^BF-VERIFIED	-
+SEA	full	phase	always	BC	1	-	sonnet	-	.wave/findings/SEA.md	^FINDINGS: [0-9]+$	SEA
+BF-SEA	full	phase	findings:SEA	SEA	1	opus	sonnet	opus	.wave/bf-sea.md	^BF-VERIFIED	-
+DS	full	phase	always	SEA	1	-	sonnet	-	.wave/findings/DS.md	^FINDINGS: [0-9]+$	DS
+BF-DS	full	phase	findings:DS	DS	1	opus	sonnet	opus	.wave/bf-ds.md	^BF-VERIFIED	-
+BSEA	full	phase	always	DS	1	opus	opus	opus	.wave/findings/BSEA.md	^FINDINGS: [0-9]+$	BSEA
+BF-BSEA	full	phase	findings:BSEA	BSEA	1	opus	sonnet	opus	.wave/bf-bsea.md	^BF-VERIFIED	-
+OA	full	phase	always	BF-BSEA	1	opus	opus	opus	.wave/oa.md	^ALIGNMENT: [0-9]+%$	-
+TEET-TC	full	phase	always	OA	3	opus	sonnet	opus	.wave/teet-tc.md	^TEET-TC-VERIFIED$	-
+TEET	full,demo	phase	always	TEET-TC	3	sonnet	sonnet	sonnet	.wave/teet.md	^TEET-VERIFIED$	TEET
+BF-TEET	full	phase	findings:TEET	TEET	1	opus	sonnet	opus	.wave/bf-teet.md	^BF-VERIFIED	-
+BTEET	full	phase	always	BF-TEET	1	opus	opus	opus	.wave/bteet.md	^BTEET-VERIFIED$	BTEET
+BTEET-X	full	phase	always	BTEET	3	sonnet	sonnet	sonnet	.wave/bteet-x.md	^BTEET-X-VERIFIED$	-
+BF-BTEET	full	phase	findings:BTEET	BTEET-X	1	opus	sonnet	opus	.wave/bf-bteet.md	^BF-VERIFIED	-
+VB	full	phase	always	BTEET-X,BF-BTEET	1	-	haiku	-	-	-	-
+COMMIT	full	phase	always	BTEET-X,BF-BTEET	1	-	sonnet	-	-	-	-
+CL	full	phase	always	BTEET-X,BF-BTEET	1	-	sonnet	-	-	-	-
+CCP	full	phase	always	BTEET-X,BF-BTEET	1	-	sonnet	-	.wave/checkpoints/*-ccp.md	exists	-
+AD	full	anytime	always		1	-	haiku	-	-	-	-

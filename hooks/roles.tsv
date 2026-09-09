@@ -1,0 +1,17 @@
+# Framework role names map to the five tag roles: lead, executor, reviewer, scanner, writer
+# scanner and writer both resolve to executor tier column
+framework_role	tag_role
+Implementer	executor
+Verifier	reviewer
+Auditor	executor
+Comparator	reviewer
+Tester	executor
+Test Writer	writer
+Mockup Writer	writer
+Component API Auditor	scanner
+Adversarial Writer	writer
+Adversarial Scanner	scanner
+Adversarial Executor	executor
+Backend Tester	executor
+Frontend Tester	executor
+Integration Tester	executor
