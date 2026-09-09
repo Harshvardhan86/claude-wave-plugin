@@ -1,0 +1,45 @@
+{
+  "ac": "AC-180",
+  "note": "a ledger of AD lines summing 2500, five times the 500-token AD budget: allowed with no W-BUDGET - an anytime row is exempt from the budget gate.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/valid-full.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"agent-AD-1\",\"phase\":\"AD\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":1500,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}\n{\"agent\":\"agent-AD-2\",\"phase\":\"AD\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":1000,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:AD R:writer] update the dashboard",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "haiku"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "stdout_absent": [
+      "W-SCOPE",
+      "W-COND",
+      "W-ORDER",
+      "W-ARTIFACT",
+      "W-MARKER",
+      "W-DR-OPEN",
+      "W-VISUAL",
+      "W-BF-APPROVAL",
+      "W-ROUND",
+      "W-PASTE",
+      "W-BUDGET",
+      "W-PROMPT"
+    ]
+  }
+}
