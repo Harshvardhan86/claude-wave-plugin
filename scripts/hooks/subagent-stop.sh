@@ -39,29 +39,33 @@
 # THE THREE RULES THAT DECIDE WHEN THIS SCRIPT BLOCKS, and why each is written
 # the way it is:
 #
-#   * `stop_hook_active: true` -> NEVER block. Measured (probe2): a block IS
-#     honoured — the agent keeps working, obeys the reason, and stops again with
-#     this flag set. A hook that blocks again on that second stop walks the
-#     harness straight into its block cap, so the flag is checked before every
-#     block path and the failure is recorded in the state instead, for the next
-#     dependent dispatch to deny on.
+#   * ONE BLOCK PER AGENT PER RULE, and the key is a RECORD
+#     (`active[<id>].blocked`), never `stop_hook_active`. Measured (probe2): a
+#     block IS honoured — the agent keeps working, obeys the reason, and stops
+#     again with the flag set — and it then stops a THIRD time with the flag
+#     FALSE again. A hook keyed on the flag blocks that third stop, and the one
+#     after it, up to the harness's block cap. A record survives every stop; a
+#     flag on one payload does not. `stop_hook_active: true` additionally
+#     disarms the artifact block on its own, and the failure is recorded in the
+#     state either way for the next dependent dispatch to deny on.
 #   * The artifact and marker checks run ONLY at the closing role's stop
 #     (`reviewer`, else `lead`, else `executor`) and only when this agent is the
 #     last of its phase still running. A PDT fan-out launches three writers
 #     before any of them stops; blocking the first one out on an artifact its
 #     siblings are still writing — or on one the reviewer has not been
 #     dispatched to write yet — is a false NO-GO on a correct wave.
-#   * One block per agent, at most. A block is followed by a second stop, and
-#     the ledger line, the round increment and the `stopped` record are all
-#     keyed so that the second stop repeats none of them.
+#   * The ledger line, the round increment and the `stopped` record are each
+#     keyed so that the stop which follows a block repeats none of them — and the
+#     ledger line a lean-return block DEFERS is written by that following stop,
+#     carrying `long_return: true`, so no spend is lost.
 #
-# WHAT IS DELIBERATELY NOT REUSED FROM pre-agent.sh, and why: `wv_row_line`,
-# `wv_row_get` and the column constants are COPIED (a `source` would run
-# pre-agent.sh's own `wv_main` against this event and then `exit 0` before this
-# file ran a line — the same mechanical reason post-agent.sh gives). They are
-# copied byte for byte so `command grep` finds every copy at once; hoisting them
-# into lib.sh would change a file three shipped scripts source and 417 existing
-# cases pin, which is a refactor for its own task and not for this one.
+# WHAT THIS FILE READS FROM THE LIBRARY, and why it is not read from
+# pre-agent.sh: the phase-table readers (`wv_row_line`, `wv_row_get`, the
+# `WV_COL_*` constants) live in lib.sh section 7b, because three scripts read
+# that table and the column numbers are the table's contract rather than any one
+# script's. `source`-ing pre-agent.sh instead would run its whole PreToolUse rule
+# chain against this event and then `exit 0` before this file ran a line — the
+# same mechanical reason post-agent.sh gives for not sourcing it either.
 #
 # `set -u`, never `set -e`: a hook must not fail closed on its own bug.
 
@@ -71,63 +75,23 @@ WV_HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 # shellcheck source=scripts/hooks/lib.sh
 source "$WV_HOOK_DIR/lib.sh"
 
-WV_PHASES_TSV="$WV_PLUGIN_DIR/hooks/phases.tsv"
+# ---------------------------------------------------------------------------
+# 1. Caps this file states in the code that enforces them.
+#
+# The phase table is read through lib.sh's `wv_row_line` / `wv_row_get` and the
+# `WV_COL_*` constants (library section 7b). This file used to carry its own copy
+# of both readers; a review ruled the duplication out.
+# ---------------------------------------------------------------------------
 
 # Transcripts above this many bytes are not summed (spec section 9: "above a
 # stated transcript byte cap the sum is skipped"). 8 MiB is far above every
-# subagent transcript measured while building this layer and is recorded here,
-# in the code that enforces it, rather than in prose.
+# subagent transcript measured while building this layer, and it is stated here,
+# in the code that enforces it, rather than in prose — tests/cases/
+# taint-245-over-cap.sh reads this line and fails loudly if it cannot.
 WV_TRANSCRIPT_CAP=8388608
 
 # Spec section 8.5. "Longer than 2,000 characters" — 2,000 exactly passes.
 WV_LONG_RETURN_CAP=2000
-
-# ---------------------------------------------------------------------------
-# 1. The phase table, by column. Copied from pre-agent.sh (see the header);
-#    READ-ONLY, and every read goes through wv_row_line so nothing here can
-#    leave a caller judging a different row than it asked about.
-# ---------------------------------------------------------------------------
-
-WV_COL_MODES=2
-WV_COL_WHEN=3
-WV_COL_FANOUT=6
-WV_COL_LEAD=7
-WV_COL_EXECUTOR=8
-WV_COL_REVIEWER=9
-WV_COL_ARTIFACT=10
-WV_COL_MARKER=11
-WV_COL_FINDINGS=12
-
-wv_row_line() {
-  # wv_row_line <code> -> the row's twelve cells joined with US on stdout.
-  # Returns 1 when <code> is not a row. Tabs are re-delimited to US because
-  # `IFS=$'\t' read` collapses two adjacent tabs into one delimiter (tab is IFS
-  # whitespace), which silently shifts every column after an empty cell — and
-  # `after` is empty on the first row of this very file.
-  local want="$1" line rec code
-  [ -f "$WV_PHASES_TSV" ] || return 1
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
-    rec="${line//$'\t'/$'\x1f'}"
-    code="${rec%%$'\x1f'*}"
-    if [ "$code" = "$want" ]; then
-      printf '%s' "$rec"
-      return 0
-    fi
-  done < "$WV_PHASES_TSV"
-  return 1
-}
-
-wv_row_get() {
-  # wv_row_get <code> <1-based column> -> that cell, which may legitimately be
-  # empty. Returns 1 only when the code is not a row at all.
-  local rec
-  rec="$(wv_row_line "$1")" || return 1
-  local -a cells=()
-  IFS=$'\x1f' read -r -a cells <<<"$rec"
-  printf '%s' "${cells[$(($2 - 1))]:-}"
-  return 0
-}
 
 wv_tier_name() {
   # wv_tier_name <rank> -> the tier token with that rank, from hooks/models.tsv.
@@ -192,19 +156,22 @@ wv_closing_role() {
   return 1
 }
 
-wv_still_running() {
-  # wv_still_running <code> [<verbatim role>] -> the number of OTHER agents of
-  # that phase (and role, when given) that state.active still reports as not
-  # stopped. `0` is "this agent is the last one out".
-  local code="$1" role="${2:-}" n
-  n="$(printf '%s' "$WV_STATE" | jq -r --arg id "$WV_STOP_AGENT" --arg p "$code" --arg r "$role" '
+wv_running_siblings() {
+  # wv_running_siblings <code> -> the ids of the OTHER agents of that phase that
+  # state.active still reports as not stopped, space separated. Empty output is
+  # "this agent is the last one out".
+  #
+  # The IDS, not a count, because the one place this answer is negative is a
+  # place the operator has to be told about: the phase's closing role has stopped
+  # and the check was skipped because somebody else is still running. If that
+  # somebody was killed or rate-limited, its stop will never arrive and the wave
+  # waits forever — so the warning has to name who it is waiting for.
+  printf '%s' "$(printf '%s' "$WV_STATE" | jq -r --arg id "$WV_STOP_AGENT" --arg p "$1" '
         [ ((.active // {}) | to_entries[])
           | select(.key != $id)
           | select(((.value.phase // "") == $p))
-          | select($r == "" or ((.value.role // "") == $r))
-          | select(((.value.status // "") != "stopped")) ] | length' 2>/dev/null)"
-  case "$n" in ''|*[!0-9]*) n=0 ;; esac
-  printf '%s' "$n"
+          | select(((.value.status // "") != "stopped"))
+          | .key ] | join(" ")' 2>/dev/null)"
   return 0
 }
 
@@ -378,6 +345,7 @@ wv_transcript_stats() {
 WV_AC_RULE=""              # "" | W-ARTIFACT | W-MARKER
 declare -a WV_AC_ARGS=()   # that rule's template arguments
 WV_AC_FINDINGS=""          # the findings count to record, when there is one
+WV_AC_FINDINGS_N=""        # wv_findings_count's answer, readable without a subshell
 WV_AC_OPEN=""              # the OPEN: count to record, when there is one
 
 wv_artifact_rel() {
@@ -407,13 +375,14 @@ wv_findings_count() {
   # line, base 10 (so `FINDINGS: 08` is 8, not an octal error). Returns 1 when
   # the gating scan did not run (it has already warned W-STATE) and 2 when the
   # file carries no such line.
-  local file="$1" n line
-  n="$(wv_scan_count "$file" '^FINDINGS: [0-9]+$')" || return 1
-  [ "$n" != "0" ] || return 2
+  local file="$1" line
+  wv_scan "$file" '^FINDINGS: [0-9]+$' || return 1
+  [ "$WV_SCAN_COUNT" != "0" ] || return 2
   line="$(command grep -m1 -E '^FINDINGS: [0-9]+$' "$file" 2>/dev/null)"
   line="${line#FINDINGS: }"
   case "$line" in ''|*[!0-9]*) return 2 ;; esac
-  printf '%s' "$((10#$line))"
+  WV_AC_FINDINGS_N="$((10#$line))"
+  printf '%s' "$WV_AC_FINDINGS_N"
   return 0
 }
 
@@ -524,24 +493,26 @@ wv_artifact_check() {
           return 1
         fi
         if [ -n "$marker" ] && [ "$marker" != "-" ] && [ "$marker" != "exists" ]; then
-          local n
-          if n="$(wv_scan_count "$path" "$marker")"; then
-            if [ "$n" = "0" ]; then
+          # wv_scan, not wv_scan_count: the count matters, and so does the
+          # W-STATE the library queues when the scan did NOT run. Read through a
+          # command substitution that warning would be queued in a subshell and
+          # lost, and this hook would report a clean scan of a file it never
+          # managed to read (Global Constraint 7).
+          if wv_scan "$path" "$marker"; then
+            if [ "$WV_SCAN_COUNT" = "0" ]; then
               WV_AC_ARGS=("$marker" "$artifact (first line: \"$(wv_first_line "$path")\")")
               WV_AC_RULE=W-MARKER
               return 1
             fi
           fi
-          # An ABSENT count is a failed scan, not a clean one: wv_scan_count has
-          # already warned W-STATE and this hook has measured nothing, so it
-          # allows (Global Constraint 4).
+          # An ABSENT count is a FAILED scan, never a clean zero: the warning is
+          # queued, and a hook that measured nothing allows (Global Constraint 4).
         fi
         # Informational, for any row: the OPEN: items a review artifact carries.
         # Recorded, never gated on — the TDE-RED gate re-reads dr.md at dispatch
         # time so that there is one source of truth (AC-147, AC-215).
-        local opens
-        if opens="$(wv_scan_count "$path" '^OPEN:')"; then
-          [ "$opens" = "0" ] || WV_AC_OPEN="$opens"
+        if wv_scan "$path" '^OPEN:'; then
+          [ "$WV_SCAN_COUNT" = "0" ] || WV_AC_OPEN="$WV_SCAN_COUNT"
         fi
         ;;
     esac
@@ -566,11 +537,11 @@ wv_artifact_check() {
   if [ -n "$fcode" ] && [ "$fcode" != "-" ]; then
     local ffile="$WV_WAVE_DIR/findings/$fcode.md"
     if [ -f "$ffile" ]; then
-      local fc
-      fc="$(wv_findings_count "$ffile")"
-      case "$?" in
-        0) WV_AC_FINDINGS="$fc" ;;
-      esac
+      # Not a command substitution, for the same reason as the scans above: this
+      # runs wv_scan, and its W-STATE has to survive.
+      if wv_findings_count "$ffile" >/dev/null; then
+        WV_AC_FINDINGS="$WV_AC_FINDINGS_N"
+      fi
     fi
   fi
   return 0
@@ -686,6 +657,15 @@ wv_stop_block() {
   wv_block "$rule" "${args[@]}"
 }
 
+wv_was_blocked_for() {
+  # wv_was_blocked_for <rule> — true when `active[<id>].blocked` already records
+  # that rule for this agent. Reads `blocked_rules`, which wv_main fills once.
+  case ",${blocked_rules:-}," in
+    *",$1,"*) return 0 ;;
+  esac
+  return 1
+}
+
 wv_ledger_has_agent() {
   # wv_ledger_has_agent <id> — true when the ledger already holds a line for that
   # agent. This is the dedupe question in its most durable form — the ledger is
@@ -756,12 +736,30 @@ wv_main() {
   # The library records a warning against a phase; from here we know it.
   WV_PHASE="$WV_STOP_PHASE"
 
-  # The phase table applies only to a full/demo wave and only to a phase that IS
-  # a row (spec section 6: phases.tsv is not consulted at all in solo mode).
-  local row_ok=0
-  if wv_row_line "$WV_STOP_PHASE" >/dev/null; then row_ok=1; fi
+  # The phase table applies only to a full/demo wave, only to a phase that IS a
+  # row, and only when that row RUNS IN THIS MODE (spec section 6: `modes` is
+  # `full`, `demo` or `full,demo`, and phases.tsv is not consulted at all in solo
+  # mode). Without the mode clause a demo wave judged a full-only phase: it wrote
+  # `phases.BC` and `rounds["BC/scanner"]` for a row that has no place in a demo
+  # wave at all, which then unblocks a later `after: BC` for free.
+  local row_ok=0 row_modes=""
+  if wv_row_line "$WV_STOP_PHASE" >/dev/null; then
+    row_ok=1
+    row_modes="$(wv_row_get "$WV_STOP_PHASE" "$WV_COL_MODES")"
+  fi
   case "$WV_MODE" in
-    full|demo) [ "$row_ok" = "1" ] && WV_STOP_GATED=1 ;;
+    full|demo)
+      if [ "$row_ok" = "1" ]; then
+        case ",$row_modes," in
+          *",$WV_MODE,"*)
+            WV_STOP_GATED=1
+            ;;
+          *)
+            wv_warn W-STATE "hooks/phases.tsv gives $WV_STOP_PHASE the modes \"$row_modes\", which do not include this wave's mode \"$WV_MODE\", so the phase was not judged at this stop and no round was counted; the dispatch should not have been tagged P:$WV_STOP_PHASE in a $WV_MODE wave"
+            ;;
+        esac
+      fi
+      ;;
   esac
 
   # ---- the transcript and the tier --------------------------------------
@@ -821,6 +819,17 @@ wv_main() {
     wv_warn W-STATE "could not take the wave state lock $WV_WAVE_DIR/lock within 10s, so no phase was judged and no round was counted for agent $WV_STOP_AGENT; its ledger line is spooled instead"
   fi
 
+  # Which rules has this agent already been blocked for? THE block-once key.
+  #
+  # `stop_hook_active` is not that key and cannot be: the measured log
+  # (probe2-worktree-stopblock.log) records three stops for one agent, and the
+  # flag is FALSE on the third — a hook keyed on the flag alone blocks the same
+  # agent for the same reason again, and again, up to the harness's block cap.
+  # A record survives every stop; a flag on one payload does not.
+  local blocked_rules
+  blocked_rules="$(printf '%s' "$WV_STATE" | jq -r --arg id "$WV_STOP_AGENT" \
+    'try ((((.active // {})[$id].blocked) // []) | join(",")) catch ""' 2>/dev/null)"
+
   # Has this agent already been LEDGERED? That, and not "has it stopped before",
   # is the dedupe question: a stop that blocked for a lean return deliberately
   # leaves the ledger line to the stop that follows it, so keying the dedupe on
@@ -836,21 +845,32 @@ wv_main() {
   # Length only: whether it BLOCKS also depends on stop_hook_active, and whether
   # the ledger line waits for the next stop also depends on the artifact verdict
   # below.
+  local lean_blocked_before=0
+  wv_was_blocked_for W-LONG-RETURN && lean_blocked_before=1
+
   local long_return="false"
   if [ "$last_len" -gt "$WV_LONG_RETURN_CAP" ]; then long_return="true"; fi
-  if [ "$(printf '%s' "$WV_STATE" | jq -r --arg id "$WV_STOP_AGENT" '((.active // {})[$id].long_return // false) | tostring' 2>/dev/null)" = "true" ]; then
-    # This agent was already blocked once for a long return; whatever summary it
-    # has come back with, the fact stays on its ledger line (spec section 8.5).
+  if [ "$lean_blocked_before" = "1" ]; then
+    # This agent was already blocked once for a long return. Whatever length the
+    # summary it has come back with is, the FACT stays on its ledger line (spec
+    # section 8.5) — including on the deferred line this stop is about to write.
     long_return="true"
   fi
   local block_lean=0
   case "$WV_MODE" in
     full|demo)
-      # `have_lock` is part of the condition because this block is only safe as a
-      # one-shot: what stops the next stop from blocking again is the record it
-      # leaves, and a hook that cannot write cannot leave one.
+      # The one-shot key is `lean_blocked_before`, read from the record — not
+      # `stop_hook_active`. Keyed on the flag, a second stop carrying a SHORT
+      # return was blocked again ("has 1999") and, because a lean-return block
+      # defers the ledger line, that line was then never written at all: the
+      # agent's whole spend vanished.
+      #
+      # `have_lock` is part of the condition too, because the block is only safe
+      # as a one-shot: what stops the next stop from blocking again is the record
+      # it leaves, and a hook that cannot write cannot leave one.
       if [ "$long_return" = "true" ] && [ "$stop_active" = "false" ] \
-        && [ "$WV_STOP_SEEN" = "0" ] && [ "$have_lock" = "1" ]; then
+        && [ "$WV_STOP_SEEN" = "0" ] && [ "$have_lock" = "1" ] \
+        && [ "$lean_blocked_before" = "0" ]; then
         block_lean=1
       fi
       ;;
@@ -926,29 +946,60 @@ wv_main() {
     [ "$rolecol2" = "$closing" ] && is_closing=1
   fi
 
-  if [ "$have_lock" = "1" ] && [ "$is_closing" = "1" ] \
-    && [ "$(wv_still_running "$WV_STOP_PHASE")" = "0" ]; then
-    if wv_artifact_check "$WV_STOP_PHASE"; then
-      status_new="done"
-    else
-      verdict_rule="$WV_AC_RULE"
-      verdict_args=("${WV_AC_ARGS[@]}")
-      # `redo` when a phase the state already recorded as done now fails, so a
-      # failed re-run can never be masked by the earlier success; otherwise the
-      # brief's closed status set uses `artifact-missing` for "the hand-off
-      # artifact is not acceptable", and the RULE id (W-ARTIFACT vs W-MARKER)
-      # says which way it was unacceptable.
-      if [ "$prev_status" = "done" ]; then
-        status_new="redo"
+  local verdict_blocked_before=0
+  if [ "$have_lock" = "1" ] && [ "$is_closing" = "1" ]; then
+    local siblings
+    siblings="$(wv_running_siblings "$WV_STOP_PHASE")"
+    if [ -z "$siblings" ]; then
+      if wv_artifact_check "$WV_STOP_PHASE"; then
+        status_new="done"
       else
-        status_new="artifact-missing"
+        verdict_rule="$WV_AC_RULE"
+        verdict_args=("${WV_AC_ARGS[@]}")
+        wv_was_blocked_for "$verdict_rule" && verdict_blocked_before=1
+        # Three outcomes, and the difference between them is what the next
+        # dispatch reads:
+        #   failed            this agent was ALREADY blocked for exactly this
+        #                     rule, came back, and still has not produced the
+        #                     artifact. There is nothing further this hook can do
+        #                     — it must not block a third time — so the phase is
+        #                     recorded as settled-failed and the wave stops on it.
+        #   redo              a phase the state recorded as done now fails, so a
+        #                     failed re-run can never be masked by the earlier
+        #                     success (and its successors go stale).
+        #   artifact-missing  the ordinary first failure. The RULE id on the block
+        #                     (W-ARTIFACT vs W-MARKER) says which way the hand-off
+        #                     was unacceptable.
+        if [ "$verdict_blocked_before" = "1" ]; then
+          status_new="failed"
+        elif [ "$prev_status" = "done" ]; then
+          status_new="redo"
+        else
+          status_new="artifact-missing"
+        fi
       fi
+    else
+      # The closing role has stopped and the check was SKIPPED because a sibling
+      # of the same phase is still open. For a live fan-out that is correct and
+      # temporary. For a sibling that was killed, rate-limited, or whose own
+      # SubagentStop never arrived, it is a wave that waits for an event that will
+      # not come — silently, because the skip writes nothing at all. So the skip
+      # is reported, and the report names WHO it is waiting for.
+      wv_warn W-STATE "$WV_STOP_PHASE's closing role ($WV_STOP_ROLE, agent $WV_STOP_AGENT) stopped while state.active still shows these agents of the same phase running: $siblings — so the artifact check was skipped and the phase was not judged; if those agents are gone (killed, rate-limited, or their SubagentStop was lost), remove their entries from state.active in $WV_STATE_FILE and re-dispatch $WV_STOP_PHASE's closing role"
     fi
   fi
 
-  local warnjson="[]"
+  local warnjson="[]" warns_new=0
   if [ "${#WV_STOP_WARN[@]}" -gt 0 ]; then
     warnjson="$(printf '%s\n' "${WV_STOP_WARN[@]}" | jq -Rsc 'split("\n") | map(select(. != ""))')"
+    # How many of them are not ALREADY on the phase's record. A replayed stop
+    # renders the same warning text again, and appending it again is how
+    # `phases[X].warned` grew 1 -> 2 -> 3 across three identical stops and made
+    # `state.json` differ every time. The list is a SET.
+    warns_new="$(printf '%s' "$WV_STATE" | jq -r --arg c "$WV_STOP_PHASE" --argjson w "$warnjson" \
+      'try ((((.phases // {})[$c].warned) // []) as $have
+            | [ $w[] | select(([$have[]] | index(.)) == null) ] | length) catch ($w | length)' 2>/dev/null)"
+    case "$warns_new" in ''|*[!0-9]*) warns_new=1 ;; esac
   fi
 
   # ---- 3. the phase record -----------------------------------------------
@@ -961,7 +1012,7 @@ wv_main() {
   if [ -n "$status_new" ]; then
     local same=0
     if [ "$status_new" = "$prev_status" ] && [ "$existing_agent" = "$WV_STOP_AGENT" ] \
-      && [ "$warnjson" = "[]" ]; then
+      && [ "$warns_new" = "0" ]; then
       same=1
     fi
     if [ "$same" = "0" ]; then
@@ -982,7 +1033,7 @@ wv_main() {
       local code_lit
       code_lit="$(wv_jq_str "$WV_STOP_PHASE")"
       local filter
-      filter="$(printf '.phases[%s] = ((.phases[%s] // {} | with_entries(select(.key == "warned"))) + %s + %s | .warned = ((.warned // []) + %s) | if ((.warned | length) == 0) then del(.warned) else . end)' \
+      filter="$(printf '.phases[%s] = ((.phases[%s] // {} | with_entries(select(.key == "warned"))) + %s + %s | .warned = (((.warned // []) + %s) | unique) | if ((.warned | length) == 0) then del(.warned) else . end)' \
         "$code_lit" "$code_lit" "$newrec" "$tainted_extra" "$warnjson")"
       # A failed re-run invalidates every successor the state still calls done.
       if [ "$status_new" = "redo" ]; then
@@ -1006,8 +1057,24 @@ wv_main() {
   # and nothing else: that agent is about to keep working (it has a report to
   # write), so its totals are not final, and a line written now would dedupe the
   # real one away.
+  # WHICH rule this stop will emit, decided once, here, because three later
+  # things read it: whether the ledger line waits for the next stop, what goes on
+  # `active[<id>].blocked`, and what reaches stdout.
+  #
+  # An artifact verdict outranks a long return (the precedence pinned in
+  # hooks/reasons.tsv), `stop_hook_active` disarms the artifact block, and the
+  # RECORD disarms both — a rule already blocked for this agent is never blocked
+  # for it again.
+  local emit_rule=""
+  if [ -n "$verdict_rule" ] && [ "$stop_active" = "false" ] \
+    && [ "$verdict_blocked_before" = "0" ]; then
+    emit_rule="$verdict_rule"
+  elif [ "$block_lean" = "1" ]; then
+    emit_rule=W-LONG-RETURN
+  fi
+
   local defer_ledger=0
-  if [ "$block_lean" = "1" ] && [ -z "$verdict_rule" ]; then
+  if [ "$emit_rule" = "W-LONG-RETURN" ]; then
     defer_ledger=1
   fi
 
@@ -1046,6 +1113,21 @@ wv_main() {
     fi
   fi
 
+  # ---- 5. the block-once record -------------------------------------------
+  #
+  # Written under the SAME held lock as everything else, before the object
+  # reaches stdout: the record is what makes the block a one-shot, and a block
+  # emitted without it would be repeated on the agent's next stop (the measured
+  # log shows a third stop with stop_hook_active FALSE, so the flag cannot carry
+  # this).
+  if [ "$have_lock" = "1" ] && [ -n "$emit_rule" ]; then
+    local id_lit2 rule_lit
+    id_lit2="$(wv_jq_str "$WV_STOP_AGENT")"
+    rule_lit="$(wv_jq_str "$emit_rule")"
+    wv_state_update "$(printf '.active[%s] = ((.active[%s] // {}) + {blocked: (((.active[%s].blocked // []) + [%s]) | unique)})' \
+      "$id_lit2" "$id_lit2" "$id_lit2" "$rule_lit")"
+  fi
+
   if [ "$have_lock" = "1" ]; then
     wv_lock_release
   fi
@@ -1055,15 +1137,20 @@ wv_main() {
   # Both are last, so every record above is already on disk whichever way this
   # goes, and `stop_hook_active` disarms every block path without disarming any
   # of the recording.
-  if [ -n "$verdict_rule" ]; then
-    if [ "$stop_active" = "false" ]; then
-      wv_stop_block "$verdict_rule" "${verdict_args[@]}"
-    fi
-    return 0
-  fi
+  case "$emit_rule" in
+    W-ARTIFACT|W-MARKER)
+      wv_stop_block "$emit_rule" "${verdict_args[@]}"
+      return 0
+      ;;
+    W-LONG-RETURN)
+      wv_stop_block W-LONG-RETURN "$last_len" "$WV_STOP_PHASE" "$WV_STOP_ROLE" "$WV_STOP_AGENT"
+      return 0
+      ;;
+  esac
 
-  if [ "$block_lean" = "1" ]; then
-    wv_stop_block W-LONG-RETURN "$last_len" "$WV_STOP_PHASE" "$WV_STOP_ROLE" "$WV_STOP_AGENT"
+  # No block. A phase that failed its check is still not closed out, so the
+  # terminal close is reached only by a phase that is genuinely done.
+  if [ -n "$verdict_rule" ]; then
     return 0
   fi
 

@@ -65,6 +65,7 @@ if [ ! -d "$WV_PLUGIN_DIR/hooks" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "
 fi
 WV_REASONS_TSV="$WV_PLUGIN_DIR/hooks/reasons.tsv"
 WV_MODELS_TSV="$WV_PLUGIN_DIR/hooks/models.tsv"
+WV_PHASES_TSV="$WV_PLUGIN_DIR/hooks/phases.tsv"
 
 # ---------------------------------------------------------------------------
 # 2. Every variable this library exports, initialised before anything reads it.
@@ -598,14 +599,88 @@ wv_tier() {
 }
 
 # ---------------------------------------------------------------------------
+# 7b. The phase table, by column (spec section 6).
+#
+# One copy, here, because three scripts read this file: pre-agent.sh judges a
+# dispatch against the row, subagent-stop.sh judges the phase's hand-off against
+# it, and any later reader needs the same column numbers. They lived as a copy in
+# each script until a review ruled the duplication out; the numbers are the
+# table's contract, not any one script's.
+#
+# Every reader here is READ-ONLY with respect to its caller's state: they return
+# a row (or one cell) and touch nothing, so a caller that asks about a
+# PREDECESSOR's row cannot have the row it was judging moved underneath it.
+# ---------------------------------------------------------------------------
+
+WV_COL_CODE=1
+WV_COL_MODES=2
+WV_COL_WHEN=3
+WV_COL_CONDITION=4
+WV_COL_AFTER=5
+WV_COL_FANOUT=6
+WV_COL_LEAD=7
+WV_COL_EXECUTOR=8
+WV_COL_REVIEWER=9
+WV_COL_ARTIFACT=10
+WV_COL_MARKER=11
+WV_COL_FINDINGS=12
+
+wv_row_line() {
+  # wv_row_line <code> -> the row's twelve cells joined with US (0x1f) on stdout.
+  # Returns 1 when <code> is not a row.
+  #
+  # Tabs are re-delimited to US before anything reads them, because tab is IFS
+  # WHITESPACE: `IFS=$'\t' read` collapses two adjacent tabs into one delimiter
+  # and silently shifts every column after an empty cell — and `after` is empty
+  # on the first row of this very file.
+  local want="$1" line rec code
+  [ -f "$WV_PHASES_TSV" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
+    rec="${line//$'\t'/$'\x1f'}"
+    code="${rec%%$'\x1f'*}"
+    if [ "$code" = "$want" ]; then
+      printf '%s' "$rec"
+      return 0
+    fi
+  done < "$WV_PHASES_TSV"
+  return 1
+}
+
+wv_row_get() {
+  # wv_row_get <code> <1-based column> -> that cell, which may legitimately be
+  # empty (`after` is empty on the AC and AD rows). Returns 1 only when the code
+  # is not a row at all, so a caller can tell "no such phase" from "no
+  # predecessors".
+  local rec
+  rec="$(wv_row_line "$1")" || return 1
+  local -a cells=()
+  IFS=$'\x1f' read -r -a cells <<<"$rec"
+  printf '%s' "${cells[$(($2 - 1))]:-}"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 8. Gating scans (Global Constraint 7).
 # ---------------------------------------------------------------------------
 
-wv_scan_count() {
-  # wv_scan_count <file> <extended-regex> -> the match count on stdout.
-  # A real zero prints `0` and returns 0. An ABSENT count means the scan did
-  # not run (a wrapped searcher declining the file, an unreadable path): it
-  # warns W-STATE, prints nothing and returns 1. Never reports 0 for that.
+WV_SCAN_COUNT=""
+
+wv_scan() {
+  # wv_scan <file> <extended-regex> — sets WV_SCAN_COUNT to the match count and
+  # returns 0. An ABSENT count means the scan did not run (a wrapped searcher
+  # declining the file, an unreadable path): it warns W-STATE, leaves
+  # WV_SCAN_COUNT empty and returns 1. Never reports 0 for that.
+  #
+  # THIS is the form to call when the warning matters. Its stdout-printing
+  # sibling below has to be wrapped in a command substitution to be useful, and a
+  # command substitution is a SUBSHELL: `wv_warn` there appends to a COPY of the
+  # queue that dies with it, so the caller emits a block or an allow having
+  # silently dropped the one line that said it could not measure the file. (Same
+  # trap pre-agent.sh's header calls out for wv_condition_met: "never call this
+  # through a command substitution — the status is the answer, but the globals
+  # are the reason".)
+  WV_SCAN_COUNT=""
   local file="$1" regex="$2" count
   count="$(command grep -cE -- "$regex" "$file" 2>/dev/null)"
   case "$count" in
@@ -614,7 +689,18 @@ wv_scan_count() {
       return 1
       ;;
   esac
-  printf '%s' "$count"
+  WV_SCAN_COUNT="$count"
+  return 0
+}
+
+wv_scan_count() {
+  # wv_scan_count <file> <extended-regex> -> the match count on stdout, for a
+  # caller that only wants the number. Same contract as wv_scan otherwise — but
+  # see wv_scan's note on the queued warning: if this is called inside a command
+  # substitution (and it has to be, to read the number), the W-STATE it queues on
+  # a failed scan does not reach the caller.
+  wv_scan "$1" "$2" || return 1
+  printf '%s' "$WV_SCAN_COUNT"
   return 0
 }
 
@@ -748,7 +834,17 @@ wv_block() {
     return 0
   fi
 
-  WV_WARNINGS=""
+  # The block object is this event's ONLY stdout, and SubagentStop has no
+  # `additionalContext` channel for a warning to ride on — so a queued warning
+  # cannot be carried. It must not be DISCARDED either: every warning queued
+  # before a block says the hook could not measure something, which is exactly
+  # what a reader needs to know when a block arrives (an artifact whose marker
+  # scan never ran, a state file it could not write). They go to stderr, one per
+  # line, before the object.
+  if [ -n "$WV_WARNINGS" ]; then
+    printf '%s\n' "$WV_WARNINGS" >&2
+    WV_WARNINGS=""
+  fi
   jq -nc --arg reason "$text" '{decision: "block", reason: $reason}'
   WV_EMITTED=1
   return 0

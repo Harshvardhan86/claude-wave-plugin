@@ -13,7 +13,9 @@
 # killed, because those fire on every narrow --filter regardless of the mutant
 # and would otherwise manufacture a false `killed`.
 #
-# Eight mutants, one per property the task brief names explicitly:
+# Fifteen mutants: the eight properties the task brief names, plus the seven the
+# round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
+# a mutant now names its own target file).
 #   1. closingrole    the artifact check is applied to EVERY role's stop, not
 #                     only the closing role's
 #   2. lastoneout     the last-one-out predicate always says "last", so the
@@ -27,6 +29,16 @@
 #   7. drainremoved   the ledger spool is never drained on a stop that
 #                     appends nothing of its own
 #   8. terminalskip   the terminal-phase wave close is never called
+#   9. blockoncekey   the block-once key is the stop_hook_active FLAG again
+#                     rather than the `active[<id>].blocked` record
+#  10. leanoneshot    the lean-return block stops being a one-shot
+#  11. modesignored   the row's `modes` cell is ignored, so a demo wave judges a
+#                     full-mode-only phase
+#  12. stallquiet     a check skipped because a sibling is still running says
+#                     nothing about it
+#  13. warnedgrows    the phase's warn list is appended to on every replay
+#  14. libtabcollapse lib.sh's hoisted row reader stops re-delimiting tabs to US
+#  15. blockswallows  lib.sh's wv_block discards the queued warnings again
 #
 # Exit status: 0 only when every mutant was applied, every mutant was killed,
 # and the final restore matches the pristine hash.
@@ -70,10 +82,30 @@ for d in scripts hooks tests; do
 done
 git -C "$WV_TREE" init -q 2>/dev/null
 
-WV_TARGET="$WV_TREE/scripts/hooks/subagent-stop.sh"
-WV_PRISTINE="$WV_TMP/subagent-stop.pristine.sh"
-cp "$WV_TARGET" "$WV_PRISTINE" || exit 1
-WV_BASE_SHA="$(sha256sum < "$WV_PRISTINE" | cut -d' ' -f1)"
+# Two files can be mutated: this task's own hook, and the library it shares with
+# every other hook. The phase-table readers and the block emitter live there
+# since the round-1 review hoisted them, and a property that MOVED into lib.sh
+# must be mutation-covered where it now lives, not where it used to — so a mutant
+# names its own target file.
+WV_HOOK_REL="scripts/hooks/subagent-stop.sh"
+WV_LIB_REL="scripts/hooks/lib.sh"
+WV_TARGET=""
+WV_PRISTINE=""
+WV_BASE_SHA=""
+
+declare -A WV_PRISTINE_OF=()
+declare -A WV_SHA_OF=()
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+  cp "$WV_TREE/$rel" "$WV_TMP/$(basename "$rel").pristine" || exit 1
+  WV_PRISTINE_OF["$rel"]="$WV_TMP/$(basename "$rel").pristine"
+  WV_SHA_OF["$rel"]="$(sha256sum < "$WV_TMP/$(basename "$rel").pristine" | cut -d' ' -f1)"
+done
+
+wv_select_target() {
+  WV_TARGET="$WV_TREE/$1"
+  WV_PRISTINE="${WV_PRISTINE_OF[$1]}"
+  WV_BASE_SHA="${WV_SHA_OF[$1]}"
+}
 
 wv_restore() {
   cp "$WV_PRISTINE" "$WV_TARGET"
@@ -105,9 +137,10 @@ wv_survived=0
 declare -a wv_rows=()
 
 wv_run_mutant() {
-  # wv_run_mutant <label> <body-function> <filter>...
-  local label="$1" body="$2"
-  shift 2
+  # wv_run_mutant <label> <body-function> <target-relative-path> <filter>...
+  local label="$1" body="$2" target="$3"
+  shift 3
+  wv_select_target "$target"
   wv_total=$((wv_total + 1))
 
   local patch
@@ -167,10 +200,8 @@ wv_run_mutant() {
 
 # --- 1. the artifact check runs at every role's stop ------------------------
 wv_body_closingrole() { cat <<'PY'
-old = '''  if [ "$have_lock" = "1" ] && [ "$is_closing" = "1" ] \\
-    && [ "$(wv_still_running "$WV_STOP_PHASE")" = "0" ]; then'''
-new = '''  if [ "$have_lock" = "1" ] && [ "$is_closing" != "zzz-never" ] \\
-    && [ "$(wv_still_running "$WV_STOP_PHASE")" = "0" ]; then'''
+old = '  if [ "$have_lock" = "1" ] && [ "$is_closing" = "1" ]; then'
+new = '  if [ "$have_lock" = "1" ] && [ "$is_closing" != "zzz-never" ]; then'
 assert old in s, "anchor missing: the closing-role guard"
 s = s.replace(old, new)
 PY
@@ -178,8 +209,8 @@ PY
 
 # --- 2. the last-one-out predicate always says "last" -----------------------
 wv_body_lastoneout() { cat <<'PY'
-old = '''    && [ "$(wv_still_running "$WV_STOP_PHASE")" = "0" ]; then'''
-new = '''    && [ "0" = "0" ]; then'''
+old = '    if [ -z "$siblings" ]; then'
+new = '    if [ -z "" ]; then'
 assert old in s, "anchor missing: the last-one-out predicate"
 s = s.replace(old, new)
 PY
@@ -187,12 +218,8 @@ PY
 
 # --- 3. the stop_hook_active guard on the block path is dropped -------------
 wv_body_blocktwice() { cat <<'PY'
-old = '''    if [ "$stop_active" = "false" ]; then
-      wv_stop_block "$verdict_rule" "${verdict_args[@]}"
-    fi'''
-new = '''    if [ "$stop_active" = "false" ] || true; then
-      wv_stop_block "$verdict_rule" "${verdict_args[@]}"
-    fi'''
+old = '  if [ -n "$verdict_rule" ] && [ "$stop_active" = "false" ] \\\n    && [ "$verdict_blocked_before" = "0" ]; then'
+new = '  if [ -n "$verdict_rule" ] && [ "0" = "0" ] \\\n    && [ "$verdict_blocked_before" = "0" ]; then'
 assert old in s, "anchor missing: the stop_hook_active guard"
 s = s.replace(old, new)
 PY
@@ -200,8 +227,8 @@ PY
 
 # --- 4. the marker regex loses its anchors ---------------------------------
 wv_body_markerloose() { cat <<'PY'
-old = '''          if n="$(wv_scan_count "$path" "$marker")"; then'''
-new = '''          if n="$(wv_scan_count "$path" "$(printf '%s' "$marker" | tr -d '^$')")"; then'''
+old = '          if wv_scan "$path" "$marker"; then'
+new = '          if wv_scan "$path" "$(printf \'%s\' "$marker" | tr -d \'^$\')"; then'
 assert old in s, "anchor missing: the marker scan"
 s = s.replace(old, new)
 PY
@@ -247,14 +274,91 @@ s = s.replace(old, new)
 PY
 }
 
-wv_run_mutant closingrole   wv_body_closingrole   'stop-229*' 'stop-228*'
-wv_run_mutant lastoneout    wv_body_lastoneout    'stop-228*'
-wv_run_mutant blocktwice    wv_body_blocktwice    'stop-231*'
-wv_run_mutant markerloose   wv_body_markerloose   'marker-*' 'stop-223*'
-wv_run_mutant taintinverted wv_body_taintinverted 'taint-23*' 'taint-24*'
-wv_run_mutant roundskey     wv_body_roundskey     'stop-168*' 'stop-228*'
-wv_run_mutant drainremoved  wv_body_drainremoved  'lock-254*'
-wv_run_mutant terminalskip  wv_body_terminalskip  'stop-227*'
+# --- 9. the block-once key is the FLAG again, not the record ----------------
+wv_body_blockoncekey() { cat <<'PY'
+old = '    && [ "$verdict_blocked_before" = "0" ]; then'
+new = '    && [ "0" = "0" ]; then'
+assert old in s, "anchor missing: the block-once record check"
+s = s.replace(old, new)
+PY
+}
+
+# --- 10. the lean-return block is not a one-shot ----------------------------
+wv_body_leanoneshot() { cat <<'PY'
+old = '        && [ "$WV_STOP_SEEN" = "0" ] && [ "$have_lock" = "1" ] \\\n        && [ "$lean_blocked_before" = "0" ]; then'
+new = '        && [ "$WV_STOP_SEEN" = "0" ] && [ "$have_lock" = "1" ]; then'
+assert old in s, "anchor missing: the lean one-shot condition"
+s = s.replace(old, new)
+PY
+}
+
+# --- 11. the row's `modes` cell is ignored ---------------------------------
+wv_body_modesignored() { cat <<'PY'
+old = '        case ",$row_modes," in\n          *",$WV_MODE,"*)'
+new = '        case ",$row_modes,$WV_MODE" in\n          *)'
+assert old in s, "anchor missing: the modes gate"
+s = s.replace(old, new)
+PY
+}
+
+# --- 12. a stalled sibling is skipped in silence ---------------------------
+wv_body_stallquiet() { cat <<'PY'
+old = '      wv_warn W-STATE "$WV_STOP_PHASE\'s closing role'
+new = '      : "$WV_STOP_PHASE\'s closing role'
+assert old in s, "anchor missing: the stalled-sibling warning"
+s = s.replace(old, new)
+PY
+}
+
+# --- 13. the warn list is appended to, not treated as a set ----------------
+wv_body_warnedgrows() { cat <<'PY'
+old = '      && [ "$warns_new" = "0" ]; then'
+new = '      && [ "[]" = "[]" ]; then'
+assert old in s, "anchor missing: the already-recorded-warning check"
+s = s.replace(old, new)
+old2 = ' | .warned = (((.warned // []) + %s) | unique) |'
+new2 = ' | .warned = ((.warned // []) + %s) |'
+assert old2 in s, "anchor missing: the unique warn merge"
+s = s.replace(old2, new2)
+PY
+}
+
+# --- 14. lib.sh: the hoisted row reader stops re-delimiting tabs to US -----
+wv_body_libtabcollapse() { cat <<'PY'
+old = '    rec="${line//$\'\\t\'/$\'\\x1f\'}"\n    code="${rec%%$\'\\x1f\'*}"'
+new = '    rec="$line"\n    code="${rec%%$\'\\t\'*}"'
+assert old in s, "anchor missing: lib.sh row reader"
+s = s.replace(old, new)
+PY
+}
+
+# --- 15. lib.sh: a block discards the warnings it cannot carry -------------
+wv_body_blockswallows() { cat <<'PY'
+old = '  if [ -n "$WV_WARNINGS" ]; then\n    printf \'%s\\n\' "$WV_WARNINGS" >&2\n    WV_WARNINGS=""\n  fi\n  jq -nc'
+new = '  WV_WARNINGS=""\n  jq -nc'
+assert old in s, "anchor missing: the block warning flush"
+s = s.replace(old, new)
+PY
+}
+
+H="$WV_HOOK_REL"
+L="$WV_LIB_REL"
+
+wv_run_mutant closingrole    wv_body_closingrole    "$H" 'stop-229*' 'stop-228*'
+wv_run_mutant lastoneout     wv_body_lastoneout     "$H" 'stop-228*'
+wv_run_mutant blocktwice     wv_body_blocktwice     "$H" 'stop-231*'
+wv_run_mutant markerloose    wv_body_markerloose    "$H" 'marker-*' 'stop-223*' 'stop-214*'
+wv_run_mutant taintinverted  wv_body_taintinverted  "$H" 'taint-23*' 'taint-24*'
+wv_run_mutant roundskey      wv_body_roundskey      "$H" 'stop-168*' 'stop-228*'
+wv_run_mutant drainremoved   wv_body_drainremoved   "$H" 'lock-254*'
+wv_run_mutant terminalskip   wv_body_terminalskip   "$H" 'stop-227*'
+wv_run_mutant blockoncekey   wv_body_blockoncekey   "$H" 'stop-blockonce*' 'stop-231*'
+wv_run_mutant leanoneshot    wv_body_leanoneshot    "$H" 'lean-oneshot*' 'lean-25*'
+wv_run_mutant modesignored   wv_body_modesignored   "$H" 'stop-modes-demo*'
+wv_run_mutant stallquiet     wv_body_stallquiet     "$H" 'stop-stalled*' 'stop-228*'
+wv_run_mutant warnedgrows    wv_body_warnedgrows    "$H" 'taint-warned*' 'taint-240*'
+wv_run_mutant libtabcollapse wv_body_libtabcollapse "$L" 'stop-220*' 'stop-227*'
+wv_run_mutant blockswallows  wv_body_blockswallows  "$L" 'stop-warn-flush*' 'marker-204*' 'stop-214*'
 
 # --- the table --------------------------------------------------------------
 
@@ -268,8 +372,13 @@ for wv_row in "${wv_rows[@]:-}"; do
 done
 printf '%s\n' '-----------------------------------------------------------------------------------------'
 
-wv_final="$(sha256sum < "$WV_TARGET" | cut -d' ' -f1)"
-if [ "$wv_final" = "$WV_BASE_SHA" ]; then wv_restored=yes; else wv_restored=NO; fi
+wv_restored=yes
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+  if [ "$(sha256sum < "$WV_TREE/$rel" | cut -d' ' -f1)" != "${WV_SHA_OF[$rel]}" ]; then
+    printf 'NOT RESTORED: %s\n' "$rel" >&2
+    wv_restored=NO
+  fi
+done
 printf 'mutants=%s survived=%s restored=%s\n' "$wv_total" "$wv_survived" "$wv_restored"
 
 [ "$wv_survived" -eq 0 ] && [ "$wv_restored" = "yes" ]

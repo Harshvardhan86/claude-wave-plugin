@@ -82,7 +82,6 @@ WV_HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 # shellcheck source=scripts/hooks/lib.sh
 source "$WV_HOOK_DIR/lib.sh"
 
-WV_PHASES_TSV="$WV_PLUGIN_DIR/hooks/phases.tsv"
 WV_BUDGETS_TSV="$WV_PLUGIN_DIR/hooks/budgets.tsv"
 
 # ---------------------------------------------------------------------------
@@ -438,57 +437,25 @@ wv_model_unknown_detail() {
 }
 
 # ---------------------------------------------------------------------------
-# 5b. Part 2's reads: the phase table by column, the state's phase and round
-#     maps, the budget table, and the two gating scans that need a count.
+# 5b. Part 2's reads: the state's phase and round maps, the budget table, and
+#     the two gating scans that need a count.
 #
-# Every reader here is READ-ONLY with respect to WV_ROW_*. Part 2 asks about
-# rows other than the dispatched one many times per invocation — a
-# predecessor's condition, and the condition of the row that predecessor waits
-# on — and a reader that moved WV_ROW_* would leave the caller judging the
-# wrong row. wv_row_line re-reads the file instead; it is 27 lines.
+# The phase table itself is read through lib.sh's `wv_row_line` / `wv_row_get`
+# and the `WV_COL_*` constants (library section 7b). Those used to be a copy in
+# this file and a second copy in subagent-stop.sh; a review ruled the duplication
+# out, and the column numbers belong to the table rather than to any one script.
+#
+# Every reader here is READ-ONLY with respect to WV_ROW_*, and so are the
+# library's. Part 2 asks about rows other than the dispatched one many times per
+# invocation — a predecessor's condition, and the condition of the row that
+# predecessor waits on — and a reader that moved WV_ROW_* would leave the caller
+# judging the wrong row.
 # ---------------------------------------------------------------------------
-
-WV_COL_MODES=2
-WV_COL_WHEN=3
-WV_COL_CONDITION=4
-WV_COL_AFTER=5
-WV_COL_FANOUT=6
 
 # Files bigger than this are not searched for a pasted block. A cap is needed
 # because the search reads the file; 256 KiB is far above every artifact the
 # framework writes and is recorded here rather than in prose.
 WV_PASTE_FILE_CAP=262144
-
-wv_row_line() {
-  # wv_row_line <code> -> the row's twelve cells joined with US on stdout.
-  # Returns 1 when <code> is not a row. See wv_phase_row for why tabs are
-  # re-delimited to US rather than read with IFS=$'\t'.
-  local want="$1" line rec code
-  [ -f "$WV_PHASES_TSV" ] || return 1
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
-    rec="${line//$'\t'/$'\x1f'}"
-    code="${rec%%$'\x1f'*}"
-    if [ "$code" = "$want" ]; then
-      printf '%s' "$rec"
-      return 0
-    fi
-  done < "$WV_PHASES_TSV"
-  return 1
-}
-
-wv_row_get() {
-  # wv_row_get <code> <1-based column> -> that cell, which may legitimately be
-  # empty (`after` is empty on the AC and AD rows). Returns 1 only when the
-  # code is not a row at all, so a caller can tell "no such phase" from "no
-  # predecessors".
-  local rec
-  rec="$(wv_row_line "$1")" || return 1
-  local -a cells=()
-  IFS=$'\x1f' read -r -a cells <<<"$rec"
-  printf '%s' "${cells[$(($2 - 1))]:-}"
-  return 0
-}
 
 wv_state_phase_status() {
   # wv_state_phase_status <code> -> state.phases[<code>].status, or "" when the
