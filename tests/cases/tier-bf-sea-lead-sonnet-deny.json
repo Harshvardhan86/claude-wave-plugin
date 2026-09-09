@@ -1,0 +1,37 @@
+{
+  "ac": "AC-139 (extended: the brief's AC list names BF-BC and BF-BSEA; this row has the same triple and is added for AC-146 cell coverage)",
+  "note": "BF-SEA/lead requires opus; the dispatch names sonnet (one tier lower), so W-TIER fires naming the model, its tier, BF-SEA/lead and the requirement.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/full-all-done.json",
+    "files": {
+      ".wave/findings/SEA.md": "FINDINGS: 2\n",
+      ".wave/approvals/bf-SEA.md": "Strategy: fix both findings in one pass.\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:BF-SEA R:lead] work on BF-SEA",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-TIER",
+    "reason_template": "W-TIER",
+    "reason_contains": [
+      "model sonnet (tier 2) is below BF-SEA/lead minimum (opus)"
+    ]
+  }
+}

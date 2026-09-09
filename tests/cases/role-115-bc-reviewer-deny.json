@@ -1,0 +1,35 @@
+{
+  "ac": "AC-115, AC-138",
+  "note": "BC defines no reviewer (the cell is -): W-ROLE stating the role does not exist in BC and listing executor with scanner/writer as its aliases.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/full-all-done.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:BC R:reviewer] review the scan",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-ROLE",
+    "reason_template": "W-ROLE",
+    "reason_contains": [
+      "role reviewer does not exist in BC",
+      "executor (aliases: scanner, writer)",
+      "hooks/roles.tsv"
+    ]
+  }
+}

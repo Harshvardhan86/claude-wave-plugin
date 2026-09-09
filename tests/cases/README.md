@@ -24,6 +24,8 @@ the whole tree.
     "decision": "deny|block|warn|allow|silent",
     "rule": "W-TAG",
     "reason_template": "W-TAG",
+    "reason_contains": ["substring the rendered reason must carry"],
+    "stdout_absent": ["substring stdout must not carry"],
     "state_assert": ".status == \"active\"",
     "ledger_lines": 1,
     "files_absent": ["some/path"],
@@ -40,6 +42,9 @@ present (a case does not need to assert every field).
   `scripts/hooks/<name>`; a path containing `/` resolves relative to the repo
   root (used by the harness's own fixture scripts under `tests/fixtures/`,
   never by a real hook case).
+- **`ac`** / **`note`** — informational only, ignored by the harness: the AC id
+  a case implements and a one-line statement of what it asserts, so a case's
+  provenance travels with the case rather than living only in a report.
 - **`env`** — extra environment variables exported to the script's process.
 - **`seed.state`** — a path relative to `tests/fixtures/` (or an absolute
   path) copied to `<tmp-project>/.wave/state.json` before the run; an empty
@@ -75,6 +80,17 @@ present (a case does not need to assert every field).
   `[<rule>] ` (Interfaces: every `reasons.tsv` template starts that way).
   Byte-exact template comparison against `hooks/reasons.tsv` is Task 13's
   job, not this harness's.
+- **`expect.reason_contains`** — a list of **literal** substrings the rendered
+  reason (or, for a warn, the `additionalContext`) must contain. Literal, not
+  glob or regex, because a reason quotes the offending dispatch and that text
+  routinely carries `*`, `[`, `$` and `\`. Use it when an AC says the reason
+  must *name* something (the active wave id, the offending prefix, the roles a
+  phase defines) — `reason_template` only checks the `[<rule>] ` prefix. A
+  substring cannot span a newline (the list is read line by line).
+- **`expect.stdout_absent`** — a list of literal substrings that must **not**
+  appear anywhere in stdout. This is how a case proves a rule did not fire (no
+  `W-MODEL-UNKNOWN` token) and how an injection case proves the hook treated
+  its input as data (no `uid=` from a substituted `id`).
 - **`expect.state_assert`** — a `jq` boolean filter evaluated against the
   temp project's `.wave/state.json` after the run.
 - **`expect.ledger_lines`** — the exact line count of

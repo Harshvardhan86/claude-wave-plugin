@@ -200,6 +200,26 @@ _wv_compare_expect() {
     assert_reason_matches_template "$want_template" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
   fi
 
+  local -a needles=()
+  while IFS= read -r s; do
+    [ -z "$s" ] && continue
+    needles+=("$s")
+  done < <(jq -r '.expect.reason_contains // [] | .[]' "$path" 2>/dev/null)
+  for s in "${needles[@]:-}"; do
+    [ -z "$s" ] && continue
+    assert_reason_contains "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  done
+
+  local -a absent_needles=()
+  while IFS= read -r s; do
+    [ -z "$s" ] && continue
+    absent_needles+=("$s")
+  done < <(jq -r '.expect.stdout_absent // [] | .[]' "$path" 2>/dev/null)
+  for s in "${absent_needles[@]:-}"; do
+    [ -z "$s" ] && continue
+    assert_stdout_absent "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  done
+
   local want_state
   want_state="$(jq -r '.expect.state_assert // empty' "$path")"
   if [ -n "$want_state" ]; then

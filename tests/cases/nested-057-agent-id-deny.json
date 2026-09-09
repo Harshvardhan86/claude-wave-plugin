@@ -1,0 +1,36 @@
+{
+  "ac": "AC-57",
+  "note": "stdin carries the measured in-subagent shape (agent_id + agent_type): W-NESTED, naming the agent and telling it to return its result.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/full-all-done.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "agent_id": "a6a129f2ae0850db1",
+    "agent_type": "general-purpose",
+    "tool_input": {
+      "description": "[W:1 P:AC R:lead] write the ACs",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-NESTED",
+    "reason_template": "W-NESTED",
+    "reason_contains": [
+      "a6a129f2ae0850db1",
+      "single dispatcher"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "ac": "AC-338",
+  "note": "solo mode, a nested dispatch (stdin carries agent_id): allowed - section 8.4 is full/demo only.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/solo.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "agent_id": "a6a129f2ae0850db1",
+    "agent_type": "general-purpose",
+    "tool_input": {
+      "description": "refactor the parser",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "stdout_absent": [
+      "W-TAG",
+      "W-NESTED",
+      "W-FORK",
+      "W-MODE",
+      "W-ROLE",
+      "W-MODEL-MISSING",
+      "W-TIER",
+      "W-MODEL-UNKNOWN",
+      "W-DESC"
+    ]
+  }
+}

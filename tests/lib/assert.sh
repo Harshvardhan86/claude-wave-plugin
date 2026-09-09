@@ -315,6 +315,32 @@ assert_reason_matches_template() {
   esac
 }
 
+assert_reason_contains() {
+  # assert_reason_contains <literal-substring> — the rendered reason (or the
+  # warn channel's additionalContext) must contain <substring> byte for byte.
+  # Matching is literal, never glob or regex: a rule reason quotes the
+  # offending input, and that input routinely carries `*`, `[`, `$` and `\`.
+  local needle="$1"
+  local reason
+  reason="$(_wv_reason_text)"
+  case "$reason" in
+    *"$needle"*) return 0 ;;
+    *) _wv_die_diff "reason_contains: '$needle' is absent from '$reason'" ;;
+  esac
+}
+
+assert_stdout_absent() {
+  # assert_stdout_absent <literal-substring> — the whole of stdout must NOT
+  # contain <substring>. This is how a case proves a rule did *not* fire (no
+  # `W-MODEL-UNKNOWN` token anywhere) and how an injection case proves the
+  # hook never evaluated its input (no `uid=` from a substituted `id`).
+  local needle="$1"
+  case "$WV_LAST_STDOUT" in
+    *"$needle"*) _wv_die_diff "stdout_absent: '$needle' is present in '$WV_LAST_STDOUT'" ;;
+    *) return 0 ;;
+  esac
+}
+
 assert_state() {
   local filter="$1"
   local state_file="$WV_PROJECT/.wave/state.json"
