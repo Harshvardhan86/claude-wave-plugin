@@ -368,9 +368,11 @@ wv_model_unknown_detail() {
 
 wv_solo_rules() {
   # Solo keeps exactly one dispatch rule: the model must be named. The tag is
-  # recorded (post-agent.sh and subagent-stop.sh ledger it) and never judged,
-  # and phases.tsv is not opened at all, so there is no tier to compare
-  # against and no phase or role to reject.
+  # never judged and phases.tsv is not opened at all, so there is no tier to
+  # compare against and no phase or role to reject. The parse here is read for
+  # one thing only — the phase and role the reason names, `SOLO` and `any role`
+  # when there is no tag. Recording the tag is post-agent.sh's job; this hook
+  # writes no state.
   wv_tag_parse "$WV_DESC" "$WV_PROMPT_TEXT"
   if ! wv_model_named; then
     local phase="${WV_TAG_PHASE:-SOLO}" role="${WV_TAG_ROLE:-any role}"
