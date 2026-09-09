@@ -1,0 +1,38 @@
+{
+  "ac": "AC-194",
+  "note": "tool_response has no resolvedModel field at all: exit 0, state.active[...].resolved_model == \"unknown\", warn(W-RESOLVE-UNKNOWN) — a distinct id from W-DOWNGRADE, so an unreadable resolvedModel and a real downgrade are never conflated.",
+  "script": "post-agent.sh",
+  "seed": {
+    "state": "state/full-all-done.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "duration_ms": 20,
+    "tool_input": {
+      "description": "[W:1 P:TDE-GREEN R:executor] implement AC-3..AC-7",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    },
+    "tool_response": {
+      "isAsync": true,
+      "status": "async_launched",
+      "agentId": "a6a129f2ae0850db1"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "warn",
+    "rule": "W-RESOLVE-UNKNOWN",
+    "reason_template": "W-RESOLVE-UNKNOWN",
+    "stdout_absent": ["W-DOWNGRADE", "permissionDecision"],
+    "state_assert": ".active[\"a6a129f2ae0850db1\"].resolved_model == \"unknown\" and .active[\"a6a129f2ae0850db1\"].status == \"launched\""
+  }
+}
