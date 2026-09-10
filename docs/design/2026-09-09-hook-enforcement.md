@@ -630,6 +630,14 @@ Changed (minimal):
 
 - A `Bash` write (`sed -i`, a heredoc into a source file) from the main session
   is not covered by §8.1; only the four edit tools are.
+- §8.1 denies only paths that git already **tracks** — `pre-edit.sh`'s `wv_main`
+  returns early on `git ls-files --error-unmatch` failing — so a
+  main-session `Write` creating a brand-new, untracked source file is allowed
+  where an `Edit` of a tracked one is refused. That is F12's narrowing, kept
+  deliberately: an untracked path has no history to protect and cannot be told
+  apart from the scratch files an orchestrator legitimately writes, and a rule
+  that guessed would deny those. The gate on new code is the commit guard, which
+  sees the file once it is staged.
 - Rules inside a worktree-isolated subagent. Hooks **do** fire there and can
   read the main project's state — the reason they are not gated is the
   `agent_id` discriminator, not the working directory. The commit guard is the
