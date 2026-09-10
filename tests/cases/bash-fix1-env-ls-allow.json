@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "fix-round-1",
+  "note": "controller ruling (fix round 1): an env assignment ahead of a non-runner command is still silent",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "FOO=bar ls" } },
+  "expect": { "decision": "silent" }
+}

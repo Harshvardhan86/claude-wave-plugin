@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "fix-round-1",
+  "note": "controller ruling (fix round 1): the declared lexical bound still holds - sudo make appearing as TEXT after echo (not at the start of a command segment) is silent",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "echo sudo make" } },
+  "expect": { "decision": "silent" }
+}

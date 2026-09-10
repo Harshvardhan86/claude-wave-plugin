@@ -362,16 +362,35 @@ root. The reason says: locate with Grep/Glob, then read through a subagent that
 returns the conclusion. `Grep`, `Glob` and `LS` are never gated.
 
 **8.3 Builds and tests.** A main-session `Bash` whose `tool_input.command`
-matches a test/build runner is denied (`W-BASH`):
+matches a test/build runner is denied (`W-BASH`). Shipped form (widened by
+the Task 9 review's Fix round 1, 2026-09-10 — the original anchor admitted
+none of leading whitespace, an env-var assignment, or a wrapper command, so
+`sudo make`, `CI=1 npm test` and ` make` all silently passed):
 
 ```
-(^|[;&|]\s*)(npx\s+)?(jest|vitest|mocha|playwright|pytest|py\.test|go test|cargo (test|build)|dotnet (test|build)|make|tsc|ng (build|test)|vite build|npm (test|run (build|test|e2e))|pnpm (test|build)|yarn (test|build))\b
+(^|[;&|])\s*((sudo|time|nice|env)(\s+-\S+)*\s+|[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(npx\s+)?(jest|vitest|mocha|playwright|pytest|py\.test|go test|cargo (test|build)|dotnet (test|build)|make|tsc|ng (build|test)|vite build|npm (test|run (build|test|e2e))|pnpm (test|build)|yarn (test|build))\b
 ```
+
+The runner name may now be preceded, at the start of the command or right
+after a `;`/`&`/`|`, by any amount of whitespace, any number of env-var
+assignments (`CI=1 npm test`), and any of the wrapper commands `sudo`,
+`time`, `nice`, `env` — each optionally carrying its own dash-flags
+(`sudo -E`) — before an optional `npx`. A wrapper/env token still has to
+look like one, so the anchor cannot bridge across an unrelated command:
+`echo sudo make` stays silent (`sudo make` is text following `echo`, not a
+wrapper), as does `FOO=bar ls` and `sudo ls` (neither names a runner). A
+flag's own bare argument (the `5` in `nice -n 5`) is not skipped — a
+declared bound, not a Fix-round-1 requirement.
 
 Everything else is allowed with no output at all (`git status`/`log`/`diff`,
 `ls`, `wc`, reading `.wave/`), so ordinary inspection produces no noise. A
 `Bash` write (`sed -i src/x.ts`) is **not** covered — §13 records it as a
-declared bound rather than pretending the hook closes it.
+declared bound rather than pretending the hook closes it. Neither is a
+runner name reached through a shell built-in indirection (`bash -c "npm
+test"`, a variable, or an alias) — the hook is a deliberate lexical filter
+over the literal command text, never a shell interpreter (Fix round 1
+ruling: "do not try to be shell-quote-aware; the declared lexical bound
+stands for `bash -c "…"`, variables and aliases").
 
 **8.4 Nested dispatch.** An `Agent` call whose stdin carries `agent_id` is
 denied (`W-NESTED`): "the orchestrator is the single dispatcher; return your

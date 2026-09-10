@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "fix-round-1",
+  "note": "controller ruling (fix round 1): the time wrapper must not hide the runner",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "time make" } },
+  "expect": { "decision": "deny", "rule": "W-BASH", "reason_contains": ["make"] }
+}
