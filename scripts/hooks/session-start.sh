@@ -76,7 +76,14 @@ wv_main() {
   if [ "$source_val" = "compact" ]; then
     local latest
     if latest="$(wv_latest_checkpoint)"; then
-      clauses+=("compaction ran; re-read .wave/checkpoints/$latest in a fresh terminal (Invariant 7).")
+      # `wv_latest_checkpoint` returns a project-relative PATH (it prints
+      # `.wave/checkpoints/<file>` itself), so this clause must not prefix it
+      # again: the shortened wording introduced in fix round 1 did, and rendered
+      # `.wave/checkpoints/.wave/checkpoints/<file>` — a path no operator can open.
+      # The case asserted the FILENAME, which is a substring of the doubled path,
+      # so nothing failed; session-327 now pins the whole path and forbids the
+      # doubled prefix.
+      clauses+=("compaction ran; re-read $latest in a fresh terminal (Invariant 7).")
     else
       clauses+=("compaction ran; no checkpoint — re-derive from .wave/state.json in a fresh terminal (Invariant 7).")
     fi

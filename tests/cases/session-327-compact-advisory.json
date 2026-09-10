@@ -1,7 +1,7 @@
 {
   "script": "session-start.sh",
   "ac": "AC-327",
-  "note": "source:compact adds the invariant-7 advisory naming the latest checkpoint and asking for a fresh terminal",
+  "note": "source:compact adds the invariant-7 advisory naming the latest checkpoint and asking for a fresh terminal. The path it names must be the one an operator can OPEN: wv_latest_checkpoint already returns a project-relative path (.wave/checkpoints/<file>), so a clause that prefixes it again renders .wave/checkpoints/.wave/checkpoints/<file> — a path that does not exist. Asserting the filename alone cannot see that, which is how fix round 1's reworded clause shipped it; stdout_absent pins the doubled prefix and reason_contains now pins the whole path rather than its tail.",
   "seed": {
     "state": "state/full-ac-done.json",
     "files": {
@@ -17,8 +17,11 @@
     "rule": "W-SESSION",
     "reason_contains": [
       "Invariant 7",
-      "2026-09-09T13:00:00Z-precompact.md",
+      ".wave/checkpoints/2026-09-09T13:00:00Z-precompact.md",
       "fresh terminal"
+    ],
+    "stdout_absent": [
+      ".wave/checkpoints/.wave/checkpoints/"
     ]
   }
 }
