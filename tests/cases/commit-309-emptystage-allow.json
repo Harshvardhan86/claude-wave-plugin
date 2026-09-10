@@ -1,0 +1,18 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-309",
+  "note": "nothing is staged in the index; a git commit -a fixture still allows (the guard only inspects the index)",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -a -m wip"
+    }
+  },
+  "expect": {
+    "decision": "allow"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-305",
+  "note": "staged planning docs + a plain git status -> silent, not a git commit at all",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git status"
+    }
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

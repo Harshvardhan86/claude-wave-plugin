@@ -1,0 +1,23 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-8",
+  "note": "no active wave state at all; a staged planning doc + a real git commit is still a silent no-op",
+  "seed": {
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

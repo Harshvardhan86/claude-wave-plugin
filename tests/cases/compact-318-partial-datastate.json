@@ -1,0 +1,18 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-318",
+  "note": "partial data state: some artifacts present, the checkpoint lists that subset",
+  "seed": {
+    "state": "state/full-red-done.json",
+    "files": {
+      ".wave/red.md": "RED-VERIFIED failing=3\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "auto"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

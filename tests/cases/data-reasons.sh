@@ -84,7 +84,8 @@ check_reasons() {
     done
   fi
 
-  [ "${#actual_order[@]}" = "31" ] || echo "expected 31 rule rows, got ${#actual_order[@]}"
+  # 31 through Task 9; Task 10 added W-SESSION, W-REMINDER and W-SCORECARD.
+  [ "${#actual_order[@]}" = "34" ] || echo "expected 34 rule rows, got ${#actual_order[@]}"
 }
 
 diffs="$(check_reasons "$TSV")"

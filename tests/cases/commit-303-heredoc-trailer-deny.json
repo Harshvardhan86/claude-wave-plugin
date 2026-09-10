@@ -1,0 +1,19 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-303",
+  "note": "the whole command string is scanned, not only -m: a heredoc body carrying the trailer still denies",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -F - <<'EOF'\nfix: parse config\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\nEOF"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-TRAILER"
+  }
+}

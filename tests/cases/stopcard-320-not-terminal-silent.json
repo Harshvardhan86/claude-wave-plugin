@@ -1,0 +1,20 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-320",
+  "note": "a non-empty ledger but AD (full mode's terminal phase) is not done -> silent, no marker file",
+  "seed": {
+    "state": "state/full-red-done.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"TDE-RED\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop"
+  },
+  "expect": {
+    "decision": "silent",
+    "files_absent": [
+      ".wave/.scorecard-printed"
+    ]
+  }
+}

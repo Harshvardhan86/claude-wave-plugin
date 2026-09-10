@@ -1,0 +1,15 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-9",
+  "note": "no active wave; PreCompact is a silent no-op and no checkpoints dir is created",
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "auto"
+  },
+  "expect": {
+    "decision": "silent",
+    "files_absent": [
+      ".wave/checkpoints"
+    ]
+  }
+}

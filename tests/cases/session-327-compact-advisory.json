@@ -1,0 +1,24 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-327",
+  "note": "source:compact adds the invariant-7 advisory naming the latest checkpoint and asking for a fresh terminal",
+  "seed": {
+    "state": "state/full-ac-done.json",
+    "files": {
+      ".wave/checkpoints/2026-09-09T13:00:00Z-precompact.md": "# checkpoint\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "compact"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SESSION",
+    "reason_contains": [
+      "Invariant 7",
+      "2026-09-09T13:00:00Z-precompact.md",
+      "fresh terminal"
+    ]
+  }
+}

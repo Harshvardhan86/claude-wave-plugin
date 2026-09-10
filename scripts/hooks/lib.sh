@@ -931,3 +931,194 @@ wv_rule_warn() {
   done
   wv_warn "$rule" "${args[@]}"
 }
+
+# ---------------------------------------------------------------------------
+# 11. Phase-order and checkpoint helpers (Task 10), shared by
+#     session-start.sh, user-prompt.sh and pre-compact.sh.
+#
+# These are a MINIMAL, READ-ONLY, ADVISORY-ONLY port of pre-agent.sh's
+# wv_condition_met / wv_phase_done / wv_after_unmet. They answer "what would a
+# human call the last completed step and the next one" for a banner or a
+# reminder — never a gate — so unlike pre-agent.sh's versions they collapse
+# every "cannot be measured" case (an unreadable findings file, an unanswered
+# ui/behaviour_change/cr flag) to a plain "not met" rather than raising a
+# separate W-ARTIFACT / W-MARKER / W-SCOPE deny: nothing here ever denies
+# anything, so there is no reason to distinguish "skip" from "cannot tell".
+#
+# Task 10 does NOT source pre-agent.sh for this — sourcing it would run its
+# entire PreToolUse(Agent) rule chain against whatever event is live and then
+# `exit 0` before this file's caller ran another line, the same reason
+# subagent-stop.sh gives for not sourcing it either. hooks/phases.tsv is read
+# again through this library's own wv_row_line / wv_row_get / WV_COL_*
+# (section 7b), so the column numbers are still read from one place.
+# ---------------------------------------------------------------------------
+
+wv_state_phase_status() {
+  # wv_state_phase_status <code> -> state.phases[<code>].status, or "" when
+  # the key, the map, or the whole `phases` object is absent. A copy of
+  # pre-agent.sh's function of the same name and identical behaviour (it
+  # reads only WV_STATE, which this library already owns) — added here
+  # because lib.sh section 11's helpers need it and this file does not
+  # source pre-agent.sh (see the section-11 header). Harmless if
+  # pre-agent.sh's own copy loads after this one; the two can never disagree.
+  [ -n "$WV_STATE" ] || return 0
+  printf '%s' "$WV_STATE" | jq -r --arg c "$1" \
+    'try ((.phases // {})[$c].status // "") catch ""' 2>/dev/null
+  return 0
+}
+
+wv_up_condition_met() {
+  # wv_up_condition_met <code> -> 0 when the row's condition holds in the
+  # current state, 1 otherwise (including "cannot be measured", which a gate
+  # would refuse to guess and an advisory just treats as not-yet).
+  local code="$1" cond file
+  cond="$(wv_row_get "$code" "$WV_COL_CONDITION")" || return 1
+  case "$cond" in
+    ''|always) return 0 ;;
+    'ui|behaviour_change')
+      [ "$WV_UI" = "true" ] && return 0
+      [ "$WV_BC" = "true" ] && return 0
+      return 1
+      ;;
+    cr)
+      [ "$WV_CR" = "true" ] && return 0
+      return 1
+      ;;
+    findings:*)
+      file="$WV_WAVE_DIR/findings/${cond#findings:}.md"
+      [ -f "$file" ] || return 1
+      wv_scan "$file" '^FINDINGS: [0-9]+$' || return 1
+      [ "$WV_SCAN_COUNT" != "0" ] || return 1
+      local line n
+      line="$(command grep -m1 -E '^FINDINGS: [0-9]+$' "$file" 2>/dev/null)"
+      n="${line#FINDINGS: }"
+      case "$n" in ''|*[!0-9]*) return 1 ;; esac
+      [ "$((10#$n))" -ge 1 ] && return 0
+      return 1
+      ;;
+    *) return 0 ;;   # an unrecognised keyword: advisory fails open to "met"
+  esac
+}
+
+wv_up_phase_settled() {
+  # wv_up_phase_settled <code> -> 0 when the row counts as settled for the
+  # purpose of walking `after`: its state row says done, its `modes` exclude
+  # the active mode, or its own condition does not hold (the skip rule).
+  local code="$1" modes
+  [ "$(wv_state_phase_status "$code")" = "done" ] && return 0
+  modes="$(wv_row_get "$code" "$WV_COL_MODES")" || return 1
+  case ",$modes," in
+    *",$WV_MODE,"*) : ;;
+    *) return 0 ;;
+  esac
+  wv_up_condition_met "$code" && return 1
+  return 0
+}
+
+WV_UP_VISITED=""
+
+wv_up_after_settled() {
+  # wv_up_after_settled <code> -> 0 when every predecessor in `after` is
+  # settled (done or skipped), walking through a skipped predecessor into ITS
+  # predecessors the same way pre-agent.sh's order walk does, so a wave with
+  # cr_enabled false still does not report CR's successor as allowed before
+  # TDE-GREEN is actually done.
+  WV_UP_VISITED=""
+  wv_up_after_settled_walk "$1"
+}
+
+wv_up_after_settled_walk() {
+  local code="$1" after p
+  local -a preds=()
+  case " $WV_UP_VISITED " in *" $code "*) return 0 ;; esac
+  WV_UP_VISITED="$WV_UP_VISITED $code"
+  after="$(wv_row_get "$code" "$WV_COL_AFTER")" || return 0
+  [ -n "$after" ] || return 0
+  IFS=',' read -ra preds <<<"$after"
+  for p in "${preds[@]}"; do
+    [ -n "$p" ] || continue
+    if [ "$(wv_state_phase_status "$p")" = "done" ]; then
+      continue
+    fi
+    if wv_up_phase_settled "$p"; then
+      wv_up_after_settled_walk "$p" || return 1
+      continue
+    fi
+    return 1
+  done
+  return 0
+}
+
+wv_last_done_phase() {
+  # wv_last_done_phase -> the LAST row of hooks/phases.tsv (file order) whose
+  # `modes` include the active mode and whose state row says done, or "none".
+  # Solo mode does not consult phases.tsv anywhere else in this framework;
+  # callers in solo mode should not call this at all.
+  [ -f "$WV_PHASES_TSV" ] || { printf 'none'; return 0; }
+  local last="none" code modes rest
+  while IFS=$'\t' read -r code modes rest; do
+    case "$code" in ''|'#'*|code) continue ;; esac
+    case ",$modes," in
+      *",$WV_MODE,"*) : ;;
+      *) continue ;;
+    esac
+    [ "$(wv_state_phase_status "$code")" = "done" ] && last="$code"
+  done < "$WV_PHASES_TSV"
+  printf '%s' "$last"
+  return 0
+}
+
+wv_next_allowed_phase() {
+  # wv_next_allowed_phase -> the first `when=phase` row (file order) that is
+  # allowed in this mode, not already done, whose own condition holds, and
+  # whose predecessors are all settled — i.e. the phase pre-agent.sh would let
+  # through right now — or "none" when every such row is already settled.
+  [ -f "$WV_PHASES_TSV" ] || { printf 'none'; return 0; }
+  local code modes when rest
+  while IFS=$'\t' read -r code modes when rest; do
+    case "$code" in ''|'#'*|code) continue ;; esac
+    [ "$when" = "phase" ] || continue
+    case ",$modes," in
+      *",$WV_MODE,"*) : ;;
+      *) continue ;;
+    esac
+    [ "$(wv_state_phase_status "$code")" = "done" ] && continue
+    wv_up_condition_met "$code" || continue
+    if wv_up_after_settled "$code"; then
+      printf '%s' "$code"
+      return 0
+    fi
+  done < "$WV_PHASES_TSV"
+  printf 'none'
+  return 0
+}
+
+wv_latest_checkpoint() {
+  # wv_latest_checkpoint -> the project-relative path of the newest file
+  # under .wave/checkpoints/ (ISO-8601 timestamp filenames sort correctly as
+  # plain text), or empty when the directory has none. Never fails.
+  [ -n "$WV_WAVE_DIR" ] && [ -d "$WV_WAVE_DIR/checkpoints" ] || return 1
+  local f last=""
+  for f in "$WV_WAVE_DIR"/checkpoints/*; do
+    [ -f "$f" ] || continue
+    last="$f"
+  done
+  [ -n "$last" ] || return 1
+  printf '.wave/checkpoints/%s' "${last##*/}"
+  return 0
+}
+
+wv_wave_stale_24h() {
+  # wv_wave_stale_24h -> 0 (true) when state.started is more than 24h in the
+  # past. Never fails loudly: an unparseable or absent `started` is "not
+  # stale" (a hook must not invent a warning from a measurement it cannot
+  # make).
+  [ -n "$WV_STATE" ] || return 1
+  local started started_epoch now_epoch
+  started="$(printf '%s' "$WV_STATE" | jq -r '.started // empty' 2>/dev/null)"
+  [ -n "$started" ] || return 1
+  started_epoch="$(date -u -d "$started" +%s 2>/dev/null)"
+  case "$started_epoch" in ''|*[!0-9]*) return 1 ;; esac
+  now_epoch="$(date -u +%s)"
+  [ $((now_epoch - started_epoch)) -gt 86400 ]
+}

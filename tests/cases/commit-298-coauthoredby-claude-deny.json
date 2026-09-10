@@ -1,0 +1,23 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-298",
+  "note": "a Co-Authored-By: Claude ... trailer in the -m message denies W-COMMIT-TRAILER, quoting the matched text",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"fix: parse config\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\""
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-TRAILER",
+    "reason_template": "W-COMMIT-TRAILER",
+    "reason_contains": [
+      "Co-Authored-By: Claude"
+    ]
+  }
+}

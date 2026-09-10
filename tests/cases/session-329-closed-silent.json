@@ -1,0 +1,16 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-329",
+  "note": "status:closed -> silent no-op",
+  "seed": {
+    "state": "state/closed.json"
+  },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  },
+  "expect": {
+    "decision": "silent",
+    "negative_control_for": "W-SESSION"
+  }
+}

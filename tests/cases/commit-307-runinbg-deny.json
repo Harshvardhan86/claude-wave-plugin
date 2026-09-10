@@ -1,0 +1,26 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-307",
+  "note": "run_in_background:true on the Agent-adjacent Bash call does not hide a git commit from the guard",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m x",
+      "run_in_background": true
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC"
+  }
+}

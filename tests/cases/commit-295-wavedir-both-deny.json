@@ -1,0 +1,31 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-295",
+  "note": ".wave/state.json and .wave/ledger.jsonl staged together deny W-COMMIT-DOC naming BOTH paths",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      ".wave/ledger.jsonl": "{}\n"
+    },
+    "staged": [
+      ".wave/state.json",
+      ".wave/ledger.jsonl"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_contains": [
+      ".wave/state.json",
+      ".wave/ledger.jsonl",
+      "wave-state-and-artifacts"
+    ]
+  }
+}

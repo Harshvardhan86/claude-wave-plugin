@@ -35,6 +35,15 @@
 # declared bound (it is not a tool this client sends at all; the matcher
 # entry is forward-compatibility only), so it is exercised only via a
 # synthetic fixture using the `file_path` shape, same as `Edit`/`Write`.
+#
+# Task 10 (2026-09-10) adds `trigger` (PreCompact), `source` (SessionStart)
+# and top-level `prompt` (UserPromptSubmit). No probe log fired any of these
+# three events — the controller's task-10 brief explicitly directs using the
+# field names spec section 2 / section 8.6 / section 10 document instead of
+# waiting on a fresh probe, since PreCompact/SessionStart/UserPromptSubmit
+# cannot be triggered as a side effect of a normal tool-use probe session.
+# Recorded here rather than silently added so a later probe can confirm or
+# correct them.
 agent_id
 agent_transcript_path
 agent_type
@@ -44,11 +53,14 @@ duration_ms
 hook_event_name
 last_assistant_message
 permission_mode
+prompt
 prompt_id
 session_crons
 session_id
+source
 stop_hook_active
 tool_input
+trigger
 tool_input.command
 tool_input.description
 tool_input.file_path

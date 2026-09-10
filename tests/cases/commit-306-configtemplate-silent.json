@@ -1,0 +1,24 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-306",
+  "note": "'git config commit.template x' only mentions or configures around commit, it is not one; staged planning docs stay silent",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git config commit.template x"
+    }
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-323",
+  "note": "demo mode, TEET done -> prints the scorecard pointer",
+  "seed": {
+    "state": "state/demo-teet-done.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"TEET\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SCORECARD"
+  }
+}

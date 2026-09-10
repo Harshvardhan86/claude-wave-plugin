@@ -1,0 +1,18 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-302",
+  "note": "a vendor package name and a CLI reference are not trailers",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"bump @anthropic-ai/sdk to 0.30 and pin the claude-cli path\""
+    }
+  },
+  "expect": {
+    "decision": "allow"
+  }
+}

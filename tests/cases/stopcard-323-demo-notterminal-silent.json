@@ -1,0 +1,17 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-323",
+  "note": "demo mode, non-empty ledger, TEET not done -> silent",
+  "seed": {
+    "state": "state/demo-through-green.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

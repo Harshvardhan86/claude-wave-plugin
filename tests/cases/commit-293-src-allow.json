@@ -1,0 +1,25 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-293",
+  "note": "the same repo shape but only src/app.ts staged -> allow (negative control for W-COMMIT-DOC)",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "src/app.ts": "export {};\n"
+    },
+    "staged": [
+      "src/app.ts"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "allow",
+    "negative_control_for": "W-COMMIT-DOC"
+  }
+}
