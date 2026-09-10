@@ -191,11 +191,13 @@ wv_pcg_doc_check() {
   # length unboundable however hard the list itself was capped; the remedy now
   # names the command and points at the list above it.
   local desc_joined
-  # 155, not 170: the template's fixed part is 239 characters, so 170 rendered a
-  # 409-character reason against the corpus's 400 bound. Measured with a single
-  # 251-character staged path (tests/cases/reasons-390-list-cap.sh prints it), not
-  # estimated.
-  desc_joined="$(wv_list_cap 4 155 ', ' "${hit_descs[@]}")"
+  # 145, measured rather than estimated. The template's fixed part is 239
+  # characters, so a budget of 170 rendered 409 against the corpus's 400 bound and
+  # 155 rendered 394 — inside the bound with SIX characters of headroom, which the
+  # next wording change would spend. tests/cases/reasons-390-list-cap.sh drives a
+  # single 251-character staged path and prints the resulting length, and
+  # tests/tools/reason-corpus.sh reports the corpus-wide maximum.
+  desc_joined="$(wv_list_cap 4 145 ', ' "${hit_descs[@]}")"
 
   if [ -f "$WV_WAVE_DIR/approvals/commit-doc.md" ]; then
     wv_rule_warn W-COMMIT-DOC "$desc_joined"

@@ -129,13 +129,12 @@ check_reasons() {
   fi
   # And the precedence NUMBER on each row must be its 1-based position, so the
   # column a consumer sorts on cannot disagree with the order it is written in.
-  local k pos=0
+  local pos=0
   while IFS=$'\t' read -r id precedence text; do
     case "$id" in ''|'#'*|rule_id) continue ;; esac
     pos=$((pos + 1))
     [ "$precedence" = "$pos" ] || echo "$id: precedence column says '$precedence', row position is $pos"
   done < "$file"
-  k=0
 }
 
 diffs="$(check_reasons "$TSV")"

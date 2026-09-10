@@ -36,7 +36,17 @@
 # `set -e`: every finding must reach the table.
 #
 #   bash tests/tools/reason-corpus.sh
-#   bash tests/tools/reason-corpus.sh --verbose    # print every rendered reason
+#   bash tests/tools/reason-corpus.sh --verbose          # print every rendered reason
+#   bash tests/tools/reason-corpus.sh --replay-enforce   # AC-394/396/397 only
+#
+# `--replay-enforce` replays the WHOLE deny/block corpus twice, once with
+# `enforce:"warn"` forced into the state and once with `enforce:"block"`, and
+# asserts that every fixture warns under the first and denies under the second. It
+# lives here rather than in a case of its own so the ENUMERATION is shared with the
+# sections above: a second copy of "which cases are the deny corpus" is a second
+# thing to keep in step, and the copy nobody runs is the one that drifts. It is
+# driven by tests/cases/warn-mode-396-whole-corpus.sh, and it is a separate mode
+# because 219 fixtures x 2 runs is ~3 minutes that the reason checks do not need.
 
 set -u
 
@@ -49,7 +59,11 @@ export LC_ALL=C.utf8
 WV_CORPUS_TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WV_CORPUS_ROOT="$(cd "$WV_CORPUS_TOOLS/../.." && pwd)"
 WV_VERBOSE=0
-[ "${1:-}" = "--verbose" ] && WV_VERBOSE=1
+WV_REPLAY=0
+case "${1:-}" in
+  --verbose) WV_VERBOSE=1 ;;
+  --replay-enforce) WV_REPLAY=1 ;;
+esac
 
 for tool in jq git python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -320,6 +334,167 @@ while IFS= read -r wv_named; do
   [ -n "$wv_named" ] || continue
   [ -n "${WV_TMPL[$wv_named]+set}" ] || wv_finding "index: scripts/ names $wv_named but hooks/reasons.tsv has no template for it"
 done < <(command grep -rhoE 'W-[A-Z][A-Z0-9]*(-[A-Z0-9]+)*' "$WV_CORPUS_ROOT/scripts" 2>/dev/null | sort -u)
+
+# ---------------------------------------------------------------------------
+# Section: replay (AC-394, AC-396, AC-397), only under --replay-enforce.
+# ---------------------------------------------------------------------------
+#
+# THE INVERSE CONTROL IS THE POINT. Replaying the corpus under `enforce:"warn"`
+# and finding that nothing denies passes just as well against a plugin that denies
+# NOTHING AT ALL, which is the failure an escape hatch is most likely to hide —
+# nobody notices that enforcement stopped. So every fixture is run under
+# `enforce:"block"` FIRST and must produce its original deny or block, and only then
+# under warn.
+#
+# The warn CHANNEL differs by event and the difference is measured rather than
+# assumed: PreToolUse and PostToolUse carry `additionalContext`; SubagentStop has no
+# such field, so its channel is `state.phases[<phase>].warned` plus `warn:[…]` on
+# the ledger line.
+
+if [ "$WV_REPLAY" = "1" ]; then
+  # Two fixtures are EXCLUDED, BY NAME so the exclusion cannot quietly widen, and
+  # each for a reason that is about the fixture rather than about the rule:
+  #
+  #   lib-enforce-absent        its premise IS the enforce value — it asserts what
+  #                             the library does when `enforce` is ABSENT, so
+  #                             writing a value into it does not replay the case,
+  #                             it deletes it.
+  #   _selfcheck-positive-smoke it drives tests/fixtures/fake-hook.sh, a test-only
+  #                             script that emits a fixed [W-FAKE] deny to prove
+  #                             the HARNESS's plumbing. It consults no state and
+  #                             knows nothing about enforce; there is no rule here
+  #                             for an escape hatch to convert.
+  wv_replay_excluded() {
+    case "$1" in
+      lib-enforce-absent|_selfcheck-positive-smoke) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+
+  printf '=== replay (enforce=block, then enforce=warn) ===\n'
+  wv_rp_total=0
+  wv_rp_skipped=0
+  wv_rp_block_ok=0
+  wv_rp_warn_ok=0
+
+  while IFS= read -r f; do
+    [ -s "$f" ] || continue
+    jq -e 'type=="object"' "$f" >/dev/null 2>&1 || continue
+    rid="$(jq -r '.expect.rule // empty' "$f" 2>/dev/null)"
+    dec="$(jq -r '.expect.decision // empty' "$f" 2>/dev/null)"
+    hf="$(jq -r '.expect.harness_fails // false' "$f" 2>/dev/null)"
+    case "$dec" in deny|block) ;; *) continue ;; esac
+    [ "$hf" = "true" ] && continue
+    [ -n "$rid" ] || continue
+    cn="$(basename "$f" .json)"
+    if wv_replay_excluded "$cn"; then
+      wv_rp_skipped=$((wv_rp_skipped + 1))
+      continue
+    fi
+    st="$(jq -r '.seed.state // empty' "$f" 2>/dev/null)"
+    if [ -z "$st" ]; then
+      wv_finding "replay: $cn declares expect.decision $dec but seeds no state, so `enforce` cannot be flipped for it"
+      continue
+    fi
+    src=""
+    for cand in "$WV_CORPUS_ROOT/tests/fixtures/$st" "$WV_CORPUS_ROOT/tests/fixtures/state/$st" "$st"; do
+      [ -f "$cand" ] && { src="$cand"; break; }
+    done
+    if [ -z "$src" ]; then
+      wv_finding "replay: $cn seeds a state fixture that cannot be found: $st"
+      continue
+    fi
+    script="$(jq -r '.script // empty' "$f")"
+    [ -n "$script" ] || { wv_finding "replay: $cn has no script field"; continue; }
+    wv_rp_total=$((wv_rp_total + 1))
+
+    for mode in block warn; do
+      flipped="$WV_CORPUS_TMP/rp-$cn-$mode.state.json"
+      jq --arg e "$mode" '.enforce = $e' "$src" > "$flipped" 2>/dev/null \
+        || { wv_finding "replay: $cn/$mode: could not flip enforce in $st"; continue; }
+      rpcase="$WV_CORPUS_TMP/rp-$cn-$mode.json"
+      jq --arg s "$flipped" '.seed.state = $s' "$f" > "$rpcase" 2>/dev/null \
+        || { wv_finding "replay: $cn/$mode: could not rewrite the case"; continue; }
+
+      WV_PROJECT=""
+      if ! run_hook "$script" "$rpcase"; then
+        wv_finding "replay: $cn/$mode: run_hook failed: $WV_LAST_STDERR"
+        continue
+      fi
+      if [ "$WV_LAST_EXIT" != "0" ]; then
+        wv_finding "replay: $cn/$mode: exit $WV_LAST_EXIT, want 0"
+        continue
+      fi
+
+      if [ "$mode" = "block" ]; then
+        got="$(_wv_reason_text)"
+        case "$dec" in
+          deny)
+            if _wv_is_deny && [ "${got#"[$rid] "}" != "$got" ]; then
+              wv_rp_block_ok=$((wv_rp_block_ok + 1))
+            else
+              wv_finding "replay: $cn/block: want deny($rid), got '$WV_LAST_STDOUT'"
+            fi
+            ;;
+          block)
+            if _wv_is_block && [ "${got#"[$rid] "}" != "$got" ]; then
+              wv_rp_block_ok=$((wv_rp_block_ok + 1))
+            else
+              wv_finding "replay: $cn/block: want block($rid), got '$WV_LAST_STDOUT'"
+            fi
+            ;;
+        esac
+        continue
+      fi
+
+      # warn: nothing may deny or block, and the id must be on this event's own
+      # warn channel.
+      if _wv_is_deny || _wv_is_block; then
+        wv_finding "replay: $cn/warn: enforce=warn still denied or blocked: '$WV_LAST_STDOUT'"
+        continue
+      fi
+      ctx="$(printf '%s' "$WV_LAST_STDOUT" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null)"
+      case "$ctx" in
+        *"[$rid] "*) wv_rp_warn_ok=$((wv_rp_warn_ok + 1)); continue ;;
+      esac
+      # SubagentStop: the state and the ledger line ARE the channel.
+      if [ -f "$WV_PROJECT/.wave/state.json" ] \
+         && jq -e --arg r "[$rid] " '[(.phases // {})[]? | (.warned // [])[]?] | map(startswith($r)) | any' \
+              "$WV_PROJECT/.wave/state.json" >/dev/null 2>&1; then
+        wv_rp_warn_ok=$((wv_rp_warn_ok + 1))
+        continue
+      fi
+      if [ -f "$WV_PROJECT/.wave/ledger.jsonl" ] \
+         && jq -se --arg r "[$rid] " '[.[] | (.warn // [])[]?] | map(startswith($r)) | any' \
+              "$WV_PROJECT/.wave/ledger.jsonl" >/dev/null 2>&1; then
+        wv_rp_warn_ok=$((wv_rp_warn_ok + 1))
+        continue
+      fi
+      wv_finding "replay: $cn/warn: $rid reached no warn channel — no additionalContext, no phases[].warned, no ledger warn. stdout='$WV_LAST_STDOUT'"
+    done
+  done < <(find "$WV_CORPUS_ROOT/tests/cases" -type f -name '*.json' | sort)
+
+  printf 'replayed=%s excluded=%s block_ok=%s warn_ok=%s findings=%s\n' \
+    "$wv_rp_total" "$wv_rp_skipped" "$wv_rp_block_ok" "$wv_rp_warn_ok" "$wv_fail_count"
+  if [ "${#WV_FINDINGS[@]}" -gt 0 ]; then
+    printf '\n=== findings ===\n'
+    for wv_f in "${WV_FINDINGS[@]}"; do printf 'FAIL %s\n' "$wv_f"; done
+  fi
+  [ "$wv_rp_total" -ge 100 ] || {
+    printf 'FAIL replay: only %s fixture(s) were replayed — that is a failed enumeration, not a small corpus\n' "$wv_rp_total"
+    wv_fail_count=$((wv_fail_count + 1))
+  }
+  [ "$wv_rp_block_ok" = "$wv_rp_total" ] || {
+    printf 'FAIL replay: %s of %s denied under enforce=block\n' "$wv_rp_block_ok" "$wv_rp_total"
+    wv_fail_count=$((wv_fail_count + 1))
+  }
+  [ "$wv_rp_warn_ok" = "$wv_rp_total" ] || {
+    printf 'FAIL replay: %s of %s warned under enforce=warn\n' "$wv_rp_warn_ok" "$wv_rp_total"
+    wv_fail_count=$((wv_fail_count + 1))
+  }
+  [ "$wv_fail_count" -eq 0 ]
+  exit $?
+fi
 
 # ---------------------------------------------------------------------------
 # Section: arity.

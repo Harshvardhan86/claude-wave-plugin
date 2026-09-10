@@ -63,6 +63,13 @@ wv_pre_pair() {
   local label="$1" script="$2" rule="$3" fixture="$4" filter="$5" setup="$6"
   local mode got
 
+  # RESET PER PAIR. WV_BLOCK_REASON carries the deny text from this pair's block
+  # run into its warn run, and leaving the previous pair's value in it meant a warn
+  # run whose own block run had failed to set it would compare against ANOTHER
+  # rule's text — which either passes by accident or fails with a message naming the
+  # wrong pair. Cleared here so the comparison is only ever within one pair.
+  WV_BLOCK_REASON=""
+
   for mode in block warn; do
     WV_PROJECT="$(mkproj)"
     local st="$WV_RUN_TMP/$name-$label-$mode-state.json"
@@ -115,6 +122,11 @@ wv_pre_pair() {
       fi
       # The SAME rendered text, not merely the same id: an escape hatch that
       # reworded the reason would leave a record nobody could match to the deny.
+      # An EMPTY block reason is a failure of its own — it means the block half
+      # never produced a reason to compare against, and silently comparing "" to ""
+      # would report this pair as proved.
+      [ -n "$WV_BLOCK_REASON" ] || \
+        fail "$label/warn: the block half recorded no reason, so there is nothing to compare the warning against"
       [ "$got" = "${WV_BLOCK_REASON:-}" ] || \
         fail "$label/warn: the warn text differs from the deny text.
   block: ${WV_BLOCK_REASON:-}
