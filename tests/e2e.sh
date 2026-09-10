@@ -471,7 +471,27 @@ wv_e2e_scenario_b() {
 # long predecessor chain that would need real phases marked done).
 # ---------------------------------------------------------------------------
 
-# wv_e2e_scenario_c_attempt sets these; the wrapper below reads them.
+# THE RETRY IS GONE, and the reason is the fix rather than the statistics.
+#
+# This scenario used to retry itself once, in a fresh scratch project, on one
+# specific signature: tier_ok null with tier_verified false and turns 0, which is
+# SubagentStop arriving before the client had flushed the stopping agent's own
+# transcript (measured at roughly one live run in five while this file was written).
+# Task 13 fixed that in the hook — scripts/hooks/subagent-stop.sh now waits, bounded
+# at 12 x 200 ms, for the transcript to hold a complete assistant line and to stop
+# growing before reading it, and marks the ledger line transcript_incomplete if it
+# cannot confirm — and tests/cases/stop-181-transcript-settle.sh drives that exact
+# race deterministically with a background writer.
+#
+# Keeping the retry after fixing the defect would MASK a recurrence of it: the
+# retry's whole design is to make this signature not fail the run. So the signature
+# is still RECOGNISED, and named in the failure message when it appears, but it is
+# now a hard failure like any other. Evidence for the removal, in the order it
+# carries weight: the deterministic case proves the settle converts this exact
+# signature into a correct read; three consecutive full e2e runs passed
+# scenario (c) on the first attempt with tier_ok true, tier_verified true, turns 2.
+# Three runs do not by themselves exclude a one-in-five rate — the mechanism is the
+# primary evidence and the runs are the confirmation.
 WV_SC_C_OK=0
 WV_SC_C_RACE=0
 WV_SC_C_MSG=""
@@ -531,24 +551,16 @@ wv_e2e_scenario_c_attempt() {
   tier_verified="$(jq -sr '[.[] | select(.phase == "AD" and .role == "executor")][0].tier_verified' "$ledger" 2>/dev/null)"
   turns="$(jq -sr '[.[] | select(.phase == "AD" and .role == "executor")][0].turns' "$ledger" 2>/dev/null)"
   if [ "$tier_ok" != "true" ]; then
-    # A specific, previously-observed signature (measured while building this
-    # file, ~1 in 5 real runs): SubagentStop fires and subagent-stop.sh reads
-    # the subagent's OWN transcript before its last assistant turn(s) are
-    # flushed to disk — turns/output/tier_verified all come back zero/false
-    # even though the transcript, inspected moments later, holds a complete,
-    # well-formed assistant turn with the right model. This is a real
-    # SubagentStop-vs-transcript-flush race in the live async harness, not a
-    # bug in this plugin's tier comparison logic (subagent-stop.sh's own
-    # header already documents "the last line of a live transcript is
-    # routinely a mid-write fragment ... skipped rather than fatal" for the
-    # milder, partial-line version of the same class of race) and not
-    # something a bash hook script can fix by retrying internally (it has no
-    # channel to delay SubagentStop). Retried ONCE, in a brand new scratch
-    # project, ONLY when this exact signature is seen; any other assertion
-    # failing below is a hard failure, never retried.
+    # The signature that used to be retried, now recognised only so the failure
+    # names it: turns 0 with tier_verified false means subagent-stop.sh read the
+    # agent's transcript before the client had flushed it. Task 13's bounded settle
+    # is what stops that, and if this ever appears again it means the settle capped
+    # out — in which case the ledger line will ALSO carry transcript_incomplete:true,
+    # which is the discriminator between "the settle failed" and "the agent really
+    # produced nothing".
     if [ "$tier_verified" = "false" ] && [ "$turns" = "0" ]; then
       WV_SC_C_RACE=1
-      WV_SC_C_MSG="the ledger line's tier_ok is \"$tier_ok\" with tier_verified=false and turns=0 — SubagentStop/transcript-flush race signature: $(cat "$ledger")"
+      WV_SC_C_MSG="the ledger line has tier_ok \"$tier_ok\", tier_verified=false and turns=0 — the SubagentStop/transcript-flush signature the bounded settle in scripts/hooks/subagent-stop.sh exists to prevent. If transcript_incomplete is true the settle capped out (raise WV_TRANSCRIPT_SETTLE_TRIES); if it is absent the settle returned satisfied on a transcript that had no assistant turn. Ledger: $(cat "$ledger")"
       return
     fi
     WV_SC_C_MSG="the ledger line's tier_ok is \"$tier_ok\" (tier_verified=$tier_verified, turns=$turns), expected true: $(cat "$ledger")"
@@ -601,22 +613,13 @@ wv_e2e_scenario_c_attempt() {
 
 wv_e2e_scenario_c() {
   local name="scenario-c-allowed-ledgered"
-  local attempt
-  for attempt in 1 2; do
-    wv_e2e_scenario_c_attempt
-    if [ "$WV_SC_C_OK" = "1" ]; then
-      wv_sc_pass "$name"
-      printf '%s\n' "$WV_SC_C_DETAIL"
-      [ "$attempt" = "1" ] || printf '  (note: passed on retry attempt %d after a SubagentStop/transcript-flush race on attempt 1)\n' "$attempt"
-      return
-    fi
-    if [ "$WV_SC_C_RACE" = "1" ] && [ "$attempt" = "1" ]; then
-      printf 'tests/e2e.sh: %s attempt 1 hit a known SubagentStop/transcript-flush race — retrying once in a fresh scratch project: %s\n' "$name" "$WV_SC_C_MSG" >&2
-      continue
-    fi
-    wv_sc_fail "$name" "$WV_SC_C_MSG"
+  wv_e2e_scenario_c_attempt
+  if [ "$WV_SC_C_OK" = "1" ]; then
+    wv_sc_pass "$name"
+    printf '%s\n' "$WV_SC_C_DETAIL"
     return
-  done
+  fi
+  wv_sc_fail "$name" "$WV_SC_C_MSG"
 }
 
 # ---------------------------------------------------------------------------
