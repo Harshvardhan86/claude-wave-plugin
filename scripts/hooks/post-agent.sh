@@ -367,7 +367,7 @@ wv_main() {
     # on, so nothing can notice it ran lower. Silence here reads in the ledger
     # exactly like a dispatch that was checked and found correct, which is the
     # one thing this record must not do.
-    wv_warn W-STATE "the launch of agent $agent_id resolved to \"$resolved_raw\" but the dispatch requested \"${WV_MODEL_TRIM:-<no model>}\", so there was no requested tier to compare it against and no downgrade check was performed; this dispatch was allowed by enforce=warn"
+    wv_warn W-STATE "agent $agent_id resolved to \"$resolved_raw\" but the dispatch requested \"${WV_MODEL_TRIM:-<no model>}\", so there was no requested tier to compare against and no downgrade check was performed (allowed by enforce=warn)"
   fi
 
   wv_write_active "$agent_id" "$phase" "$role" "$WV_MODEL_TRIM" \
