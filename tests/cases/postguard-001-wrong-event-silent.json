@@ -31,5 +31,6 @@
     "exit": 0,
     "decision": "silent",
     "state_assert": ".active == {}"
-  }
+  },
+  "ac": "Global Constraint 3 (event and tool guard)"
 }

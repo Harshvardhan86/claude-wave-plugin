@@ -14,7 +14,8 @@
 #
 # Eleven mutants, covering all three scripts and the shared library function
 # pre-edit.sh and pre-read.sh both call:
-#   1. the `.wave/` exemption becomes a string prefix instead of a
+#   1. the `.wave/` exemption becomes a string prefix instead of a directory one,
+#      in pre-edit.sh AND (added by Task 13) in pre-read.sh's own copy of it
 #      directory prefix (pre-edit.sh)                    -> edit-265
 #   2. the main-session-only guard is removed             (pre-edit.sh)  -> edit-269
 #   3. the main-session-only guard is removed             (pre-read.sh)  -> read-276
@@ -112,6 +113,18 @@ wv_total=0
 wv_survived=0
 declare -a wv_rows=()
 
+declare -A WV_EXPECT=()   # mutant label -> the case name that must go red
+
+wv_reds_include() {
+  # wv_reds_include <case name or glob> <space-separated red case names>
+  local want="$1" cn
+  for cn in $2; do
+    # shellcheck disable=SC2053  # a glob is intended when one is given
+    [[ "$cn" == $want ]] && return 0
+  done
+  return 1
+}
+
 wv_run_mutant() {
   # wv_run_mutant <label> <target-file (repo-relative)> <body-function> <filter>...
   local label="$1" target="$2" body="$3"
@@ -145,7 +158,7 @@ wv_run_mutant() {
   summary="$(command grep -m1 '^total=' "$log")"
   total="${summary#total=}"; total="${total%% *}"
 
-  local real=0 artefact=0 first="" fl stripped
+  local real=0 artefact=0 first="" reds="" fl stripped cn
   while IFS= read -r fl; do
     [ -n "$fl" ] || continue
     stripped="$(printf '%s' "$fl" | sed -E \
@@ -156,7 +169,9 @@ wv_run_mutant() {
         ;;
       *)
         real=$((real + 1))
-        [ -n "$first" ] || first="$(printf '%s' "$fl" | cut -d' ' -f2 | tr -d ':')"
+        cn="$(printf '%s' "$fl" | cut -d' ' -f2 | tr -d ':')"
+        reds="$reds $cn"
+        [ -n "$first" ] || first="$cn"
         ;;
     esac
   done < <(command grep '^FAIL ' "$log")
@@ -164,8 +179,23 @@ wv_run_mutant() {
   local note=""
   [ "$artefact" -gt 0 ] && note=" (+$artefact coverage artefact(s) ignored)"
 
+  # THE KILL CRITERION IS A NAMED CASE, not "something in this filtered run went
+  # red" (progress ledger 103). A filter-level criterion credits the mutant to
+  # whatever happened to fail: a neighbouring case that shares the filter, or a
+  # coverage complaint the stripper did not recognise. The mutant is then recorded
+  # as covered without anything having been shown to cover THAT property, which is
+  # the exact failure a mutation sweep exists to rule out. WV_EXPECT names the case
+  # that must be among the reds; MEMBERSHIP, not first place, so adding a case that
+  # sorts earlier does not turn a real kill into a failure.
+  local want="${WV_EXPECT[$label]:-}"
   if [ "$real" -eq 0 ]; then
     wv_rows+=("$label|SURVIVED|${total:-?} cases ran, none red$note|-")
+    wv_survived=$((wv_survived + 1))
+  elif [ -n "$want" ] && ! wv_reds_include "$want" "$reds"; then
+    wv_rows+=("$label|WRONG-CASE|$real red, but not $want$note|${first:-?}")
+    wv_survived=$((wv_survived + 1))
+  elif [ -z "$want" ]; then
+    wv_rows+=("$label|UNPINNED|$real of ${total:-?} red, no expected case declared$note|${first:-?}")
     wv_survived=$((wv_survived + 1))
   else
     wv_rows+=("$label|killed|$real of ${total:-?} red$note|${first:-?}")
@@ -239,7 +269,28 @@ s = s.replace(old, new)
 PY
 }
 
+# THE EXPECTED KILLER, one per mutant. Each names the case that must be among the
+# reds — measured from a real run, not chosen — so a mutant credited to some other
+# case in the same filter is reported WRONG-CASE rather than killed. Membership,
+# not first place: a case added later that also reds does not disturb these.
+WV_EXPECT[dotwave-stringprefix]=edit-265-wavefile-prefix-deny
+WV_EXPECT[dotwave-stringprefix-read]=read-278b-wavefile-prefix-deny
+WV_EXPECT[agentid-removed-edit]=edit-269-subagent-allow
+WV_EXPECT[agentid-removed-read]=read-276-subagent-allow
+WV_EXPECT[agentid-removed-bash]=bash-285-subagent-allow
+WV_EXPECT[solo-removed-edit]=edit-331-solo-allow
+WV_EXPECT[solo-removed-read]=read-332-solo-allow
+WV_EXPECT[solo-removed-bash]=bash-287-solo-silent
+WV_EXPECT[regex-unanchored]=bash-283-negatives-silent
+WV_EXPECT[writable-ignored]=edit-267a-changelog-allow
+WV_EXPECT[symlink-realpath-removed]=edit-271-symlink-escape-deny
+WV_EXPECT[prefix-group-removed]=bash-fix1-env-npmtest-deny
+
 wv_run_mutant dotwave-stringprefix scripts/hooks/pre-edit.sh wv_body_dotwave_stringprefix 'edit-265*' 'edit-262*' 'edit-267*'
+# pre-read.sh carries its OWN copy of the same case-glob, and it had no mutant:
+# the identical `.wave*` slip would have exempted every path starting with those
+# five bytes from the read gate and nothing would have gone red (ledger 140).
+wv_run_mutant dotwave-stringprefix-read scripts/hooks/pre-read.sh wv_body_dotwave_stringprefix 'read-278b*' 'read-278c*' 'read-274*'
 wv_run_mutant agentid-removed-edit scripts/hooks/pre-edit.sh wv_body_agentid_removed       'edit-269*' 'edit-261*'
 wv_run_mutant agentid-removed-read scripts/hooks/pre-read.sh wv_body_agentid_removed       'read-276*' 'read-273*'
 wv_run_mutant agentid-removed-bash scripts/hooks/pre-bash.sh wv_body_agentid_removed       'bash-285*' 'bash-280*'

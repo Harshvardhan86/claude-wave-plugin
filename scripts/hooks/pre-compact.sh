@@ -6,9 +6,9 @@
 # stdout are both irrelevant to the platform).
 #
 # Writes .wave/checkpoints/<ISO-ts>-precompact.md from state.json and the
-# ledger, and does nothing else: no subprocess is spawned (Task brief AC-317
-# — this cannot fail for lack of context, because it never asks anything for
-# context), and an unwritable .wave/ warns to stderr and still exits 0 —
+# ledger, and does nothing else: no subprocess is spawned (AC-317 — this cannot
+# fail for lack of context, because it never asks anything for context), and an
+# unwritable .wave/ warns to stderr and still exits 0 —
 # PreCompact has no additionalContext channel (lib.sh's
 # wv_warn_channel_is_stdout), so a W-STATE warning here is stderr-only.
 #
@@ -69,9 +69,9 @@ wv_pc_artifact_inventory() {
 
 wv_pc_phase_summary() {
   # One line per phase state.json actually records, "<CODE>: <status>" (plus
-  # " (tainted)" when the phase record says so) — this is the "phases
-  # done/failed/tainted" the task brief asks for, read straight from the
-  # state the framework already maintains rather than re-derived.
+  # " (tainted)" when the phase record says so) — the "phases done/failed/tainted"
+  # line AC-315 requires of a checkpoint, read straight from the state the
+  # framework already maintains rather than re-derived.
   [ -n "$WV_STATE" ] || return 0
   printf '%s' "$WV_STATE" | jq -r '
     (.phases // {}) | to_entries | sort_by(.key)[] |

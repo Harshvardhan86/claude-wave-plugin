@@ -408,12 +408,20 @@ _wv_process_sh_case() {
     # bytes routinely cut the message off before the first assertion finished —
     # and the part that was cut is the part that says what went wrong. A long
     # failure is noisy; a truncated one costs a re-run to read, and on a case that
-    # only reds under load it may not reproduce. The log path is printed too, so
-    # the run's own artifact can be read directly.
+    # only reds under load it may not reproduce.
+    #
+    # ON ONE LINE, with newlines folded to " | ", and this is not cosmetic. Every
+    # consumer of this suite's output reads it line by line and keys on the
+    # `FAIL <name>: <text>` shape: the mutation drivers classify a FAIL whose text
+    # is EMPTY as a coverage artefact rather than a real red. A multi-line
+    # diagnostic leaves the first line reading `FAIL <name>: ` with the content on
+    # the lines below, and two mutants were consequently credited as SURVIVED when
+    # the suite had in fact caught them — measured, not hypothesised, the first
+    # time this printed multi-line. So: complete, single line, log path at the end.
     local diag
-    diag="$(printf '%s\n%s' "$out" "$errtext")"
-    _wv_record "$name" FAIL "$diag
-    (case log: $log)"
+    diag="$(printf '%s\n%s' "$out" "$errtext" | tr '\n' '\036' | sed -E 's/\o036+/ | /g; s/^ \| //; s/ \| $//')"
+    [ -n "$diag" ] || diag="the case exited $rc without writing a diagnostic"
+    _wv_record "$name" FAIL "$diag (case log: $log)"
   fi
 }
 

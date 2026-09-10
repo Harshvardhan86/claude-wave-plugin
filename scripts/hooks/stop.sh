@@ -26,8 +26,9 @@ wv_stop_terminal_phase_for_mode() {
   # wv_stop_terminal_phase_for_mode <mode> -> the LAST hooks/phases.tsv row
   # (file order) whose `modes` column includes <mode>, or empty if none do.
   # A minimal, read-only copy of scripts/wave-close.sh's function of the same
-  # name (task-10 brief: reuse via lib.sh or copy the minimal reader and say
-  # so) — stop.sh must never invoke wave-close.sh itself for this, since that
+  # name. The duplication is deliberate and the reason is here rather than in a
+  # planning document nobody reading this file has open: stop.sh must never invoke
+  # wave-close.sh itself for this, since that
   # script's bare and --if-terminal forms both have the side effect of
   # actually CLOSING the wave, which is not this hook's job.
   local mode="$1" tsv="$WV_PLUGIN_DIR/hooks/phases.tsv"

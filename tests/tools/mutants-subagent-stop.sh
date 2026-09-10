@@ -145,6 +145,18 @@ wv_total=0
 wv_survived=0
 declare -a wv_rows=()
 
+declare -A WV_EXPECT=()   # mutant label -> the case name that must go red
+
+wv_reds_include() {
+  # wv_reds_include <case name or glob> <space-separated red case names>
+  local want="$1" cn
+  for cn in $2; do
+    # shellcheck disable=SC2053  # a glob is intended when one is given
+    [[ "$cn" == $want ]] && return 0
+  done
+  return 1
+}
+
 wv_run_mutant() {
   # wv_run_mutant <label> <body-function> <target-relative-path> <filter>...
   local label="$1" body="$2" target="$3"
@@ -179,7 +191,7 @@ wv_run_mutant() {
   summary="$(command grep -m1 '^total=' "$log")"
   total="${summary#total=}"; total="${total%% *}"
 
-  local real=0 artefact=0 first="" fl stripped
+  local real=0 artefact=0 first="" reds="" fl stripped cn
   while IFS= read -r fl; do
     [ -n "$fl" ] || continue
     stripped="$(printf '%s' "$fl" | sed -E \
@@ -190,7 +202,9 @@ wv_run_mutant() {
         ;;
       *)
         real=$((real + 1))
-        [ -n "$first" ] || first="$(printf '%s' "$fl" | cut -d' ' -f2 | tr -d ':')"
+        cn="$(printf '%s' "$fl" | cut -d' ' -f2 | tr -d ':')"
+        reds="$reds $cn"
+        [ -n "$first" ] || first="$cn"
         ;;
     esac
   done < <(command grep '^FAIL ' "$log")
@@ -198,8 +212,23 @@ wv_run_mutant() {
   local note=""
   [ "$artefact" -gt 0 ] && note=" (+$artefact coverage artefact(s) ignored)"
 
+  # THE KILL CRITERION IS A NAMED CASE, not "something in this filtered run went
+  # red" (progress ledger 103). A filter-level criterion credits the mutant to
+  # whatever happened to fail: a neighbouring case that shares the filter, or a
+  # coverage complaint the stripper did not recognise. The mutant is then recorded
+  # as covered without anything having been shown to cover THAT property, which is
+  # the exact failure a mutation sweep exists to rule out. WV_EXPECT names the case
+  # that must be among the reds; MEMBERSHIP, not first place, so adding a case that
+  # sorts earlier does not turn a real kill into a failure.
+  local want="${WV_EXPECT[$label]:-}"
   if [ "$real" -eq 0 ]; then
     wv_rows+=("$label|SURVIVED|${total:-?} cases ran, none red$note|-")
+    wv_survived=$((wv_survived + 1))
+  elif [ -n "$want" ] && ! wv_reds_include "$want" "$reds"; then
+    wv_rows+=("$label|WRONG-CASE|$real red, but not $want$note|${first:-?}")
+    wv_survived=$((wv_survived + 1))
+  elif [ -z "$want" ]; then
+    wv_rows+=("$label|UNPINNED|$real of ${total:-?} red, no expected case declared$note|${first:-?}")
     wv_survived=$((wv_survived + 1))
   else
     wv_rows+=("$label|killed|$real of ${total:-?} red$note|${first:-?}")
@@ -379,6 +408,29 @@ PY
 
 H="$WV_HOOK_REL"
 L="$WV_LIB_REL"
+
+# THE EXPECTED KILLER, one per mutant. Each names the case that must be among the
+# reds — measured from a real run, not chosen — so a mutant credited to some other
+# case in the same filter is reported WRONG-CASE rather than killed. Membership,
+# not first place: a case added later that also reds does not disturb these.
+WV_EXPECT[closingrole]=stop-228-fanout-last-one-out
+WV_EXPECT[lastoneout]=stop-228b-bc-scanner-last-one-out
+WV_EXPECT[blocktwice]=stop-231-stop-hook-active-no-block
+WV_EXPECT[markerloose]=marker-205-midword-block
+WV_EXPECT[taintinverted]=taint-238-all-opus-ok
+WV_EXPECT[roundskey]=stop-168-fanout-rounds
+WV_EXPECT[drainremoved]=lock-254b-drain-only
+WV_EXPECT[terminalskip]=stop-227-dash-artifact
+WV_EXPECT[blockoncekey]=stop-blockonce-three-stops
+WV_EXPECT[leanoneshot]=lean-oneshot-second-stop
+WV_EXPECT[modesignored]=stop-modes-demo-bc
+WV_EXPECT[stallquiet]=stop-stalled-sibling-warn
+WV_EXPECT[warnedgrows]=taint-warned-idempotent
+WV_EXPECT[libtabcollapse]=stop-220-sea-ds-bsea
+WV_EXPECT[blockswallows]=stop-warn-flush-on-block
+WV_EXPECT[settleremoved]=stop-181-transcript-settle
+WV_EXPECT[settlenoflag]=stop-181-transcript-settle
+WV_EXPECT[warnviablock]=warn-mode-393-per-script
 
 wv_run_mutant closingrole    wv_body_closingrole    "$H" 'stop-229*' 'stop-228*'
 wv_run_mutant lastoneout     wv_body_lastoneout     "$H" 'stop-228*'

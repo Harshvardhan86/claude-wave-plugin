@@ -357,6 +357,17 @@ wv_main() {
     && [ "$resolved_tier" -lt "$requested_tier" ]; then
     status_field="downgraded"
     wv_warn W-DOWNGRADE "$WV_MODEL_TRIM" "$resolved_raw"
+  elif [ -z "$requested_tier" ]; then
+    # NO REQUESTED TIER TO COMPARE AGAINST, and that is worth saying out loud.
+    # `requested_tier` is empty only when the dispatch named no model at all or
+    # named "inherit" — both of which pre-agent.sh DENIES, so this branch is
+    # reachable only under enforce="warn", where that deny became a warning and
+    # the dispatch went through anyway. The downgrade check is then not "passed",
+    # it is UNPERFORMED: nothing knows what tier this agent was supposed to run
+    # on, so nothing can notice it ran lower. Silence here reads in the ledger
+    # exactly like a dispatch that was checked and found correct, which is the
+    # one thing this record must not do.
+    wv_warn W-STATE "the launch of agent $agent_id resolved to \"$resolved_raw\" but the dispatch requested \"${WV_MODEL_TRIM:-<no model>}\", so there was no requested tier to compare it against and no downgrade check was performed; this dispatch was allowed by enforce=warn"
   fi
 
   wv_write_active "$agent_id" "$phase" "$role" "$WV_MODEL_TRIM" \

@@ -79,13 +79,41 @@ for d in scripts hooks tests; do
 done
 git -C "$WV_TREE" init -q 2>/dev/null
 
-WV_TARGET="$WV_TREE/scripts/hooks/pre-agent.sh"
-WV_PRISTINE="$WV_TMP/pre-agent.pristine.sh"
-cp "$WV_TARGET" "$WV_PRISTINE" || exit 1
-WV_BASE_SHA="$(sha256sum < "$WV_PRISTINE" | cut -d' ' -f1)"
+# TWO files can be mutated: this task's hook and the library it shares with every
+# other hook. That is not decoration. The `W-` neutralisation the `neutralise`
+# mutant targets was HOISTED out of pre-agent.sh into lib.sh's wv_rule_deny /
+# wv_rule_warn by the Task 9 review, and this driver kept pointing its patch at
+# pre-agent.sh — where the anchor no longer existed. The patch therefore failed,
+# the mutant was reported NOT-APPLIED, and this driver has been exiting non-zero
+# ever since, unnoticed, because nothing ran every driver in one command until
+# tests/tools/mutants-all.sh. A property that MOVES must be mutation-covered where
+# it now lives, so a mutant names its own target file.
+WV_HOOK_REL="scripts/hooks/pre-agent.sh"
+WV_LIB_REL="scripts/hooks/lib.sh"
+WV_TARGET=""
+WV_PRISTINE=""
+WV_BASE_SHA=""
+
+declare -A WV_PRISTINE_OF=()
+declare -A WV_SHA_OF=()
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+  cp "$WV_TREE/$rel" "$WV_TMP/$(basename "$rel").pristine" || exit 1
+  WV_PRISTINE_OF["$rel"]="$WV_TMP/$(basename "$rel").pristine"
+  WV_SHA_OF["$rel"]="$(sha256sum < "$WV_TMP/$(basename "$rel").pristine" | cut -d' ' -f1)"
+done
+
+wv_select_target() {
+  WV_TARGET="$WV_TREE/$1"
+  WV_PRISTINE="${WV_PRISTINE_OF[$1]}"
+  WV_BASE_SHA="${WV_SHA_OF[$1]}"
+}
+wv_select_target "$WV_HOOK_REL"
 
 wv_restore() {
   cp "$WV_PRISTINE" "$WV_TARGET"
+  # `cp` without -p, then `touch`: a timestamp-preserving restore is how a harness
+  # ends up measuring the PREVIOUS mutant's file.
+  touch "$WV_TARGET"
   local now
   now="$(sha256sum < "$WV_TARGET" | cut -d' ' -f1)"
   if [ "$now" != "$WV_BASE_SHA" ]; then
@@ -117,10 +145,24 @@ wv_total=0
 wv_survived=0
 declare -a wv_rows=()
 
+declare -A WV_EXPECT=()     # mutant label -> the case name that must go red
+declare -A WV_TARGET_OF=()  # mutant label -> the file it is applied to (default: the hook)
+
+wv_reds_include() {
+  # wv_reds_include <case name or glob> <space-separated red case names>
+  local want="$1" cn
+  for cn in $2; do
+    # shellcheck disable=SC2053  # a glob is intended when one is given
+    [[ "$cn" == $want ]] && return 0
+  done
+  return 1
+}
+
 wv_run_mutant() {
   # wv_run_mutant <label> <body-function> <filter>...
   local label="$1" body="$2"
   shift 2
+  wv_select_target "${WV_TARGET_OF[$label]:-$WV_HOOK_REL}"
   wv_total=$((wv_total + 1))
 
   local patch
@@ -153,7 +195,7 @@ wv_run_mutant() {
   # Split the FAIL lines into real assertion diffs and pure coverage artefacts.
   # A line reading `FAIL <case>: rule W-X: no negative control` (only that) is
   # the harness telling us the filter is narrow, not the suite catching a mutant.
-  local real=0 artefact=0 first="" fl stripped
+  local real=0 artefact=0 first="" reds="" fl stripped cn
   while IFS= read -r fl; do
     [ -n "$fl" ] || continue
     stripped="$(printf '%s' "$fl" | sed -E \
@@ -164,7 +206,9 @@ wv_run_mutant() {
         ;;
       *)
         real=$((real + 1))
-        [ -n "$first" ] || first="$(printf '%s' "$fl" | cut -d' ' -f2 | tr -d ':')"
+        cn="$(printf '%s' "$fl" | cut -d' ' -f2 | tr -d ':')"
+        reds="$reds $cn"
+        [ -n "$first" ] || first="$cn"
         ;;
     esac
   done < <(command grep '^FAIL ' "$log")
@@ -172,8 +216,23 @@ wv_run_mutant() {
   local note=""
   [ "$artefact" -gt 0 ] && note=" (+$artefact coverage artefact(s) ignored)"
 
+  # THE KILL CRITERION IS A NAMED CASE, not "something in this filtered run went
+  # red" (progress ledger 103). A filter-level criterion credits the mutant to
+  # whatever happened to fail: a neighbouring case that shares the filter, or a
+  # coverage complaint the stripper did not recognise. The mutant is then recorded
+  # as covered without anything having been shown to cover THAT property, which is
+  # the exact failure a mutation sweep exists to rule out. WV_EXPECT names the case
+  # that must be among the reds; MEMBERSHIP, not first place, so adding a case that
+  # sorts earlier does not turn a real kill into a failure.
+  local want="${WV_EXPECT[$label]:-}"
   if [ "$real" -eq 0 ]; then
     wv_rows+=("$label|SURVIVED|${total:-?} cases ran, none red$note|-")
+    wv_survived=$((wv_survived + 1))
+  elif [ -n "$want" ] && ! wv_reds_include "$want" "$reds"; then
+    wv_rows+=("$label|WRONG-CASE|$real red, but not $want$note|${first:-?}")
+    wv_survived=$((wv_survived + 1))
+  elif [ -z "$want" ]; then
+    wv_rows+=("$label|UNPINNED|$real of ${total:-?} red, no expected case declared$note|${first:-?}")
     wv_survived=$((wv_survived + 1))
   else
     wv_rows+=("$label|killed|$real of ${total:-?} red$note|${first:-?}")
@@ -471,6 +530,38 @@ PY
 }
 
 
+# THE EXPECTED KILLER, one per mutant. Each names the case that must be among the
+# reds — measured from a real run, not chosen — so a mutant credited to some other
+# case in the same filter is reported WRONG-CASE rather than killed. Membership,
+# not first place: a case added later that also reds does not disturb these.
+WV_EXPECT[offbyone]=model-130a-full-sonnet-id-allow
+WV_EXPECT[anchor]=tag-043-prefix-before-tag-deny
+WV_EXPECT[nested]=nested-057-agent-id-deny
+WV_EXPECT[solo]=solo-dispatch-330-untagged-allow
+WV_EXPECT[alias]=tier-113a-bc-scanner-sonnet-allow
+WV_EXPECT[tabcollapse]=tier-114a-ad-writer-haiku-allow
+WV_EXPECT[fork]=fork-060-deny
+WV_EXPECT[waveid]=tag-022-wave-leading-zero-deny
+WV_EXPECT[unknowndeny]=model-122-unmapped-warn
+WV_EXPECT[neutralise]=model-token-in-model-warn
+WV_EXPECT[eventguard]=tag-event-post-tool-use-silent
+WV_EXPECT[orderremoved]=order-070-tde-red-empty-phases-deny
+WV_EXPECT[condinverted]=cond-080-bf-bc-findings-zero-deny
+WV_EXPECT[skiprule]=order-071-tde-red-flags-false-allow
+WV_EXPECT[ordernottrans]=order-078-bc-green-not-done-deny
+WV_EXPECT[roundoffbyone]=round-161-two-rounds-no-approval-deny
+WV_EXPECT[budget2x]=budget-174b-exactly-two-x-warn
+WV_EXPECT[promptcap]=prompt-182-8000-allow
+WV_EXPECT[scoperemoved]=scope-109-cr-enabled-unknown-deny
+WV_EXPECT[visualremoved]=gate-153-visual-bc-no-approval-deny
+WV_EXPECT[bfremoved]=gate-157a-bf-approval-absent-deny
+WV_EXPECT[drfence]=gate-150-dr-open-inside-fence-allow
+WV_EXPECT[pastethreshold]=paste-188-3900-block-allow
+WV_EXPECT[artifactpending]=gate-083a-sea-findings-absent-artifact-deny
+WV_EXPECT[markerignored]=gate-083b-sea-findings-no-marker-deny
+WV_EXPECT[unknownisfalse]=scope-113a-dr-ui-unknown-scope-deny
+WV_EXPECT[scanwarnlost]=gate-scan-warning-survives
+
 wv_run_mutant offbyone     wv_body_offbyone     'tier-*' 'model-13*'
 wv_run_mutant anchor       wv_body_anchor       'tag-*'
 wv_run_mutant nested       wv_body_nested       'nested-*'
@@ -480,6 +571,10 @@ wv_run_mutant tabcollapse  wv_body_tabcollapse  'tier-*' 'role-*' 'mode-*'
 wv_run_mutant fork         wv_body_fork         'fork-*'
 wv_run_mutant waveid       wv_body_waveid       'tag-02*'
 wv_run_mutant unknowndeny  wv_body_unknowndeny  'model-12*'
+# The neutralisation lives in lib.sh's wv_rule_deny / wv_rule_warn since the Task 9
+# hoist, so the mutant is applied THERE. It used to be applied to pre-agent.sh,
+# where the anchor no longer existed, which reported it NOT-APPLIED on every run.
+WV_TARGET_OF[neutralise]="$WV_LIB_REL"
 wv_run_mutant neutralise   wv_body_neutralise   '*-token-*'
 wv_run_mutant eventguard   wv_body_eventguard   'tag-event-*'
 
@@ -518,8 +613,13 @@ for wv_row in "${wv_rows[@]:-}"; do
 done
 printf '%s\n' '-----------------------------------------------------------------------------------------'
 
-wv_final="$(sha256sum < "$WV_TARGET" | cut -d' ' -f1)"
-if [ "$wv_final" = "$WV_BASE_SHA" ]; then wv_restored=yes; else wv_restored=NO; fi
+wv_restored=yes
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+  if [ "$(sha256sum < "$WV_TREE/$rel" | cut -d' ' -f1)" != "${WV_SHA_OF[$rel]}" ]; then
+    printf 'NOT RESTORED: %s\n' "$rel" >&2
+    wv_restored=NO
+  fi
+done
 printf 'mutants=%s survived=%s restored=%s\n' "$wv_total" "$wv_survived" "$wv_restored"
 
 [ "$wv_survived" -eq 0 ] && [ "$wv_restored" = "yes" ]
