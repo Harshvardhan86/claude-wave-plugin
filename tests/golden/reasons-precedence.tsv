@@ -1,0 +1,64 @@
+# Golden precedence reference for hooks/reasons.tsv, maintained INDEPENDENTLY of
+# that file. tests/cases/data-reasons.sh used to compare reasons.tsv's row order
+# against the precedence comment at the top of reasons.tsv itself, which is
+# self-consistency: one hand edits both, and a swap made in both places passes.
+#
+# The order is not arbitrary and this file states WHY, in bands, so a future edit
+# has to argue against the reasoning rather than just move a line:
+#
+#   measurement   Could the hook read anything at all? If not, nothing below it
+#                 was evaluated against real state, so nothing below it may deny.
+#   identity      WHO is dispatching. A nested or forked call is refused whatever
+#                 else is right about it, because the dispatcher is the thing that
+#                 is wrong.
+#   addressing    WHICH row and role the dispatch names. Until the tag resolves to
+#                 a row, no cell of the table can be read, so every table rule
+#                 below is unanswerable.
+#   routing       The model: named at all, then high enough. Missing outranks too-low
+#                 because a dispatch with no model has not made the choice yet.
+#   applicability Is this phase part of THIS wave (scope, condition), and is it
+#                 allowed to run YET (order)? A phase that is not in the wave is a
+#                 mistake worth naming before one that is merely early.
+#   evidence      The hand-off artifacts and the approvals that gate a re-run.
+#   spending      Rounds, pasted context, budget: real but recoverable overruns.
+#   session       The orchestrator-only rules, one per tool surface.
+#   commit        What may reach a commit.
+#   stop          What a subagent may return.
+#   advisory      Warn-only. Nothing here ever denies, so nothing here can outrank
+#                 a rule that does.
+#
+precedence	rule_id	band
+1	W-STATE	measurement
+2	W-NESTED	identity
+3	W-FORK	identity
+4	W-TAG	addressing
+5	W-MODE	addressing
+6	W-ROLE	addressing
+7	W-MODEL-MISSING	routing
+8	W-TIER	routing
+9	W-SCOPE	applicability
+10	W-COND	applicability
+11	W-ORDER	applicability
+12	W-ARTIFACT	evidence
+13	W-MARKER	evidence
+14	W-DR-OPEN	evidence
+15	W-VISUAL	evidence
+16	W-BF-APPROVAL	evidence
+17	W-ROUND	spending
+18	W-PASTE	spending
+19	W-BUDGET	spending
+20	W-EDIT	session
+21	W-READ	session
+22	W-BASH	session
+23	W-COMMIT-DOC	commit
+24	W-COMMIT-TRAILER	commit
+25	W-LONG-RETURN	stop
+26	W-MODEL-UNKNOWN	advisory
+27	W-DESC	advisory
+28	W-PROMPT	advisory
+29	W-TAINT	advisory
+30	W-DOWNGRADE	advisory
+31	W-RESOLVE-UNKNOWN	advisory
+32	W-SESSION	advisory
+33	W-REMINDER	advisory
+34	W-SCORECARD	advisory

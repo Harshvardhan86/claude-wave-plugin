@@ -88,7 +88,6 @@ WV_BUDGETS_TSV="$WV_PLUGIN_DIR/hooks/budgets.tsv"
 # 1. Everything this script exports, initialised before anything reads it.
 # ---------------------------------------------------------------------------
 
-WV_HAS_TOOL_INPUT=0
 WV_HAS_MODEL=0
 WV_DESC=""
 WV_PROMPT_TEXT=""
@@ -141,7 +140,6 @@ WV_TAG_LATE_RE='^(.+)\[W:[^] ]+ P:[A-Z0-9-]+ R:(lead|executor|reviewer|scanner|w
 wv_read_tool_input() {
   # Returns 1 when there is no `tool_input` object to judge. A missing field is
   # never a violation, so that is a silent allow, not a deny.
-  WV_HAS_TOOL_INPUT=0
   WV_HAS_MODEL=0
   WV_DESC=""
   WV_PROMPT_TEXT=""
@@ -158,7 +156,11 @@ wv_read_tool_input() {
         [ "1", (if (.tool_input | has("model")) then "1" else "0" end) ] | join("\u001f")
       else empty end')"
   [ -n "$flags" ] || return 1
-  IFS=$'\x1f' read -r WV_HAS_TOOL_INPUT WV_HAS_MODEL <<<"$flags"
+  # The first field says whether tool_input was an object at all. Nothing reads
+  # it — every caller asks the more specific questions below — so it is consumed
+  # into a throwaway rather than kept as a variable that looks load-bearing.
+  local _wv_had_tool_input
+  IFS=$'\x1f' read -r _wv_had_tool_input WV_HAS_MODEL <<<"$flags"
 
   # One jq call per field, deliberately: a description may contain newlines
   # (and one of the ACs sends exactly that), and a single US-joined line read
@@ -1317,15 +1319,17 @@ wv_main() {
   # 3. The description-length warning is queued before any deny, so a deny
   #    carries it as additionalContext instead of losing it.
   #
-  #    `${#...}` counts what the ambient locale calls a character, so a
-  #    description of exactly 120 multi-byte characters can land either side of
-  #    this boundary depending on how the client's environment is set. It is
-  #    left as it is because the consequence is one warning on one dispatch;
-  #    the prompt caps below, whose boundary decides nothing but is measured far
-  #    more often, are read through jq instead, which always counts Unicode
-  #    scalar values.
-  if [ "${#WV_DESC}" -gt 120 ]; then
-    wv_rule_warn W-DESC "${#WV_DESC}"
+  #    The length is counted through jq, never with `${#...}`: `${#s}` counts
+  #    BYTES under LC_ALL=C and CHARACTERS under a UTF-8 locale, so a description
+  #    of exactly 120 multi-byte characters landed either side of this boundary
+  #    depending on how the client's environment happened to be set. The spec
+  #    states the cap in characters, and jq always counts Unicode scalar values —
+  #    which is why the prompt caps below already read theirs the same way.
+  local wv_desc_len
+  wv_desc_len="$(jq -rn --arg d "$WV_DESC" '$d | length' 2>/dev/null)"
+  case "$wv_desc_len" in ''|*[!0-9]*) wv_desc_len="${#WV_DESC}" ;; esac
+  if [ "$wv_desc_len" -gt 120 ]; then
+    wv_rule_warn W-DESC "$wv_desc_len"
   fi
 
   # 4. The tag: present and well formed, for this wave, naming a real phase.

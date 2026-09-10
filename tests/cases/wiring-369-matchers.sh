@@ -71,7 +71,11 @@ done <<<"$pairs"
 # The two ^Bash$ matchers must be pre-bash.sh AND pre-commit-guard.sh, not
 # the same script twice.
 bash_scripts="$(printf '%s\n' "$pairs" | awk -F'\t' '$2=="^Bash$"{print $3}')"
-n_bash="$(printf '%s\n' "$bash_scripts" | grep -c . || true)"
+# `command grep`, never a bare grep: a wrapped searcher can decline its input and
+# print nothing where real grep prints 0, and `|| true` would then turn that
+# failed scan into a clean count of "". An absent count fails the case.
+n_bash="$(printf '%s\n' "$bash_scripts" | command grep -c .)"
+case "$n_bash" in ''|*[!0-9]*) fail "the ^Bash\$ matcher scan returned no count, so it did not run"; n_bash=-1 ;; esac
 [ "$n_bash" -eq 2 ] || fail "want exactly 2 ^Bash\$ entries, found $n_bash"
 printf '%s\n' "$bash_scripts" | command grep -q 'pre-bash.sh' \
   || fail "no ^Bash\$ entry resolves to pre-bash.sh"

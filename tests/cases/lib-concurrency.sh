@@ -148,20 +148,51 @@ bad_json="$(command grep -cv '^{' "$WV_PROJECT/.wave/ledger.jsonl")"
 [ "$bad_json" = "0" ] || fail "$bad_json ledger lines are torn (do not start with '{')"
 
 # ---- the lock-timeout path: spool, then drain exactly once ---------------
-# Driven, not hoped for: an outside holder keeps `.wave/lock` for longer than
-# the 10s `flock -w`, so the library MUST time out. It must then allow (never
+#
+# Driven, not hoped for: an outside holder keeps `.wave/lock` while the library
+# tries to take it, so the library MUST time out. It must then allow (never
 # deny), warn, and spool its ledger line — and the next successful acquisition
 # must merge that line exactly once. Counted at the sink, both times.
+#
+# TWO THINGS ARE DELIBERATE HERE, and both were previously left to luck:
+#
+#   * The HANDSHAKE. This used to be `sleep 0.5` and a hope that the holder had
+#     taken the lock by then. Under load it had not, the library acquired
+#     immediately, and the case then asserted spool behaviour against a run that
+#     never timed out — a flake that reads as a real failure of the spool. The
+#     holder now announces itself by creating a file AFTER `flock` returns, and
+#     this shell waits for that file. No duration decides anything.
+#   * The WAIT ITSELF. The shipped timeout is 10s and the holder therefore had to
+#     outlive it, which cost this one case about 14 seconds of every suite run.
+#     WV_LOCK_TIMEOUT_OVERRIDE drives the library's own wait down to 1s for this
+#     step only, so the TIMEOUT PATH is what is being exercised rather than the
+#     particular number of seconds it waits — the shipped 10s is asserted by
+#     tests/cases/lock-254-timeout-spool.sh, against the default, where the
+#     duration is the claim.
 ledger_before="$(wc -l < "$WV_PROJECT/.wave/ledger.jsonl")"
 
-( flock 9; sleep 13 ) 9>>"$WV_PROJECT/.wave/lock" &
+held="$WV_RUN_TMP/$name.lock-held"
+rm -f "$held"
+( flock 9 && : > "$held" && exec sleep 30 ) 9>>"$WV_PROJECT/.wave/lock" &
 holder=$!
-sleep 0.5   # let the holder take it before the library tries
+waited=0
+while [ ! -f "$held" ]; do
+  # A bounded wait for the HANDSHAKE, not for the lock: if the holder cannot take
+  # the lock at all, this case has measured nothing and says so rather than
+  # asserting spool behaviour against a run that acquired normally.
+  waited=$((waited + 1))
+  if [ "$waited" -gt 200 ]; then
+    fail "the outside lock holder never signalled that it holds .wave/lock, so the timeout path was not exercised"
+    kill "$holder" 2>/dev/null
+    exit $rc
+  fi
+  sleep 0.05
+done
 
 timeout_case="$WV_RUN_TMP/$name-timeout.json"
 jq -n '{
   script: "tests/fixtures/drive-lib.sh",
-  env: { WV_DRIVE: "ledger:{\"event\":\"spooled\"}" },
+  env: { WV_DRIVE: "ledger:{\"event\":\"spooled\"}", WV_LOCK_TIMEOUT_OVERRIDE: "1" },
   stdin: {
     hook_event_name: "PreToolUse",
     tool_name: "Agent",
@@ -185,7 +216,10 @@ after_timeout="$(wc -l < "$WV_PROJECT/.wave/ledger.jsonl")"
 [ "$after_timeout" = "$ledger_before" ] || \
   fail "lock timeout: the ledger grew from $ledger_before to $after_timeout while the lock was held"
 
-wait "$holder"
+# The holder is released by killing it, not by outliving it: nothing in this case
+# depends on how long anything took.
+kill "$holder" 2>/dev/null
+wait "$holder" 2>/dev/null
 
 # The next acquisition drains the spool exactly once. It must be an action that
 # does NOT itself append, or the sink count could not tell a drain from an

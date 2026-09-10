@@ -6,6 +6,17 @@
 # remedy clause, the file carries the header's declared precedence order,
 # and the actual row order matches that declared order exactly — proved
 # non-vacuous by a mutation (finding 4: "one reasons precedence swap").
+#
+# THE COMPARISON IS THREE-WAY, and the third leg is the point. Comparing
+# reasons.tsv's row order against the precedence comment at the top of
+# reasons.tsv is SELF-CONSISTENCY: one hand edits both, in one sitting, and a
+# swap made in both places passes every check here. So the order is also
+# compared against tests/golden/reasons-precedence.tsv, which is maintained
+# independently, states the DESIGN BANDS the order expresses, and is the same
+# kind of external reference tests/golden/phases-tiers.tsv is for the phase
+# table. Row order, header comment and golden must all three agree; a drift in
+# any one of them fails, and moving a rule now means arguing against a stated
+# band rather than editing two copies of a list.
 
 set -u
 
@@ -86,6 +97,45 @@ check_reasons() {
 
   # 31 through Task 9; Task 10 added W-SESSION, W-REMINDER and W-SCORECARD.
   [ "${#actual_order[@]}" = "34" ] || echo "expected 34 rule rows, got ${#actual_order[@]}"
+
+  # The third leg: the independent golden. Read here rather than in the caller so
+  # the mutation proof below exercises it too.
+  local golden="tests/golden/reasons-precedence.tsv"
+  if [ ! -f "$golden" ]; then
+    echo "the independent precedence golden $golden does not exist"
+    return
+  fi
+  declare -a golden_order=()
+  local g_prec g_id g_band
+  while IFS=$'\t' read -r g_prec g_id g_band; do
+    case "$g_prec" in ''|'#'*|precedence) continue ;; esac
+    golden_order+=("$g_id")
+    [ -n "$g_band" ] || echo "$g_id: the golden gives it no design band"
+  done < "$golden"
+  if [ "${#golden_order[@]}" = "0" ]; then
+    # An empty read is a FAILED read of the golden, never a clean one.
+    echo "read 0 rows out of $golden, so the independent order was not compared"
+    return
+  fi
+  if [ "${#golden_order[@]}" != "${#actual_order[@]}" ]; then
+    echo "$golden lists ${#golden_order[@]} ids, $file has ${#actual_order[@]} rows"
+  else
+    local j
+    for j in "${!golden_order[@]}"; do
+      if [ "${golden_order[$j]}" != "${actual_order[$j]:-}" ]; then
+        echo "golden order mismatch at position $j: $golden says '${golden_order[$j]}', file has '${actual_order[$j]:-}'"
+      fi
+    done
+  fi
+  # And the precedence NUMBER on each row must be its 1-based position, so the
+  # column a consumer sorts on cannot disagree with the order it is written in.
+  local k pos=0
+  while IFS=$'\t' read -r id precedence text; do
+    case "$id" in ''|'#'*|rule_id) continue ;; esac
+    pos=$((pos + 1))
+    [ "$precedence" = "$pos" ] || echo "$id: precedence column says '$precedence', row position is $pos"
+  done < "$file"
+  k=0
 }
 
 diffs="$(check_reasons "$TSV")"
@@ -123,6 +173,13 @@ else
   case "$mutated_diff" in
     *"row order mismatch"*) : ;;
     *) fail "mutation proof caught something, but not a row-order mismatch: $mutated_diff" ;;
+  esac
+  # The INDEPENDENT leg must catch it too — that is the whole reason it exists. A
+  # mutation caught only by the header comparison would leave the golden untested,
+  # and an untested comparison is one that has never been shown to be able to fail.
+  case "$mutated_diff" in
+    *"golden order mismatch"*) : ;;
+    *) fail "the independent golden did not catch the swap; only the header did: $mutated_diff" ;;
   esac
 fi
 

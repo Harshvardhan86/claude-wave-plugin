@@ -462,14 +462,27 @@ WV_LOCK_DEPTH=0
 # that is not running. `wv_lock_detail` renders the clause that fits.
 WV_LOCK_FAIL=""
 
+# The lock wait, in seconds. 10 is the shipped value (spec section 6) and the one
+# every hook uses; the override exists so a test can drive the TIMEOUT path
+# deterministically in about a second instead of spending fourteen of them per
+# suite run waiting out the real one. It cannot weaken any rule: a lock timeout
+# already warns and ALLOWS, so a shorter wait can only make a hook record less,
+# never deny more, and anything able to set this hook's environment could simply
+# remove `flock` from PATH instead. A non-numeric or zero value is ignored.
+WV_LOCK_TIMEOUT=10
+case "${WV_LOCK_TIMEOUT_OVERRIDE:-}" in
+  ''|*[!0-9]*|0) : ;;
+  *) WV_LOCK_TIMEOUT="$WV_LOCK_TIMEOUT_OVERRIDE" ;;
+esac
+
 wv_lock_detail() {
   # wv_lock_detail -> the clause naming WHY the last acquisition failed.
   case "$WV_LOCK_FAIL" in
     unwritable) printf 'the wave state lock %s/lock could not be opened for writing (is %s writable?)' \
                   "$(wv_rel "$WV_WAVE_DIR")" "$(wv_rel "$WV_WAVE_DIR")" ;;
     noroot)     printf 'there is no resolved .wave directory to lock' ;;
-    *)          printf 'the wave state lock %s/lock was held by another hook for longer than 10s' \
-                  "$(wv_rel "$WV_WAVE_DIR")" ;;
+    *)          printf 'the wave state lock %s/lock was held by another hook for longer than %ss' \
+                  "$(wv_rel "$WV_WAVE_DIR")" "$WV_LOCK_TIMEOUT" ;;
   esac
 }
 
@@ -491,7 +504,7 @@ wv_lock_acquire() {
     { : > "$lock"; } 2>/dev/null || { WV_LOCK_FAIL=unwritable; return 1; }
   fi
   { exec 9>>"$lock"; } 2>/dev/null || { WV_LOCK_FAIL=unwritable; return 1; }
-  if flock -w 10 9; then
+  if flock -w "$WV_LOCK_TIMEOUT" 9; then
     printf '%s\n' "$$" > "$lock" 2>/dev/null
     WV_LOCK_DEPTH=1
     return 0

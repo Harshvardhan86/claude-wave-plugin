@@ -188,7 +188,6 @@ wv_running_siblings() {
 #    transcript is routinely a mid-write fragment.
 # ---------------------------------------------------------------------------
 
-WV_TS_OK=0            # 1 once a token sum was actually computed
 WV_TS_TURNS=0
 WV_TS_INPUT=0
 WV_TS_OUTPUT=0
@@ -313,7 +312,6 @@ wv_transcript_stats() {
   # over the byte cap all record a note and leave the tier unverified — which is
   # not the same thing as, and must never be reported as, a downgrade.
   local path="${1:-}"
-  WV_TS_OK=0
   WV_TS_TURNS=0
   WV_TS_INPUT=0
   WV_TS_OUTPUT=0
@@ -374,7 +372,6 @@ wv_transcript_stats() {
            WV_TS_SKIPPED WV_TS_EXCLUDED; do
     case "${!f}" in ''|*[!0-9]*) eval "$f=0" ;; esac
   done
-  WV_TS_OK=1
 
   # The modal TIER, not the modal model: two different opus ids are the same
   # tier, and the requirement is expressed in tiers. A model the map cannot read

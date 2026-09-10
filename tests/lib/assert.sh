@@ -286,46 +286,38 @@ assert_allow() {
   _wv_die_diff "allow: want exit=0 and no deny/block shape, got exit=$WV_LAST_EXIT stdout='$WV_LAST_STDOUT'"
 }
 
-assert_deny() {
-  local rule="$1"
-  if ! _wv_is_deny; then
-    _wv_die_diff "deny: stdout is not a PreToolUse deny shape: '$WV_LAST_STDOUT'"
+_wv_assert_shape() {
+  # _wv_assert_shape <kind> <rule> <shape predicate> <shape description>
+  #
+  # The three public assertions below are the same two-step check — is stdout the
+  # right JSON SHAPE for this event, and does the reason it carries name the
+  # expected rule — differing only in which predicate answers the first step and
+  # how the failure reads. They were three copies; a fix to one (the reason text
+  # is read from three possible fields, and that list has changed twice) had to be
+  # made three times or the three would disagree about what a reason even is.
+  local kind="$1" rule="$2" pred="$3" desc="$4"
+  if ! "$pred"; then
+    _wv_die_diff "$kind: stdout is not $desc: '$WV_LAST_STDOUT'"
     return 1
   fi
   local reason
   reason="$(_wv_reason_text)"
   case "$reason" in
     "[$rule] "*) return 0 ;;
-    *) _wv_die_diff "deny: reason does not start with [$rule] : '$reason'" ;;
+    *) _wv_die_diff "$kind: reason does not start with [$rule] : '$reason'" ;;
   esac
+}
+
+assert_deny() {
+  _wv_assert_shape deny "$1" _wv_is_deny 'a PreToolUse deny shape'
 }
 
 assert_block() {
-  local rule="$1"
-  if ! _wv_is_block; then
-    _wv_die_diff "block: stdout is not a SubagentStop block shape: '$WV_LAST_STDOUT'"
-    return 1
-  fi
-  local reason
-  reason="$(_wv_reason_text)"
-  case "$reason" in
-    "[$rule] "*) return 0 ;;
-    *) _wv_die_diff "block: reason does not start with [$rule] : '$reason'" ;;
-  esac
+  _wv_assert_shape block "$1" _wv_is_block 'a SubagentStop block shape'
 }
 
 assert_warn() {
-  local rule="$1"
-  if ! _wv_is_warn; then
-    _wv_die_diff "warn: stdout is not an additionalContext warn shape: '$WV_LAST_STDOUT'"
-    return 1
-  fi
-  local reason
-  reason="$(_wv_reason_text)"
-  case "$reason" in
-    "[$rule] "*) return 0 ;;
-    *) _wv_die_diff "warn: additionalContext does not start with [$rule] : '$reason'" ;;
-  esac
+  _wv_assert_shape warn "$1" _wv_is_warn 'an additionalContext warn shape'
 }
 
 assert_single_rule_token() {

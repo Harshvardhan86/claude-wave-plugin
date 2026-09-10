@@ -200,11 +200,16 @@ _wv_compare_expect() {
     assert_reason_matches_template "$want_template" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
   fi
 
+  # Needles arrive base64-encoded, one per line, and are decoded here. Read as
+  # raw text they were split ON NEWLINES by `read -r`, so a needle that spanned
+  # two lines became two independent single-line assertions — both of which a
+  # reason can satisfy without ever containing the two-line string the case
+  # asked for, and neither of which fails if the newline between them is wrong.
   local -a needles=()
   while IFS= read -r s; do
     [ -z "$s" ] && continue
-    needles+=("$s")
-  done < <(jq -r '.expect.reason_contains // [] | .[]' "$path" 2>/dev/null)
+    needles+=("$(printf '%s' "$s" | base64 -d 2>/dev/null)")
+  done < <(jq -r '.expect.reason_contains // [] | .[] | @base64' "$path" 2>/dev/null)
   for s in "${needles[@]:-}"; do
     [ -z "$s" ] && continue
     assert_reason_contains "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
@@ -213,8 +218,8 @@ _wv_compare_expect() {
   local -a err_needles=()
   while IFS= read -r s; do
     [ -z "$s" ] && continue
-    err_needles+=("$s")
-  done < <(jq -r '.expect.stderr_contains // [] | .[]' "$path" 2>/dev/null)
+    err_needles+=("$(printf '%s' "$s" | base64 -d 2>/dev/null)")
+  done < <(jq -r '.expect.stderr_contains // [] | .[] | @base64' "$path" 2>/dev/null)
   for s in "${err_needles[@]:-}"; do
     [ -z "$s" ] && continue
     assert_stderr_contains "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
@@ -223,8 +228,8 @@ _wv_compare_expect() {
   local -a absent_needles=()
   while IFS= read -r s; do
     [ -z "$s" ] && continue
-    absent_needles+=("$s")
-  done < <(jq -r '.expect.stdout_absent // [] | .[]' "$path" 2>/dev/null)
+    absent_needles+=("$(printf '%s' "$s" | base64 -d 2>/dev/null)")
+  done < <(jq -r '.expect.stdout_absent // [] | .[] | @base64' "$path" 2>/dev/null)
   for s in "${absent_needles[@]:-}"; do
     [ -z "$s" ] && continue
     assert_stdout_absent "$s" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
@@ -288,8 +293,10 @@ _wv_process_json_case() {
   fi
 
   if ! jq -e 'type=="object"' "$path" >/dev/null 2>&1; then
-    _wv_record "$name" FAIL "case file is not a parseable JSON object"
-    return
+    case "$path" in
+      */_selfcheck/*) _wv_record_selfcheck_unparseable "$name"; return ;;
+      *) _wv_record "$name" FAIL "case file is not a parseable JSON object"; return ;;
+    esac
   fi
 
   local bad_keys
@@ -340,6 +347,17 @@ _wv_process_json_case() {
   fi
 }
 
+_wv_record_selfcheck_unparseable() {
+  # A case file under _selfcheck/ that is not a parseable JSON object is the
+  # deliberate positive control for the "unparseable" detector (AC-401), exactly
+  # as the 0-byte file below is for the "0 bytes" one. Without it the detector was
+  # code no case had ever executed — the one shape of broken fixture the harness
+  # claims to catch and had never been shown to catch. Anywhere else in the corpus
+  # an unparseable case file is a real bug and is never inverted.
+  local name="$1"
+  _wv_record "$name" PASS ""
+}
+
 _wv_record_selfcheck_zero_byte() {
   # A 0-byte file under _selfcheck/ is the deliberate self-check of the
   # "0 bytes" detector: PASS once the detector (the [ ! -s "$path" ] check
@@ -385,7 +403,17 @@ _wv_process_sh_case() {
       _wv_record "$name" FAIL "case log missing its run marker"
     fi
   else
-    _wv_record "$name" FAIL "$(printf '%s %s' "$out" "$errtext" | head -c 300)"
+    # The WHOLE diagnostic, not the first 300 bytes. A `.sh` case reports one line
+    # per failed assertion and quotes the rendered reason it compared, so 300
+    # bytes routinely cut the message off before the first assertion finished —
+    # and the part that was cut is the part that says what went wrong. A long
+    # failure is noisy; a truncated one costs a re-run to read, and on a case that
+    # only reds under load it may not reproduce. The log path is printed too, so
+    # the run's own artifact can be read directly.
+    local diag
+    diag="$(printf '%s\n%s' "$out" "$errtext")"
+    _wv_record "$name" FAIL "$diag
+    (case log: $log)"
   fi
 }
 
@@ -400,7 +428,16 @@ for i in "${!wv_case_files[@]}"; do
   wv_executed=$((wv_executed + 1))
 done
 
-# run-marker check for every json case that reached run_hook
+# Run-marker check for every json case that reached run_hook.
+#
+# DEFENSIVE, and deliberately kept. run_hook writes the marker itself on every
+# path that returns 0, so in a healthy tree this loop finds nothing — which is
+# exactly why it must stay: the property it guards ("a skipped case cannot read as
+# a pass", AC-401) is a property of the HARNESS, and the day run_hook grows a
+# return path that forgets to write its marker is the day a case runs, asserts
+# nothing and prints PASS. A check that never fires while the code is correct is
+# not dead code; it is the only thing standing between a refactor and a silently
+# vacuous suite. tests/cases/_selfcheck/data-coverage-flag.sh drives it.
 for name in "${!wv_ran_case[@]}"; do
   log="$WV_RUN_TMP/logs/$name.log"
   if ! command grep -q '^RAN ' "$log" 2>/dev/null; then
