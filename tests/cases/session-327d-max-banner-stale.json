@@ -1,0 +1,29 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-327 (clause order when the cap binds)",
+  "note": "THE CLAUSE ORDER, ruled in fix round 2 item 2: the staleness advisory precedes the compaction advisory, so when both fire and the character budget cannot hold both, the one dropped behind (+1 more) is the CHECKPOINT clause and the operator still sees the short, actionable one. Same maximal state as session-327c (24-character wave id twice, enforce=warn, TDE-GREEN, the longest checkpoint filename pre-compact.sh can produce) plus a clock past the 24h staleness boundary, pinned in env so this case cannot rot into or out of the stale branch. stdout_absent is the load-bearing half: without it the case passes whichever clause survives.",
+  "seed": {
+    "state": "state/full-max-banner.json",
+    "files": {
+      ".wave/checkpoints/2026-09-09T12:30:00Z-precompact-99.md": "# checkpoint\n"
+    }
+  },
+  "env": { "WV_NOW": "2026-09-30T12:00:00Z" },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "compact"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SESSION",
+    "reason_contains": [
+      "wave abcdefghij-klmnopqr.stuv active",
+      "wave open >24h; scripts/wave-close.sh closes it.",
+      "(+1 more)"
+    ],
+    "stdout_absent": [
+      "Invariant 7",
+      "2026-09-09T12:30:00Z-precompact-99.md"
+    ]
+  }
+}

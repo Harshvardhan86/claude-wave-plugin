@@ -393,7 +393,12 @@ if [ "$WV_REPLAY" = "1" ]; then
     fi
     st="$(jq -r '.seed.state // empty' "$f" 2>/dev/null)"
     if [ -z "$st" ]; then
-      wv_finding "replay: $cn declares expect.decision $dec but seeds no state, so `enforce` cannot be flipped for it"
+      # \` and not ` — backticks inside a double-quoted string are COMMAND
+      # SUBSTITUTION, so this diagnostic used to run `enforce`, print "command not
+      # found" to stderr and render the sentence with a hole where the field name
+      # belongs. It is a finding path, so it only ever renders when something else
+      # is already wrong, which is the worst moment for a diagnostic to be wrong too.
+      wv_finding "replay: $cn declares expect.decision $dec but seeds no state, so \`enforce\` cannot be flipped for it"
       continue
     fi
     src=""

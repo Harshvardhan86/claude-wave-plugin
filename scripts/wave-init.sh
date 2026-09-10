@@ -8,6 +8,11 @@
 #   wave-init.sh --wave <id> (--mode full|demo | --solo) [--ui|--no-ui]
 #                [--cr|--no-cr] [--enforce block|warn] --feature <text> [--force]
 #
+#   <id> is 1-24 characters of [A-Za-z0-9._-]. It is bounded here because it is
+#   interpolated into the dispatch tag and twice into the session banner, whose
+#   rendered length is held at 400 characters (scripts/hooks/session-start.sh
+#   derives its own budget from this bound).
+#
 # This is a lifecycle script, not a hook: it prints plain human-readable
 # lines (never the hook JSON shapes in scripts/hooks/lib.sh), uses `set -u`
 # (never `set -e`, Global Constraint 8), and exits non-zero on any rejected
@@ -81,10 +86,29 @@ else
 fi
 
 [ -n "$wave_id" ] || wv_die "missing --wave <id>"
+# THE WAVE ID IS A BOUNDED FIELD, and this is the one place that can bound it.
+#
+# It is interpolated into the dispatch tag `[W:<id> P:… R:…]` and TWICE into the
+# W-SESSION banner, whose rendered length tests/tools/reason-corpus.sh holds at 400
+# characters. Rejecting only a space or a `]` left the length unbounded: a
+# 40-character id rendered a 458-character banner, so the bound scripts/hooks/
+# session-start.sh states held for the fixtures and not for real input. A render-time
+# truncation would have to be repeated at every interpolation and would silently
+# rename the wave in a message; a creation-time bound is one check, in front of one
+# writer, with a person there to read the refusal.
+#
+# 24 characters is long enough for a date-stamped (`2026-09-10-hooks`) or
+# ticket-shaped (`WAVE-1234.hotfix`) id and short enough that the banner's own
+# character budget can be derived from it. The character class is what a value
+# carried inside a bracketed tag, a filename glob, a jq string and a shell word can
+# all hold without quoting games: no space, no `]`, no `/`, no `*`, no `$`.
 case "$wave_id" in
-  *' '*|*']'*)
-    wv_die "invalid --wave: '$wave_id' contains a space or ']', which would make the dispatch tag ungrammatical" ;;
+  *[!A-Za-z0-9._-]*)
+    wv_die "invalid --wave: '$wave_id' must use only letters, digits, '.', '_' and '-' — the id goes into the dispatch tag [W:<id> …], into a filename glob and into every hook's session banner" ;;
 esac
+if [ "${#wave_id}" -gt 24 ]; then
+  wv_die "invalid --wave: '$wave_id' is ${#wave_id} characters; the limit is 24 because the id is interpolated twice into the session banner, whose rendered length is bounded at 400 characters"
+fi
 
 case "$enforce" in
   block|warn) : ;;

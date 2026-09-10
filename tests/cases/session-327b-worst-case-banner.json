@@ -1,7 +1,7 @@
 {
   "script": "session-start.sh",
-  "ac": "AC-327 (the worst-case banner)",
-  "note": "BOTH advisory clauses at once — compaction just ran with NO checkpoint on disk (the longer of the two compaction texts) and the wave is stale — against a wave id and a last-done phase at their longest. This is the case the reason corpus needs in order to see W-SESSION's maximum length: the banner is assembled from a template plus an `extra` built at runtime, so the only fixture that bounds it is one that turns every clause on. Without it the corpus measured a 344-character banner while the shipped worst case was 440, and the difference arrived not from a commit but from the wall clock passing 24h after the fixture's `started` (fix round 1, item 1).",
+  "ac": "AC-327 (both clauses fire, no checkpoint on disk)",
+  "note": "BOTH advisory clauses fire at once — compaction just ran with NO checkpoint on disk, and the wave is stale — and the character budget cannot hold both, so this case pins WHICH ONE SURVIVES. Fix round 2 (item 2) ordered the staleness advisory first, because it is short and names the command that resolves it, so the compaction advisory is the clause that goes behind \"(+1 more)\": stdout_absent is the load-bearing half, since reason_contains alone would pass whichever clause happened to survive. session-327d is the same collision with a checkpoint present (a longer clause dropped), and session-327c — not this case — is now the corpus's longest W-SESSION input, because the drop makes a stale banner SHORTER, not longer.",
   "seed": { "state": "state/full-red-done.json" },
   "env": { "WV_NOW": "2026-09-30T12:00:00Z" },
   "stdin": {
@@ -12,10 +12,13 @@
     "decision": "warn",
     "rule": "W-SESSION",
     "reason_contains": [
+      "wave open >24h; scripts/wave-close.sh closes it.",
+      "(+1 more)"
+    ],
+    "stdout_absent": [
       "compaction ran",
       "no checkpoint",
-      "fresh terminal",
-      "wave-close.sh"
+      "fresh terminal"
     ]
   }
 }
