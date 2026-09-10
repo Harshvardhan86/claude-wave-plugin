@@ -133,6 +133,79 @@ def code_only(line):
     return "".join(out)
 
 
+def backtick_in_double_quotes(line):
+    """True when an UNESCAPED backtick appears inside a double-quoted span.
+
+    Inside double quotes a backtick is COMMAND SUBSTITUTION, so a message that meant
+    to quote a field name runs a command named after it instead: the diagnostic at
+    tests/tools/reason-corpus.sh:396 said `enforce` and therefore ran `enforce`,
+    printed "command not found" to stderr and rendered its sentence with a hole where
+    the field name belonged. It shipped because it is on a FINDING path — it renders
+    only when something else is already wrong, which is the worst moment for the
+    diagnostic to be wrong too. `\\`` is the fix and must not be flagged; a backtick
+    inside SINGLE quotes is literal and must not be flagged either.
+
+    This one rule reads the RAW line rather than code_only's output, because the
+    property IS the quoting: code_only exists to blank quoted spans, and it
+    deliberately treats a backtick inside them as code again — which is the very
+    confusion being hunted here.
+
+    IT NEEDS THE SHELL'S NESTING, NOT A QUOTE FLAG. A flat "am I inside a double
+    quote" boolean flagged 8 correct lines in this tree on its first run, all of the
+    shape `x="$(f 'a `b` c')"`: a `$( )` substitution starts a FRESH quoting context,
+    so single quotes inside it protect a backtick even though the whole expression sits
+    inside double quotes. So contexts are a stack — CODE, DQ, SQ, and one pushed by
+    `$(`/`${` and popped by its closer — and a backtick is a hit only when the TOP of
+    that stack is DQ. A backslash escapes inside CODE and DQ and is literal inside SQ,
+    which is the shell's rule and the reason `'\''` does not confuse this.
+    """
+    stack = ["CODE"]
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        top = stack[-1]
+        if c == "\\" and i + 1 < n and top != "SQ":
+            i += 2
+            continue
+        if top == "SQ":
+            if c == "'":
+                stack.pop()
+            i += 1
+            continue
+        if top == "DQ":
+            if c == '"':
+                stack.pop()
+            elif c == "`":
+                return True
+            elif line.startswith("$(", i):
+                stack.append(")")
+                i += 2
+                continue
+            elif line.startswith("${", i):
+                stack.append("}")
+                i += 2
+                continue
+            i += 1
+            continue
+        # CODE, or the body of a substitution/expansion, whose closer is the top.
+        if c == "'":
+            stack.append("SQ")
+        elif c == '"':
+            stack.append("DQ")
+        elif line.startswith("$(", i):
+            stack.append(")")
+            i += 2
+            continue
+        elif line.startswith("${", i):
+            stack.append("}")
+            i += 2
+            continue
+        elif top in (")", "}") and c == top:
+            stack.pop()
+        i += 1
+    return False
+
+
 def declared_arrays(text):
     """Names this file gives an array value before anything reads it."""
     names = set()
@@ -201,6 +274,9 @@ for path in sys.argv[2:]:
         if pattern == "bare-grep":
             if bare_grep(code):
                 hits.append("%s:%d:%s" % (path, i, line.strip()[:100]))
+        elif pattern == "backtick-in-double-quotes":
+            if backtick_in_double_quotes(line):
+                hits.append("%s:%d:%s" % (path, i, line.strip()[:100]))
         elif pattern == "array-init":
             for m in re.finditer(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\[[@*]\]([^}]*)\}", code):
                 nm, tail = m.group(1), m.group(2)
@@ -251,6 +327,39 @@ if [ -n "$(python3 "$SWEEP_PY" bare-grep "$wrapped")" ]; then
   fail "bare-grep: the sweep flags 'command grep' or a mention inside a string, so its finding count says nothing"
 else
   printf '  %-14s negative control: command grep and a string mention both pass\n' bare-grep
+fi
+
+# ---- AC-403: a backtick inside a double-quoted string ----------------------
+#
+# The generalisation of a bug this suite shipped and then fixed one line at a time
+# (tests/tools/reason-corpus.sh:396): inside double quotes a backtick is COMMAND
+# SUBSTITUTION, so `wv_finding "… \`enforce\` cannot be flipped"` without the
+# backslashes runs `enforce`, prints "command not found" on stderr, and renders the
+# sentence with a hole where the field name belongs. It lives on finding paths — text
+# that only renders when something else is already broken — so it is exactly the class
+# of defect a sweep has to find, because a passing run never executes it.
+#
+# The planted control is written with SINGLE quotes on this side, so bash passes the
+# violation through literally instead of substituting it here.
+check backtick-in-double-quotes 'printf "the field `enforce` cannot be flipped\n"'
+
+# The other half: the FIX must not be flagged, or the rule would forbid quoting a
+# field name at all and its finding count would say nothing. Three forms that are all
+# correct — an escaped backtick inside double quotes, a backtick inside single quotes,
+# and a real command substitution in backticks outside any string (legacy, and not
+# what this rule is about).
+bt_ok="$PLANT_DIR/backtick-escaped.sh"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'printf "the field \\`enforce\\` cannot be flipped\\n"\n'
+  printf "printf 'a \`literal\` backtick in single quotes\\n'\n"
+  printf 'now=`date -u`\n'
+} > "$bt_ok"
+if [ -n "$(python3 "$SWEEP_PY" backtick-in-double-quotes "$bt_ok")" ]; then
+  fail "backtick-in-double-quotes: the sweep flags an ESCAPED backtick, a single-quoted one, or a plain substitution, so its finding count says nothing:
+$(python3 "$SWEEP_PY" backtick-in-double-quotes "$bt_ok")"
+else
+  printf '  %-14s negative control: \\` , single-quoted ` and bare `…` all pass\n' backtick-dq
 fi
 
 # ---- AC-404 ----------------------------------------------------------------
