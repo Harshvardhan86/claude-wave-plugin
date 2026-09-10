@@ -2,7 +2,9 @@
 # tests/tools/mutants-lifecycle-hooks.sh [--keep]
 #
 # The mutation control for Task 10's five scripts (pre-commit-guard.sh,
-# pre-compact.sh, stop.sh, session-start.sh, user-prompt.sh): proves the
+# pre-compact.sh, stop.sh, session-start.sh, user-prompt.sh) plus the wave-id
+# bound in scripts/wave-init.sh, which is the other half of session-start.sh's
+# character budget: proves the
 # case corpus is not vacuous by breaking one property at a time and
 # requiring at least one case to go red for each. Same construction as
 # tests/tools/mutants-post-agent.sh (read its header first) — a mutant is
@@ -13,13 +15,18 @@
 # SURVIVED vs killed, because those fire on every narrow --filter regardless
 # of the mutant and would otherwise manufacture a false `killed`.
 #
-# Six mutants, the task-10-brief's own list:
+# Eight mutants — the task-10-brief's own six, plus the two properties the fix
+# rounds added, which cases pinned and no mutant could break:
 #   1. the planning-path glob is unanchored (drops `^`/`$`)
 #   2. the trailer regex is loosened to the bare word "claude"
 #   3. the commit guard's main-session-only (agent_id) guard is removed
 #   4. the PreCompact checkpoint is written without the ledger section
 #   5. the stop.sh scorecard pointer's once-per-wave marker check is removed
 #   6. the reminder is emitted with no active wave at all
+#   7. wave-init.sh's 1-24 `[A-Za-z0-9._-]` wave-id bound is loosened — the bound
+#      the session banner's own 400-character budget is derived from
+#   8. session-start.sh's two advisory clauses are collected in the other order,
+#      so the clause dropped when the cap binds is the SHORT actionable one
 #
 # Exit status: 0 only when every mutant was applied, every mutant was
 # killed, and the final restore matches the pristine hash for every target
@@ -89,6 +96,11 @@ wv_register_target scripts/hooks/pre-commit-guard.sh
 wv_register_target scripts/hooks/pre-compact.sh
 wv_register_target scripts/hooks/stop.sh
 wv_register_target scripts/hooks/user-prompt.sh
+wv_register_target scripts/hooks/session-start.sh
+# Not a hook, but the wave id's bound lives here and the banner's character budget
+# is derived from it: the two are one property with two halves, and this sweep is
+# where the banner's half is already measured.
+wv_register_target scripts/wave-init.sh
 
 wv_restore_target() {
   local rel="$1"
@@ -148,6 +160,21 @@ wv_run_mutant() {
   mut_sha="$(sha256sum < "$target" | cut -d' ' -f1)"
   if [ "$mut_sha" = "${WV_BASE_SHA[$rel]}" ]; then
     wv_rows+=("$label|NOT-APPLIED|patch changed nothing (hash unchanged)|-")
+    wv_survived=$((wv_survived + 1))
+    wv_restore_target "$rel"
+    return
+  fi
+
+  # A MUTANT THAT DOES NOT PARSE KILLS EVERYTHING AND PROVES NOTHING. A mutation is
+  # supposed to invert ONE property and leave the script running; one that breaks the
+  # syntax makes every case under the filter red on `syntax error`, and this driver
+  # would then report the mutant killed and the property covered. Measured while
+  # adding `waveidbound`: an unquoted space inside a `case` pattern ended the word,
+  # all 7 cases in the filter reded on the parse error, and the row said `killed`.
+  # A broken mutant is not a weaker mutant, it is not a mutant, so it counts as
+  # SURVIVED — the property still has no mutation proof.
+  if ! bash -n "$target" 2>"$WV_LOGS/$label.parse.err"; then
+    wv_rows+=("$label|INVALID|does not parse: $(tr '\n' ' ' < "$WV_LOGS/$label.parse.err" | tail -c 60)|-")
     wv_survived=$((wv_survived + 1))
     wv_restore_target "$rel"
     return
@@ -259,6 +286,45 @@ s = s.replace(old, new, 1)
 PY
 }
 
+# --- 7. the wave id's 1-24 [A-Za-z0-9._-] bound is loosened ----------------
+#
+# BOTH halves at once, because they are one property: the character class admits `/`,
+# and the length limit goes to 9999. init-360 rejects both halves independently (a
+# 25-character id, and `a/b`), so its log names each — a mutant killed on only one
+# half would be visible there rather than credited whole.
+#
+# The class admits `/` and NOT a space, and that is not a style choice: an unquoted
+# space inside a `case` pattern ends the word, so `*[!A-Za-z0-9._/ -]*)` is a SYNTAX
+# ERROR. Measured — that version of this mutant reded all 7 cases under the filter,
+# every one of them on `wave-init.sh: line 106: syntax error`, i.e. it was killed for
+# not parsing rather than for loosening anything. The parse gate in wv_run_mutant now
+# refuses such a mutant outright; this comment is why it exists.
+wv_body_waveidbound() { cat <<'PY'
+old_class = '  *[!A-Za-z0-9._-]*)'
+assert old_class in s, "anchor missing: wave-init.sh's wave-id character class"
+s = s.replace(old_class, '  *[!A-Za-z0-9._/-]*)', 1)
+old_len = 'if [ "${#wave_id}" -gt 24 ]; then'
+assert old_len in s, "anchor missing: wave-init.sh's 24-character wave-id limit"
+s = s.replace(old_len, 'if [ "${#wave_id}" -gt 9999 ]; then', 1)
+PY
+}
+
+# --- 8. the two advisory clauses are collected in the other order ----------
+#
+# The staleness clause is MOVED to after the compaction clause rather than reworded,
+# so the mutant is the order and nothing else. wv_list_cap fills from the front, so
+# under the maximum accepted input — where the budget genuinely cannot hold both —
+# this drops the short clause that names the command to run and keeps the long one.
+wv_body_clauseorder() { cat <<'PY'
+block = '  if wv_wave_stale_24h; then\n    clauses+=("wave open >24h; scripts/wave-close.sh closes it.")\n  fi\n\n'
+assert block in s, "anchor missing: session-start.sh's staleness clause block"
+s = s.replace(block, "", 1)
+anchor = '  local extra=""\n'
+assert anchor in s, "anchor missing: session-start.sh's extra assembly"
+s = s.replace(anchor, block + anchor, 1)
+PY
+}
+
 # THE EXPECTED KILLER, one per mutant. Each names the case that must be among the
 # reds — measured from a real run, not chosen — so a mutant credited to some other
 # case in the same filter is reported WRONG-CASE rather than killed. Membership,
@@ -269,6 +335,12 @@ WV_EXPECT[agentidguardremoved]=commit-subagent-silent
 WV_EXPECT[noledgersection]=compact-315-content-verify
 WV_EXPECT[scorecardtwice]=stopcard-322-alreadyprinted-silent
 WV_EXPECT[reminderwithnowave]=prompt-inject-11-no-wave-silent
+WV_EXPECT[waveidbound]=init-360-invalid-args
+# session-327d is the maximum accepted input, the one collision where the budget
+# really cannot hold both clauses, so it is where the order DECIDES which advisory
+# the operator sees. session-327b and session-327e also red (each pins the order with
+# a needle spanning the join), and membership means naming one does not exclude them.
+WV_EXPECT[clauseorder]=session-327d-max-banner-stale
 
 wv_run_mutant globunanchored        scripts/hooks/pre-commit-guard.sh wv_body_globunanchored        'commit-*' 'solo-guard-*'
 wv_run_mutant trailerloosened       scripts/hooks/pre-commit-guard.sh wv_body_trailerloosened       'commit-*' 'solo-guard-*'
@@ -276,6 +348,8 @@ wv_run_mutant agentidguardremoved   scripts/hooks/pre-commit-guard.sh wv_body_ag
 wv_run_mutant noledgersection       scripts/hooks/pre-compact.sh      wv_body_noledgersection       'compact-*' 'solo-guard-336*'
 wv_run_mutant scorecardtwice        scripts/hooks/stop.sh             wv_body_scorecardtwice        'stopcard-*'
 wv_run_mutant reminderwithnowave    scripts/hooks/user-prompt.sh      wv_body_reminderwithnowave    'prompt-inject-*'
+wv_run_mutant waveidbound           scripts/wave-init.sh              wv_body_waveidbound           'init-36*'
+wv_run_mutant clauseorder           scripts/hooks/session-start.sh    wv_body_clauseorder           'session-*'
 
 # --- the table --------------------------------------------------------------
 
