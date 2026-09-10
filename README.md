@@ -225,14 +225,22 @@ Release gates, from the repository root:
 bash tests/run.sh
 bash tests/run.sh --coverage
 bash tests/clean-clone-check.sh
+bash tests/tools/mutants-all.sh
+bash tests/tools/reason-corpus.sh
 bash tests/e2e.sh
 ```
 
 The first runs the cases; `--coverage` also fails missing positive/negative rule
-controls. The clean-clone check covers the committed tree. Mutation drivers live
-at `tests/tools/mutants-*.sh`. The end-to-end gate verifies an actual plugin load
-and headless wave; it reports a skip when `claude` is unavailable. A filtered
-pass, skipped live test or successful manifest validation alone is not a release gate.
+controls. The clean-clone check covers the committed tree. `mutants-all.sh` runs
+every mutation driver under `tests/tools/` — one per hook script plus the 78
+phase-table tier cells — and fails on any surviving mutant or failed restore; a
+green suite over a rule no mutant can break has proved nothing about that rule.
+`reason-corpus.sh` drives every rule id in `hooks/reasons.tsv` to its positive
+case and checks the reason a user actually reads: one rule token, a remedy, a
+length bound, no unrendered placeholder, and template arity matching every call
+site. The end-to-end gate verifies an actual plugin load and headless wave; it
+reports a skip when `claude` is unavailable. A filtered pass, skipped live test or
+successful manifest validation alone is not a release gate.
 
 ## The 10 invariants (verbatim from v1, preserved in v2)
 
