@@ -93,6 +93,13 @@ WV_TRANSCRIPT_CAP=8388608
 # Spec section 8.5. "Longer than 2,000 characters" — 2,000 exactly passes.
 WV_LONG_RETURN_CAP=2000
 
+# The bounded settle before the transcript is read (progress ledger line 181).
+# One sample every WV_TRANSCRIPT_SETTLE_MS milliseconds, at most
+# WV_TRANSCRIPT_SETTLE_TRIES of them: 12 x 200 ms = 2.4 s worst case, well inside
+# this hook's 60 s timeout, and paid ONLY by a transcript that never settles.
+WV_TRANSCRIPT_SETTLE_MS=200
+WV_TRANSCRIPT_SETTLE_TRIES=12
+
 wv_tier_name() {
   # wv_tier_name <rank> -> the tier token with that rank, from hooks/models.tsv.
   # The inverse of lib.sh's wv_tier_rank, and it reads the same file so the two
@@ -225,6 +232,76 @@ reduce inputs as $l (
     (.ccreate|tostring), (.skipped|tostring), (.excluded|tostring)] | join("\u001f")),
   (.votes | to_entries[] | ((.value | tostring) + "\u001f" + .key))
 '
+
+WV_TS_INCOMPLETE=0    # 1 when the settle below capped out without confirming
+
+wv_transcript_settle() {
+  # wv_transcript_settle <path> — waits, bounded, for the client to finish
+  # writing the subagent's transcript, then returns 0. Returns 1 (and sets
+  # WV_TS_INCOMPLETE=1 plus a W-STATE warning naming the path) when the cap was
+  # reached without a confirmation.
+  #
+  # WHY this exists. SubagentStop is delivered before the client has necessarily
+  # flushed the stopping agent's own transcript, measured at roughly one live run
+  # in five while building tests/e2e.sh scenario (c). `jq` over an
+  # empty-but-existing file returns a perfectly well-formed ZERO header, so the
+  # hook has no way to tell "this agent produced nothing" from "this file is not
+  # written yet": it records turns:0 / tier_ok:null / tier_verified:false for an
+  # agent that ran correctly on the right model, and — because `tainted` keys on
+  # tier_ok == false, never null — does it silently. The wave's own evidence is
+  # the thing being lost, which is why a bounded wait is worth 2.4 s of worst-case
+  # stop latency.
+  #
+  # CONFIRMATION is the conjunction of two independent signals, because either
+  # alone is satisfied by a half-written file: the byte size is unchanged across
+  # two consecutive samples (nothing is still being appended) AND at least one
+  # complete `assistant` line is readable (the turn we need for the tier vote is
+  # actually there). A file that is absent, zero bytes, still growing, or holds no
+  # assistant line yet is not a transcript this hook can measure.
+  #
+  # It never denies, never blocks, and never turns an unconfirmed read into a
+  # violation: on the cap it proceeds with exactly the numbers it would have
+  # recorded anyway, and marks the ledger line so a reader can tell an
+  # unverifiable stop from a verified one. An absent scan count is treated as a
+  # FAILED scan (Global Constraint 7) — it keeps waiting rather than accepting the
+  # file as complete.
+  local path="${1:-}"
+  WV_TS_INCOMPLETE=0
+  # No path at all is not an unsettled transcript: there is nothing to wait for
+  # and nothing to claim. wv_transcript_stats records "no transcript" for it.
+  [ -n "$path" ] || return 0
+
+  local i=0 prev="" size assistants
+  while [ "$i" -lt "$WV_TRANSCRIPT_SETTLE_TRIES" ]; do
+    if [ -f "$path" ]; then
+      size="$(wc -c < "$path" 2>/dev/null | tr -d ' ')"
+      case "$size" in ''|*[!0-9]*) size="" ;; esac
+      # Past the byte cap the sum is skipped whatever we do, so there is nothing
+      # for a settle to add and no reason to make this stop wait for it.
+      if [ -n "$size" ] && [ "$size" -gt "$WV_TRANSCRIPT_CAP" ]; then
+        return 0
+      fi
+      if [ -n "$size" ] && [ "$size" = "$prev" ] && [ "$size" != "0" ]; then
+        # `command grep`, never a bare grep: a wrapped searcher can decline a
+        # file and print nothing where real grep prints 0. `-a` so a transcript
+        # padded with NUL bytes is still counted rather than reported as binary.
+        assistants="$(command grep -acE '"type"[[:space:]]*:[[:space:]]*"assistant"' "$path" 2>/dev/null)"
+        case "$assistants" in
+          ''|*[!0-9]*) : ;;                       # failed scan: keep waiting
+          0) : ;;                                  # stable, but no turn yet
+          *) return 0 ;;                           # confirmed
+        esac
+      fi
+      prev="$size"
+    fi
+    sleep "$(printf '0.%03d' "$WV_TRANSCRIPT_SETTLE_MS")"
+    i=$((i + 1))
+  done
+
+  WV_TS_INCOMPLETE=1
+  wv_warn W-STATE "the subagent transcript $path still held no complete assistant turn after $(( WV_TRANSCRIPT_SETTLE_TRIES * WV_TRANSCRIPT_SETTLE_MS ))ms, so its token sum and tier check could not be confirmed and the ledger line is marked transcript_incomplete; nothing was blocked and no tier violation was inferred from it"
+  return 1
+}
 
 wv_transcript_stats() {
   # wv_transcript_stats <path> — sets every WV_TS_* above.
@@ -763,6 +840,9 @@ wv_main() {
   esac
 
   # ---- the transcript and the tier --------------------------------------
+  # The settle runs FIRST and outside the lock (like the read it guards), so a
+  # fan-out of agents stopping at once never queues behind each other's waits.
+  wv_transcript_settle "$transcript"
   wv_transcript_stats "$transcript"
 
   local tier_ok="null" tier_verified="false" req_name="-" req_rank=""
@@ -1082,8 +1162,10 @@ wv_main() {
     local extras
     extras="$(jq -nc --arg note "$WV_TS_NOTE" --arg skipped "$WV_TS_SKIPPED" \
       --arg excluded "$WV_TS_EXCLUDED" --arg turns "$WV_TS_TURNS" \
+      --argjson incomplete "$([ "$WV_TS_INCOMPLETE" = "1" ] && printf 'true' || printf 'false')" \
       --argjson long "$long_return" --argjson warn "$warnjson" '
         {}
+        + (if $incomplete then {transcript_incomplete: true} else {} end)
         + (if $note != "" then {note: $note}
            elif ($excluded | tonumber) > 0 then
              {note: ("\($excluded) of \($turns) assistant line(s) were excluded from the tier vote (no message.model, or output_tokens 0)")}

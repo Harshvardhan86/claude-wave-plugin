@@ -1,6 +1,6 @@
 {
   "ac": "AC-243",
-  "note": "a transcript with zero assistant lines: exit 0, no block, done with tier_verified:false, and turns/input/output all 0 with tier_ok null — an empty transcript is unverifiable, never taint.",
+  "note": "a transcript with zero assistant lines: exit 0, no block, done with tier_verified:false, and turns/input/output all 0 with tier_ok null \u2014 an empty transcript is unverifiable, never taint. Since the bounded transcript settle landed (progress ledger line 181, tests/cases/stop-181-transcript-settle.sh), a transcript holding no complete assistant turn is ALSO unconfirmable: the hook cannot tell this file from one the client has not finished writing, so it waits out the settle cap, says so once on stderr (SubagentStop has no additionalContext channel) and marks the ledger line transcript_incomplete. Every number AC-243 pins is unchanged; what is added is the hook admitting it could not confirm the read, which is the whole content of the defect that fix closed.",
   "script": "subagent-stop.sh",
   "seed": {
     "state": "state/stop-ac-reviewer.json",
@@ -36,9 +36,14 @@
   },
   "expect": {
     "exit": 0,
-    "decision": "silent",
+    "decision": "allow",
+    "stderr_contains": [
+      "W-STATE",
+      ".wave/tr/a1.jsonl",
+      "transcript_incomplete"
+    ],
     "ledger_lines": 1,
-    "ledger_assert": ".turns == 0 and .input == 0 and .output == 0 and .tier_ok == null and .tier_verified == false",
+    "ledger_assert": ".turns == 0 and .input == 0 and .output == 0 and .tier_ok == null and .tier_verified == false and .transcript_incomplete == true",
     "state_assert": ".phases.AC.status == \"done\" and (.phases.AC.tainted // false) == false"
   }
 }

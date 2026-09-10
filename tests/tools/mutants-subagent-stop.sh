@@ -13,9 +13,10 @@
 # killed, because those fire on every narrow --filter regardless of the mutant
 # and would otherwise manufacture a false `killed`.
 #
-# Fifteen mutants: the eight properties the task brief names, plus the seven the
+# Seventeen mutants: the eight properties the task brief names, the seven the
 # round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
-# a mutant now names its own target file).
+# a mutant now names its own target file), and the two Task 13 added with the
+# bounded transcript settle.
 #   1. closingrole    the artifact check is applied to EVERY role's stop, not
 #                     only the closing role's
 #   2. lastoneout     the last-one-out predicate always says "last", so the
@@ -39,6 +40,11 @@
 #  13. warnedgrows    the phase's warn list is appended to on every replay
 #  14. libtabcollapse lib.sh's hoisted row reader stops re-delimiting tabs to US
 #  15. blockswallows  lib.sh's wv_block discards the queued warnings again
+#  16. settleremoved  the bounded transcript settle is gone, so a SubagentStop
+#                     that beats the transcript flush scores the agent as
+#                     unverifiable
+#  17. settlenoflag   reaching the settle cap is not recorded, so an
+#                     unconfirmed read is indistinguishable from a verified one
 #
 # Exit status: 0 only when every mutant was applied, every mutant was killed,
 # and the final restore matches the pristine hash.
@@ -332,6 +338,24 @@ s = s.replace(old, new)
 PY
 }
 
+# --- 16. the bounded transcript settle is gone -----------------------------
+wv_body_settleremoved() { cat <<'PY'
+old = '''  wv_transcript_settle "$transcript"
+'''
+assert old in s, "anchor missing: the transcript settle call"
+s = s.replace(old, "", 1)
+PY
+}
+
+# --- 17. reaching the settle cap is not recorded ---------------------------
+wv_body_settlenoflag() { cat <<'PY'
+old = '  WV_TS_INCOMPLETE=1\n  wv_warn W-STATE "the subagent transcript'
+new = '  WV_TS_INCOMPLETE=0\n  wv_warn W-STATE "the subagent transcript'
+assert old in s, "anchor missing: the settle cap flag"
+s = s.replace(old, new)
+PY
+}
+
 # --- 15. lib.sh: a block discards the warnings it cannot carry -------------
 wv_body_blockswallows() { cat <<'PY'
 old = '  if [ -n "$WV_WARNINGS" ]; then\n    printf \'%s\\n\' "$WV_WARNINGS" >&2\n    WV_WARNINGS=""\n  fi\n  jq -nc'
@@ -359,6 +383,8 @@ wv_run_mutant stallquiet     wv_body_stallquiet     "$H" 'stop-stalled*' 'stop-2
 wv_run_mutant warnedgrows    wv_body_warnedgrows    "$H" 'taint-warned*' 'taint-240*'
 wv_run_mutant libtabcollapse wv_body_libtabcollapse "$L" 'stop-220*' 'stop-227*'
 wv_run_mutant blockswallows  wv_body_blockswallows  "$L" 'stop-warn-flush*' 'marker-204*' 'stop-214*'
+wv_run_mutant settleremoved  wv_body_settleremoved  "$H" 'stop-181-*'
+wv_run_mutant settlenoflag   wv_body_settlenoflag   "$H" 'stop-181-*' 'taint-243*'
 
 # --- the table --------------------------------------------------------------
 
