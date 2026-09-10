@@ -48,7 +48,7 @@ wv_main() {
     .wave|.wave/*) return 0 ;;
   esac
 
-  wv_rule_deny W-READ "$resolved"
+  wv_rule_deny W-READ "$(wv_rel "$resolved")"
   return 0
 }
 

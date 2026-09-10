@@ -75,9 +75,17 @@ case "$ctx" in
   "[W-STATE] "*) : ;;
   *) fail "unwritable .wave: additionalContext does not carry a rendered W-STATE: '$ctx'" ;;
 esac
+# The directory must be NAMED, and named RELATIVE to the project root: the root
+# is the same for every path in the message, is only true on the machine that
+# rendered it, and pushes the part that matters off the end of a terminal line
+# (Task 13, reason corpus). Both halves are asserted, so a fix that stopped
+# naming the directory at all would still fail here.
 case "$ctx" in
-  *"$WV_PROJECT/.wave"*) : ;;
+  *'.wave'*) : ;;
   *) fail "unwritable .wave: the W-STATE warning does not name the directory: '$ctx'" ;;
+esac
+case "$ctx" in
+  *"$WV_PROJECT"*) fail "unwritable .wave: the W-STATE warning names the project root: '$ctx'" ;;
 esac
 
 # nothing half-written left behind

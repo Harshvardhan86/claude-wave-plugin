@@ -27,7 +27,7 @@
     "rule": "W-TAG",
     "reason_template": "W-TAG",
     "reason_contains": [
-      "[W:<wave> P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]"
+      "[W:1 P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]"
     ]
   }
 }

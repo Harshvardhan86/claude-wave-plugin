@@ -275,14 +275,16 @@ wv_excerpt() {
 }
 
 wv_tag_arg() {
-  # The one argument hooks/reasons.tsv's W-TAG template declares: the active
-  # wave id, plus the diagnosis when there is one. The template has a single
-  # placeholder, in the wave slot of the illustrated tag, so a diagnosis has
-  # nowhere else to go.
+  # The FIRST of the two arguments hooks/reasons.tsv's W-TAG template declares:
+  # the diagnosis. The template used to have a single placeholder, in the wave
+  # slot of the illustrated tag, so the diagnosis had to be smuggled into the
+  # wave id as `1 (R:coder is not one of the five roles)` — which reads as though
+  # the wave were called that. It has its own slot now (Task 13, reason corpus);
+  # the second argument is the wave id, and it is passed at the call site.
   if [ -n "$WV_TAG_DETAIL" ]; then
-    printf '%s (%s)' "$WV_WAVE" "$WV_TAG_DETAIL"
+    printf '%s' "$WV_TAG_DETAIL"
   else
-    printf '%s' "$WV_WAVE"
+    printf 'no [W:<wave> P:<PHASE> R:<role>] tag was found'
   fi
 }
 
@@ -978,11 +980,16 @@ wv_dr_open_gate() {
   fi
   [ "$resolved_n" -ge "$open_n" ] && return 0
 
-  local lines="" l
+  # Capped, for the same reason the commit guard caps its path list: a dr.md may
+  # carry any number of OPEN: lines and the count above already states how many.
+  local -a open_lines=()
+  local l
   while IFS= read -r l; do
     [ -n "$l" ] || continue
-    lines="${lines:+$lines | }$l"
+    open_lines+=("$l")
   done < <(command grep -E '^OPEN:' <<<"$stripped" 2>/dev/null)
+  local lines
+  lines="$(wv_list_cap 2 110 ' | ' "${open_lines[@]+"${open_lines[@]}"}")"
 
   wv_rule_deny W-DR-OPEN "$open_n" "$resolved_n" "$lines"
   return 1
@@ -1090,16 +1097,24 @@ wv_budget_gate() {
   [ -n "$blob" ] || return 0
   IFS=$'\x1f' read -r spent bad <<<"$blob"
   if [ -n "$bad" ]; then
-    wv_rule_warn W-STATE "$ledger could not be parsed at line $bad, so that line was skipped; the budget was summed over the lines that did parse, because a corrupt ledger must never manufacture a deny"
+    wv_rule_warn W-STATE "$(wv_rel "$ledger") could not be parsed at line $bad, so that line was skipped; the budget was summed over the lines that did parse, because a corrupt ledger must never manufacture a deny"
   fi
   case "$spent" in ''|*[!0-9]*) return 0 ;; esac
   [ "$spent" -gt "$limit" ] || return 0
 
-  # One decimal, truncated, computed in integers: the ratio is a diagnosis, not
-  # an accounting figure, and a truncated 2.1x never overstates the overage.
+  # One decimal, computed in integers: the ratio is a diagnosis, not an
+  # accounting figure, and a truncated 2.1x never overstates the overage.
+  #
+  # But truncation alone LIES at the boundary. This rule only fires when `spent`
+  # is strictly greater than the limit, and 3001 against a limit of 3000
+  # truncates to "1.0x" — a reason that reads as "not over budget" attached to a
+  # deny for being over it. So a ratio that did not divide exactly is prefixed
+  # `>`: ">1.0x" is both true and readable, and it never overstates the overage
+  # the way rounding up to "1.1x" would.
   local tenths ratio
   tenths=$(( spent * 10 / limit ))
   ratio="$((tenths / 10)).$((tenths % 10))"
+  [ $(( spent * 10 % limit )) -eq 0 ] || ratio=">$ratio"
 
   if [ "$spent" -gt $(( limit * 2 )) ]; then
     [ -f "$WV_WAVE_DIR/approvals/budget-$WV_TAG_PHASE.md" ] && return 0
@@ -1316,18 +1331,18 @@ wv_main() {
   # 4. The tag: present and well formed, for this wave, naming a real phase.
   wv_tag_parse "$WV_DESC" "$WV_PROMPT_TEXT"
   if [ "$WV_TAG_OK" != "1" ]; then
-    wv_rule_deny W-TAG "$(wv_tag_arg)"
+    wv_rule_deny W-TAG "$(wv_tag_arg)" "$WV_WAVE"
     return 0
   fi
   if [ "$WV_TAG_WAVE" != "$WV_WAVE" ]; then
     # Byte comparison, never numeric: `01` is not `1`.
     WV_TAG_DETAIL="the dispatch said W:$WV_TAG_WAVE"
-    wv_rule_deny W-TAG "$(wv_tag_arg)"
+    wv_rule_deny W-TAG "$(wv_tag_arg)" "$WV_WAVE"
     return 0
   fi
   if ! wv_phase_row "$WV_TAG_PHASE"; then
     WV_TAG_DETAIL="P:$WV_TAG_PHASE is not a row in hooks/phases.tsv"
-    wv_rule_deny W-TAG "$(wv_tag_arg)"
+    wv_rule_deny W-TAG "$(wv_tag_arg)" "$WV_WAVE"
     return 0
   fi
   # The library records warnings against a phase; from here we know it.

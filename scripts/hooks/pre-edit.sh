@@ -105,7 +105,7 @@ wv_main() {
   # itself (README.md, CHANGELOG.md, CONTINUE-HERE.md, docs/**).
   wv_writable_allowed "$rel" && return 0
 
-  wv_rule_deny W-EDIT "$resolved"
+  wv_rule_deny W-EDIT "$(wv_rel "$resolved")"
   return 0
 }
 

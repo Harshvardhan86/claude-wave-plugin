@@ -101,6 +101,34 @@ WV_SCHEMA_MAX=1
 # 3. Reason rendering.
 # ---------------------------------------------------------------------------
 
+wv_specifier_count() {
+  # wv_specifier_count <printf template> -> how many conversion specifiers it
+  # consumes. `%%` is a literal percent and consumes nothing; no shipped template
+  # uses one, and this counts correctly if one ever does.
+  local t="${1:-}"
+  t="${t//%%/}"
+  local n=0
+  while [ -n "$t" ]; do
+    case "$t" in
+      *%*)
+        t="${t#*%}"
+        # Skip flags, width and precision, then the conversion letter.
+        while [ -n "$t" ]; do
+          case "$t" in
+            [-\#0\ +.0-9]*) t="${t#?}" ;;
+            *) break ;;
+          esac
+        done
+        case "$t" in
+          [a-zA-Z]*) n=$((n + 1)); t="${t#?}" ;;
+        esac
+        ;;
+      *) break ;;
+    esac
+  done
+  printf '%s' "$n"
+}
+
 wv_render() {
   # wv_render <rule-id> [args...] -> the rendered reason on stdout.
   local rule="$1"
@@ -117,8 +145,35 @@ wv_render() {
   fi
   local out=""
   if [ -n "$tmpl" ]; then
+    # THE ARGUMENT COUNT IS FORCED TO MATCH THE TEMPLATE, and this is not
+    # defensive tidiness. `printf` REUSES its format string whenever it is given
+    # more arguments than the format consumes, so ONE surplus argument does not
+    # get dropped: the whole reason renders a second time, and the result carries
+    # TWO `W-` tokens. Every consumer of a reason reads the rule off
+    # `W-[A-Z0-9-]+` (the harness's assert_single_rule_token, the operator, the
+    # scorecard), so it would read the wrong rule off a doubled reason, and the
+    # doubling would look like a rendering quirk rather than the arity bug it is.
+    #
+    # Surplus arguments are therefore DISCARDED and missing ones rendered empty:
+    # a reason that is short a fact is a poor message, a reason that names two
+    # rules is a wrong one. The arity itself is checked statically, at every call
+    # site, by tests/tools/reason-corpus.sh — this guard is what stops a call site
+    # nobody has run yet from corrupting a reason in production, not a licence to
+    # let one exist.
+    local want args_seen=0 arg
+    want="$(wv_specifier_count "$tmpl")"
+    local -a rargs=()
+    for arg in "$@"; do
+      [ "$args_seen" -lt "$want" ] || break
+      rargs+=("$arg")
+      args_seen=$((args_seen + 1))
+    done
+    while [ "$args_seen" -lt "$want" ]; do
+      rargs+=("")
+      args_seen=$((args_seen + 1))
+    done
     # shellcheck disable=SC2059  # the template IS the format string (data over code)
-    out="$(printf "$tmpl" "$@" 2>/dev/null)"
+    out="$(printf "$tmpl" "${rargs[@]+"${rargs[@]}"}" 2>/dev/null)"
   fi
   if [ -z "$out" ]; then
     local detail="$*"
@@ -329,7 +384,7 @@ wv_state_read() {
       | join("\u001f")
     ' "$resolved_state" 2>/dev/null)"
   if [ -z "$blob" ]; then
-    wv_warn W-STATE "$resolved_state is not valid JSON, so the wave state could not be read; re-run scripts/wave-init.sh to rewrite it"
+    wv_warn W-STATE "$(wv_rel "$resolved_state") is not valid JSON, so the wave state could not be read; re-run scripts/wave-init.sh to rewrite it"
     return 1
   fi
 
@@ -341,12 +396,20 @@ wv_state_read() {
   [ "$status" = "active" ] || return 1
 
   if [ "$schema" != "$WV_SCHEMA_MAX" ]; then
-    wv_warn W-STATE "$resolved_state declares schema ${schema:-none}, and the highest supported schema is $WV_SCHEMA_MAX; upgrade the plugin or re-run scripts/wave-init.sh"
+    # A HIGHER schema than this plugin knows means the plugin is behind; a LOWER
+    # one means the state file is. Telling an operator with schema 0 to "upgrade
+    # the plugin" sends them the wrong way, so the two are reported apart.
+    local schema_advice="re-run scripts/wave-init.sh to rewrite it at schema $WV_SCHEMA_MAX"
+    case "$schema" in
+      ''|*[!0-9]*) : ;;
+      *) [ "$schema" -gt "$WV_SCHEMA_MAX" ] && schema_advice="upgrade the plugin, which reads up to schema $WV_SCHEMA_MAX" ;;
+    esac
+    wv_warn W-STATE "$(wv_rel "$resolved_state") declares schema ${schema:-none} and this plugin supports $WV_SCHEMA_MAX; $schema_advice"
     return 1
   fi
 
   if [ -z "$mode" ]; then
-    wv_warn W-STATE "$resolved_state has no mode key, so it is half-written; re-run scripts/wave-init.sh"
+    wv_warn W-STATE "$(wv_rel "$resolved_state") has no mode key, so it is half-written; re-run scripts/wave-init.sh"
     return 1
   fi
 
@@ -360,7 +423,7 @@ wv_state_read() {
       ;;
     *)
       WV_ENFORCE="block"
-      wv_warn W-STATE "$resolved_state has enforce \"$enforce\", which is neither block nor warn, so block is used; fix the value with scripts/wave-set.sh"
+      wv_warn W-STATE "$(wv_rel "$resolved_state") has enforce \"$enforce\", which is neither block nor warn, so block is used; fix the value with scripts/wave-set.sh"
       ;;
   esac
 
@@ -390,19 +453,44 @@ wv_state_read() {
 
 WV_LOCK_DEPTH=0
 
+# WHY the failure is classified. `wv_lock_acquire` returns 1 for two entirely
+# different reasons — the lock file could not be created or opened at all (a
+# read-only or missing `.wave/`), and the lock is held by somebody else for
+# longer than the timeout — and the remedies are opposite: fix the permissions
+# versus wait for the other hook. Reporting both as "could not take the lock
+# within 10s" sends an operator whose `.wave/` is unwritable to wait for a hook
+# that is not running. `wv_lock_detail` renders the clause that fits.
+WV_LOCK_FAIL=""
+
+wv_lock_detail() {
+  # wv_lock_detail -> the clause naming WHY the last acquisition failed.
+  case "$WV_LOCK_FAIL" in
+    unwritable) printf 'the wave state lock %s/lock could not be opened for writing (is %s writable?)' \
+                  "$(wv_rel "$WV_WAVE_DIR")" "$(wv_rel "$WV_WAVE_DIR")" ;;
+    noroot)     printf 'there is no resolved .wave directory to lock' ;;
+    *)          printf 'the wave state lock %s/lock was held by another hook for longer than 10s' \
+                  "$(wv_rel "$WV_WAVE_DIR")" ;;
+  esac
+}
+
 wv_lock_acquire() {
-  # Returns 0 with the lock held on fd 9. Returns 1 without warning; the
-  # caller warns with the message that fits what it was trying to do.
-  [ -n "$WV_WAVE_DIR" ] || return 1
+  # Returns 0 with the lock held on fd 9. Returns 1 without warning, having set
+  # WV_LOCK_FAIL; the caller warns with the message that fits what it was trying
+  # to do, using wv_lock_detail for the part that says why.
+  WV_LOCK_FAIL=""
+  if [ -z "$WV_WAVE_DIR" ]; then
+    WV_LOCK_FAIL=noroot
+    return 1
+  fi
   if [ "$WV_LOCK_DEPTH" -gt 0 ]; then
     WV_LOCK_DEPTH=$((WV_LOCK_DEPTH + 1))
     return 0
   fi
   local lock="$WV_WAVE_DIR/lock"
   if [ ! -e "$lock" ]; then
-    { : > "$lock"; } 2>/dev/null || return 1
+    { : > "$lock"; } 2>/dev/null || { WV_LOCK_FAIL=unwritable; return 1; }
   fi
-  { exec 9>>"$lock"; } 2>/dev/null || return 1
+  { exec 9>>"$lock"; } 2>/dev/null || { WV_LOCK_FAIL=unwritable; return 1; }
   if flock -w 10 9; then
     printf '%s\n' "$$" > "$lock" 2>/dev/null
     WV_LOCK_DEPTH=1
@@ -424,6 +512,7 @@ wv_lock_acquire() {
       ;;
   esac
   exec 9>&-
+  WV_LOCK_FAIL=timeout
   return 1
 }
 
@@ -493,7 +582,7 @@ wv_state_update() {
   fi
 
   if ! wv_lock_acquire; then
-    wv_warn W-STATE "could not take the wave state lock $WV_WAVE_DIR/lock within 10s, so nothing was recorded; re-run the step once the other hook has finished"
+    wv_warn W-STATE "$(wv_lock_detail), so nothing was recorded and the state was left untouched"
     return 1
   fi
 
@@ -513,7 +602,7 @@ wv_state_update() {
   wv_lock_release
 
   if [ "$rc" != "0" ]; then
-    wv_warn W-STATE "could not write $WV_STATE_FILE (is $WV_WAVE_DIR writable?), so nothing was recorded and the state was left untouched"
+    wv_warn W-STATE "could not write $(wv_rel "$WV_STATE_FILE") (is $(wv_rel "$WV_WAVE_DIR") writable?), so nothing was recorded and the state was left untouched"
   else
     WV_STATE="$(cat "$WV_STATE_FILE" 2>/dev/null)"
   fi
@@ -535,10 +624,10 @@ wv_ledger_spool() {
   local spool="$WV_WAVE_DIR/ledger.pending"
   local id="${WV_AGENT_ID:-unknown}"
   if mkdir -p "$spool" 2>/dev/null && printf '%s\n' "$line" >> "$spool/$id.json" 2>/dev/null; then
-    wv_warn W-STATE "the wave state lock was busy, so this ledger line was spooled to $spool/$id.json and will be merged by the next hook that takes the lock"
+    wv_warn W-STATE "the wave state lock was busy, so this ledger line was spooled to $(wv_rel "$spool")/$id.json and will be merged by the next hook that takes the lock"
     return 0
   fi
-  wv_warn W-STATE "the wave state lock was busy and $spool/$id.json could not be written, so this step is missing from the token ledger"
+  wv_warn W-STATE "the wave state lock was busy and $(wv_rel "$spool")/$id.json could not be written, so this step is missing from the token ledger"
   return 1
 }
 
@@ -559,7 +648,7 @@ wv_ledger_append() {
     printf '%s\n' "$line" >> "$WV_WAVE_DIR/ledger.jsonl" 2>/dev/null || rc=1
     wv_lock_release
     if [ "$rc" != "0" ]; then
-      wv_warn W-STATE "could not append to $WV_WAVE_DIR/ledger.jsonl, so this step is missing from the token ledger"
+      wv_warn W-STATE "could not append to $(wv_rel "$WV_WAVE_DIR")/ledger.jsonl, so this step is missing from the token ledger"
     fi
     return $rc
   fi
@@ -720,7 +809,7 @@ wv_scan() {
   count="$(command grep -cE -- "$regex" "$file" 2>/dev/null)"
   case "$count" in
     ''|*[!0-9]*)
-      wv_warn W-STATE "the gating scan of $file returned no count, so it did not run and nothing was measured; re-run once the file is readable"
+      wv_warn W-STATE "the gating scan of $(wv_rel "$file") returned no count, so it did not run and nothing was measured; re-run once the file is readable"
       return 1
       ;;
   esac
@@ -754,6 +843,62 @@ wv_can_emit() {
   esac
   [ "$WV_STATE_OK" = "1" ] || return 1
   return 0
+}
+
+wv_list_cap() {
+  # wv_list_cap <max items> <max chars> <separator> <item>... -> the items joined
+  # by <separator>, truncated to whichever of the two budgets binds first, with
+  # "(+N more)" naming how many were left out.
+  #
+  # A reason interpolates a LIST in two places — the staged planning documents a
+  # commit was refused for, and the unanswered OPEN: lines of a design review —
+  # and both are as long as the user's input. Without a cap the reason's length is
+  # unbounded: a commit staging thirty analysis files renders a reason nobody
+  # reads, and the 400-character bound tests/tools/reason-corpus.sh enforces would
+  # hold only for the fixtures in the corpus, not for any real input. A bound that
+  # is a property of the test data is not a bound.
+  #
+  # BOTH budgets are needed, and an item count alone was measured to be
+  # insufficient: four staged paths of 50 characters each already carry the reason
+  # past 400. So items are added while the count AND the character budget both
+  # allow, and at least one item is always named — a reason that named nothing and
+  # said "(+12 more)" would satisfy a length check while telling the operator
+  # nothing to act on.
+  local max_items="$1" max_chars="$2" sep="$3"
+  shift 3
+  local out="" n=0 total=$# item
+  for item in "$@"; do
+    if [ "$n" -gt 0 ]; then
+      [ "$n" -lt "$max_items" ] || break
+      [ $(( ${#out} + ${#sep} + ${#item} )) -le "$max_chars" ] || break
+    fi
+    out="${out:+$out$sep}$item"
+    n=$((n + 1))
+  done
+  if [ "$total" -gt "$n" ]; then
+    out="$out$sep(+$((total - n)) more)"
+  fi
+  printf '%s' "$out"
+}
+
+wv_rel() {
+  # wv_rel <path> -> the path with the project root stripped, so a reason names
+  # `.wave/ledger.jsonl` and not `/home/<someone>/<their project>/.wave/…`.
+  #
+  # A reason is read by a person and matched by a test. The project root is not
+  # information either of them needs: it is the same for every path in the
+  # message, it is only true on the machine that rendered it, and it pushes the
+  # part that matters past the end of a terminal line. A path that is genuinely
+  # OUTSIDE the root is returned unchanged — there is nothing to make it relative
+  # to, and for the two symlink-escape warnings the absolute target IS the claim.
+  local path="${1:-}"
+  if [ -n "$WV_ROOT" ]; then
+    case "$path" in
+      "$WV_ROOT"/*) printf '%s' "${path#"$WV_ROOT"/}"; return 0 ;;
+      "$WV_ROOT") printf '.'; return 0 ;;
+    esac
+  fi
+  printf '%s' "$path"
 }
 
 wv_warn() {

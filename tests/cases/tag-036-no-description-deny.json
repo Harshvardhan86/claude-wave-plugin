@@ -26,7 +26,7 @@
     "reason_template": "W-TAG",
     "reason_contains": [
       "no description was sent",
-      "[W:<wave> P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]"
+      "[W:1 P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]"
     ]
   }
 }

@@ -30,7 +30,7 @@
     "rule": "W-BUDGET",
     "reason_template": "W-BUDGET",
     "reason_contains": [
-      "spent 13000, limit 6000, 2.1x",
+      "spent 13000, limit 6000, >2.1x",
       ".wave/approvals/budget-TEET.md"
     ]
   }

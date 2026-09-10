@@ -231,25 +231,34 @@ wv_write_pending() {
 #    problem, so a reader can tell the three apart.
 # ---------------------------------------------------------------------------
 
+# THE THREE CAUSES, EACH NAMED. hooks/reasons.tsv's W-RESOLVE-UNKNOWN template
+# takes two arguments — the tool_response FIELD that could not be read, and the
+# specific fact about it — because one id covers three different causes and a
+# single free-text slot made the sentence wrong for two of them: it said
+# "resolved model %s could not be mapped to a tier" when the actual finding was
+# that the launch had no status field, or no agentId, and the resolved model was
+# never in question (Task 13, reason corpus; carried from the Task 7 review).
+# Each helper below returns only the FACT; the field name is passed beside it.
+
 wv_ru_detail_status() {
   local status="${1:-}"
   if [ -z "$status" ]; then
-    printf 'unknown (tool_response carries no status field at all, so this is not a recognised launch)'
+    printf 'the field is absent, so this is not a recognised launch'
   else
-    printf 'unknown (tool_response.status is "%s", neither async_launched nor completed)' "$status"
+    printf 'it is "%s", neither async_launched nor completed' "$status"
   fi
 }
 
 wv_ru_detail_agentid() {
-  printf 'unknown (tool_response carries no agentId, so tool_use_id %s cannot be joined to a SubagentStop; recorded under state.pending instead)' "$WV_TOOL_USE_ID"
+  printf 'the field is absent, so tool_use_id %s cannot be joined to a SubagentStop; recorded under state.pending instead' "$WV_TOOL_USE_ID"
 }
 
 wv_ru_detail_model() {
   local raw="${1:-}"
   if [ -z "$raw" ]; then
-    printf 'unknown (tool_response carries no resolvedModel field at all)'
+    printf 'the field is absent'
   else
-    printf '%s (matches no tier token)' "$raw"
+    printf 'it is "%s", which matches no tier token in hooks/models.tsv' "$raw"
   fi
 }
 
@@ -314,7 +323,7 @@ wv_main() {
   case "$status" in
     async_launched|completed) : ;;
     *)
-      wv_warn W-RESOLVE-UNKNOWN "$(wv_ru_detail_status "$status")"
+      wv_warn W-RESOLVE-UNKNOWN status "$(wv_ru_detail_status "$status")"
       return 0
       ;;
   esac
@@ -323,7 +332,7 @@ wv_main() {
   agent_id="$(wv_tool_response_field agentId)"
   if [ -z "$agent_id" ]; then
     wv_write_pending "$phase" "$role"
-    wv_warn W-RESOLVE-UNKNOWN "$(wv_ru_detail_agentid)"
+    wv_warn W-RESOLVE-UNKNOWN agentId "$(wv_ru_detail_agentid)"
     return 0
   fi
 
@@ -343,7 +352,7 @@ wv_main() {
   local status_field="launched" resolved_model_val="$resolved_raw"
   if [ "$resolved_tier" = "unknown" ]; then
     resolved_model_val="unknown"
-    wv_warn W-RESOLVE-UNKNOWN "$(wv_ru_detail_model "$resolved_raw")"
+    wv_warn W-RESOLVE-UNKNOWN resolvedModel "$(wv_ru_detail_model "$resolved_raw")"
   elif [ -n "$requested_tier" ] && [ "$requested_tier" != "unknown" ] \
     && [ "$resolved_tier" -lt "$requested_tier" ]; then
     status_field="downgraded"

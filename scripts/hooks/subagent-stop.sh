@@ -299,7 +299,7 @@ wv_transcript_settle() {
   done
 
   WV_TS_INCOMPLETE=1
-  wv_warn W-STATE "the subagent transcript $path still held no complete assistant turn after $(( WV_TRANSCRIPT_SETTLE_TRIES * WV_TRANSCRIPT_SETTLE_MS ))ms, so its token sum and tier check could not be confirmed and the ledger line is marked transcript_incomplete; nothing was blocked and no tier violation was inferred from it"
+  wv_warn W-STATE "transcript $(wv_rel "$path") held no complete assistant turn after $(( WV_TRANSCRIPT_SETTLE_TRIES * WV_TRANSCRIPT_SETTLE_MS ))ms, so its token sum and tier are unconfirmed and the ledger line is marked transcript_incomplete"
   return 1
 }
 
@@ -896,7 +896,7 @@ wv_main() {
     # reads it for the dedupe, and before Task 6's budget gate sums it.
     wv_ledger_drain_locked
   else
-    wv_warn W-STATE "could not take the wave state lock $WV_WAVE_DIR/lock within 10s, so no phase was judged and no round was counted for agent $WV_STOP_AGENT; its ledger line is spooled instead"
+    wv_warn W-STATE "$(wv_lock_detail), so no phase was judged and no round was counted for agent $WV_STOP_AGENT; its ledger line is spooled instead"
   fi
 
   # Which rules has this agent already been blocked for? THE block-once key.

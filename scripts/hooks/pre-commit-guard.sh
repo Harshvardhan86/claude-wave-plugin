@@ -181,20 +181,22 @@ wv_pcg_doc_check() {
 
   [ "${#hit_paths[@]}" -gt 0 ] || return 0
 
-  local desc_joined path_joined d p
-  desc_joined=""
-  for d in "${hit_descs[@]}"; do
-    desc_joined="${desc_joined:+$desc_joined, }$d"
-  done
-  path_joined=""
-  for p in "${hit_paths[@]}"; do
-    path_joined="${path_joined:+$path_joined }$p"
-  done
+  # Both lists are capped: a commit can stage any number of planning documents,
+  # and a reason whose length is the user's input length is a reason nobody reads
+  # (lib.sh's wv_list_cap says why the bound belongs in the code rather than in
+  # the fixtures). Four is enough to act on and enough to recognise the pattern;
+  # the count carries the rest.
+  # ONE capped list, not two. The template used to interpolate the same paths a
+  # second time inside its remedy, which doubled every path and made the reason's
+  # length unboundable however hard the list itself was capped; the remedy now
+  # names the command and points at the list above it.
+  local desc_joined
+  desc_joined="$(wv_list_cap 4 170 ', ' "${hit_descs[@]}")"
 
   if [ -f "$WV_WAVE_DIR/approvals/commit-doc.md" ]; then
-    wv_rule_warn W-COMMIT-DOC "$desc_joined" "$path_joined"
+    wv_rule_warn W-COMMIT-DOC "$desc_joined"
   else
-    wv_rule_deny W-COMMIT-DOC "$desc_joined" "$path_joined"
+    wv_rule_deny W-COMMIT-DOC "$desc_joined"
   fi
   return 0
 }
