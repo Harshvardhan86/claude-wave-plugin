@@ -31,11 +31,28 @@ WV_HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 # shellcheck source=scripts/hooks/lib.sh
 source "$WV_HOOK_DIR/lib.sh"
 
-# What is left of the reason corpus's 400-character bound after everything else in
-# this banner is at its longest. DERIVED, term by term, from values that are
-# themselves bounded — the previous figure was derived from the same terms except
-# that the wave id was not bounded at all, so a 40-character id rendered 458 and a
-# 24-character one rendered 405:
+# THE BOUND ON ANY ONE RENDERED REASON, tests/tools/reason-corpus.sh's
+# WV_MAX_REASON. It is the number this file spends against, and it is the number the
+# gate measures, so it is named here rather than folded into a derived constant.
+WV_SESSION_MAX_REASON=400
+#
+# The "(+N more)" tail wv_list_cap appends when it drops an item, plus the separator
+# in front of it. wv_list_cap appends that tail PAST its character budget (an item it
+# admitted is never retracted to make room for the tail), so a caller that must not
+# exceed a hard total has to reserve it. There are only ever two clauses here, so the
+# tail is always "(+1 more)" — 9 characters, plus one space.
+WV_SESSION_TAIL_RESERVE=10
+#
+# THE FALLBACK CAP: what is left of the 400 after every other term in this banner is
+# at its longest, DERIVED term by term from values that are themselves bounded. It is
+# no longer the budget the ordinary case is measured against — that is computed at run
+# time in wv_main below, from the banner actually being rendered — but it is what this
+# file falls back to if the measured render still will not fit, which is the one case
+# a run-time measurement cannot rescue (a state.json carrying a longer id than
+# wave-init.sh will create: hand-edited, or written by an older version).
+#
+# The figure before this one was derived from the same terms except that the wave id
+# was not bounded at all, so a 40-character id rendered 458 and a 24-character one 405:
 #
 #   164  hooks/reasons.tsv's W-SESSION template with its six %s removed
 #    24  the wave id — scripts/wave-init.sh accepts at most 24 characters
@@ -53,12 +70,17 @@ source "$WV_HOOK_DIR/lib.sh"
 #   ---
 #   291, so `extra` itself may be 109.
 #
-# Both clauses fit inside 109 at their longest, so the cap only ever binds when
-# BOTH fire; the corpus fixture session-327c-max-banner puts every term above at
-# its maximum at once and tests/tools/reason-corpus.sh fails if the render exceeds
-# 400. It is a bound for any ACCEPTED input: a state.json carrying a longer id than
-# wave-init.sh will now create (hand-edited, or written by an older version) renders
-# longer, and no render-time check here would make that state legal.
+# WHY THIS IS ONLY THE FALLBACK. Every term above is at its MAXIMUM at once, and an
+# ordinary wave is nowhere near it: a wave with the id `1`, enforce=block and `AC` as
+# its last done phase renders 185 characters before `extra`, so 214 are free and the
+# constant hands it 109. Measured, that dropped the Invariant-7 advisory behind
+# "(+1 more)" on a 244-character banner — both clauses render at 329 — and the clause
+# it dropped is the one naming the checkpoint to re-read, at the exact moment
+# (post-compaction, deep into a long wave) that advisory exists to be read. The
+# constant is a bound on the WORST case being used as the budget for EVERY case; the
+# 400 is the invariant, and it is measurable, so wv_main measures it.
+# session-327e-short-id-stale-checkpoint is the ordinary wave, session-327c the
+# longest accepted input, session-327d the collision where the cap still binds.
 WV_SESSION_EXTRA_MAX=109
 
 wv_main() {
@@ -82,7 +104,7 @@ wv_main() {
     enforce_clause="enforce=$WV_ENFORCE"
   fi
 
-  # THE ADVISORY CLAUSES, collected and then BOUNDED.
+  # THE ADVISORY CLAUSES, collected and then BOUNDED BY MEASUREMENT.
   #
   # This banner is a template plus an `extra` assembled at run time, and `extra`
   # grew with the situation: two clauses at once, one of them carrying a filename
@@ -91,10 +113,21 @@ wv_main() {
   # second clause only appears once real time passes 24h after the wave started.
   # So the clauses are short, they are collected into a list, and the list is
   # capped (lib.sh's wv_list_cap, which truncates rather than exempting a long
-  # item) at WV_SESSION_EXTRA_MAX, derived term by term where it is defined.
+  # item).
+  #
+  # WHAT IT IS CAPPED AT IS MEASURED, NOT ASSUMED. The budget is what the 400 has
+  # left after the banner ACTUALLY BEING RENDERED — this wave's id, mode, enforce
+  # clause and last done phase — is accounted for, which is one wv_render of the same
+  # template with an empty `extra`. A worst-case constant is the wrong instrument for
+  # this job even when it is correctly derived: it is right about the maximum and
+  # wrong about every input below it, and being wrong here means silently discarding
+  # an advisory that fits (measured: 244 characters rendered, 155 unspent, the
+  # Invariant-7 clause behind "(+1 more)").
+  #
   # tests/cases/session-327c-max-banner is the fixture that puts every term at its
   # maximum at once so the corpus measures this reason's real maximum (378 of 400),
-  # and session-327b and session-327d are the two collisions where the cap binds.
+  # session-327d is the collision where the cap still binds, and
+  # session-327e-short-id-stale-checkpoint is the ordinary wave where it must not.
   #
   # THE ORDER IS THE PRIORITY. wv_list_cap fills from the front, so the FIRST
   # clause is the one that survives when the budget cannot hold both — the
@@ -128,7 +161,34 @@ wv_main() {
 
   local extra=""
   if [ "${#clauses[@]}" -gt 0 ]; then
-    extra=" $(wv_list_cap "${#clauses[@]}" "$WV_SESSION_EXTRA_MAX" ' ' "${clauses[@]}")"
+    # The banner with NOTHING appended: the same template, the same arguments, an
+    # empty `extra`. wv_rule_warn rewrites `W-` to `W_` inside its arguments and this
+    # does not, which cannot change a LENGTH (two characters either way), and length
+    # is all this render is read for.
+    local base budget
+    base="$(wv_render W-SESSION "$WV_WAVE" "$WV_MODE" "$enforce_clause" "$last_done" "$WV_WAVE" "")"
+    budget=$(( WV_SESSION_MAX_REASON - ${#base} - 1 ))   # -1: the space before `extra`
+    [ "$budget" -ge 0 ] || budget=0
+
+    extra=" $(wv_list_cap "${#clauses[@]}" "$budget" ' ' "${clauses[@]}")"
+    if [ $(( ${#base} + ${#extra} )) -gt "$WV_SESSION_MAX_REASON" ]; then
+      # The cap bound, and wv_list_cap's "(+N more)" tail is appended PAST the budget
+      # it was given. Spend again with that tail reserved — the clause that survives
+      # is still the first one, so this changes the length and not the priority.
+      extra=" $(wv_list_cap "${#clauses[@]}" "$(( budget - WV_SESSION_TAIL_RESERVE ))" ' ' "${clauses[@]}")"
+    fi
+
+    # THE ≤400 INVARIANT, ASSERTED RATHER THAN ARGUED. If the measured budget still
+    # cannot hold this banner, the run-time measurement has nothing left to give: the
+    # template plus this wave's own arguments is already at or past the bound, which a
+    # state.json carrying an id longer than wave-init.sh will create can do. Fall back
+    # to the worst-case constant — the behaviour that shipped — so an unbounded id
+    # renders the same over-long banner it always did, rather than a NEW shape derived
+    # from a negative budget. It is a fallback, not a fix: no render-time truncation
+    # here would make that state legal, and wave-init.sh is where the id is bounded.
+    if [ $(( ${#base} + ${#extra} )) -gt "$WV_SESSION_MAX_REASON" ]; then
+      extra=" $(wv_list_cap "${#clauses[@]}" "$WV_SESSION_EXTRA_MAX" ' ' "${clauses[@]}")"
+    fi
   fi
 
   wv_rule_warn W-SESSION "$WV_WAVE" "$WV_MODE" "$enforce_clause" "$last_done" "$WV_WAVE" "$extra"

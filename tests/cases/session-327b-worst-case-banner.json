@@ -1,8 +1,10 @@
 {
   "script": "session-start.sh",
   "ac": "AC-327 (both clauses fire, no checkpoint on disk)",
-  "note": "BOTH advisory clauses fire at once — compaction just ran with NO checkpoint on disk, and the wave is stale — and the character budget cannot hold both, so this case pins WHICH ONE SURVIVES. Fix round 2 (item 2) ordered the staleness advisory first, because it is short and names the command that resolves it, so the compaction advisory is the clause that goes behind \"(+1 more)\": stdout_absent is the load-bearing half, since reason_contains alone would pass whichever clause happened to survive. session-327d is the same collision with a checkpoint present (a longer clause dropped), and session-327c — not this case — is now the corpus's longest W-SESSION input, because the drop makes a stale banner SHORTER, not longer.",
-  "seed": { "state": "state/full-red-done.json" },
+  "note": "BOTH advisory clauses fire at once — compaction just ran with NO checkpoint on disk, so the LONGER fallback wording is used, and the wave is stale. On an ordinary wave (id `1`, enforce=block) that renders 338 of the 400 the reason corpus allows, so BOTH clauses must appear and nothing may be dropped. This case previously asserted the opposite — '(+1 more)' present, the compaction clause absent — because the extra-clause budget was a worst-case CONSTANT (WV_SESSION_EXTRA_MAX=109) applied unconditionally, and this banner had 209 characters free. That is a superseded contract, not a regression: the property this case exists to pin is the clause ORDER, and it still pins it, by a needle that SPANS the join ('closes it. compaction ran; no checkpoint') — which a swap cannot satisfy while a bare per-clause reason_contains could. session-327d is the collision where the cap does still bind (the maximum accepted input), and it is where the dropped-clause assertions now live; session-327e is the ordinary wave with a checkpoint present.",
+  "seed": {
+    "state": "state/full-red-done.json"
+  },
   "env": { "WV_NOW": "2026-09-30T12:00:00Z" },
   "stdin": {
     "hook_event_name": "SessionStart",
@@ -13,12 +15,12 @@
     "rule": "W-SESSION",
     "reason_contains": [
       "wave open >24h; scripts/wave-close.sh closes it.",
-      "(+1 more)"
+      "closes it. compaction ran; no checkpoint",
+      "compaction ran; no checkpoint — re-derive from .wave/state.json in a fresh terminal (Invariant 7)."
     ],
     "stdout_absent": [
-      "compaction ran",
-      "no checkpoint",
-      "fresh terminal"
+      "(+1 more)",
+      ".wave/checkpoints/"
     ]
   }
 }

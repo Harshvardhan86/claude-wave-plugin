@@ -1,0 +1,31 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-327 (an ordinary wave gets BOTH clauses)",
+  "note": "THE ORDINARY WAVE, and the case the fixed 109-character extra budget was blind to. A short wave id, enforce=block, a two-character last-done phase, stale, compacted, one checkpoint on disk: both advisory clauses fire and BOTH FIT — the render is 329 of the 400 the reason corpus allows. The shipped worst-case constant (WV_SESSION_EXTRA_MAX=109, derived against a 24-character id twice, the 55-character enforce clause and the longest checkpoint path) was applied unconditionally, so this banner rendered 244 characters with the Invariant-7 recovery advisory behind '(+1 more)' and 155 characters of the budget unspent — dropping the one clause naming the checkpoint to re-read, at the exact moment (post-compaction, deep into a long wave) it is the thing the operator needs. session-327c/327d remain the maximum inputs where the cap legitimately binds. The spanning needle 'closes it. Invariant 7:' pins the clause ORDER as well as the presence of both, so a swap cannot pass this case.",
+  "seed": {
+    "state": "state/full-ac-done.json",
+    "started_hours_before_now": 240,
+    "files": {
+      ".wave/checkpoints/2026-09-09T13:00:00Z-precompact.md": "# checkpoint\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "compact"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SESSION",
+    "reason_contains": [
+      "wave 1 active",
+      "wave open >24h; scripts/wave-close.sh closes it.",
+      "closes it. Invariant 7:",
+      "Invariant 7: re-read .wave/checkpoints/2026-09-09T13:00:00Z-precompact.md in a fresh terminal.",
+      "fresh terminal"
+    ],
+    "stdout_absent": [
+      "(+1 more)",
+      ".wave/checkpoints/.wave/checkpoints/"
+    ]
+  }
+}
