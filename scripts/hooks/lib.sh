@@ -471,8 +471,25 @@ WV_LOCK_FAIL=""
 # remove `flock` from PATH instead. A non-numeric or zero value is ignored.
 WV_LOCK_TIMEOUT=10
 case "${WV_LOCK_TIMEOUT_OVERRIDE:-}" in
-  ''|*[!0-9]*|0) : ;;
-  *) WV_LOCK_TIMEOUT="$WV_LOCK_TIMEOUT_OVERRIDE" ;;
+  '') : ;;
+  *[!0-9]*|0)
+    wv_stderr "WV_LOCK_TIMEOUT_OVERRIDE=\"$WV_LOCK_TIMEOUT_OVERRIDE\" is not a positive integer; the shipped ${WV_LOCK_TIMEOUT}s lock wait is used."
+    ;;
+  *)
+    # THE OVERRIDE MAY ONLY SHORTEN THE WAIT. As first written it accepted any
+    # positive integer, so a value of 600 made a hook sit on a contended lock for
+    # ten minutes — far past the 60s this hook advertises to the platform, which
+    # would then abandon it part-way through a write. A shorter wait cannot do
+    # damage of that kind: timing out is a documented path that warns, spools its
+    # ledger line and allows, so the worst a short wait costs is a step the next
+    # acquisition has to drain. A longer one is refused and said out loud, because
+    # an override that silently did nothing would be debugged for hours.
+    if [ "$WV_LOCK_TIMEOUT_OVERRIDE" -lt "$WV_LOCK_TIMEOUT" ]; then
+      WV_LOCK_TIMEOUT="$WV_LOCK_TIMEOUT_OVERRIDE"
+    elif [ "$WV_LOCK_TIMEOUT_OVERRIDE" -gt "$WV_LOCK_TIMEOUT" ]; then
+      wv_stderr "WV_LOCK_TIMEOUT_OVERRIDE=$WV_LOCK_TIMEOUT_OVERRIDE would LENGTHEN the lock wait past the shipped ${WV_LOCK_TIMEOUT}s and past this hook's advertised timeout; it is refused and ${WV_LOCK_TIMEOUT}s is used."
+    fi
+    ;;
 esac
 
 wv_lock_detail() {
@@ -879,13 +896,29 @@ wv_list_cap() {
   # nothing to act on.
   local max_items="$1" max_chars="$2" sep="$3"
   shift 3
-  local out="" n=0 total=$# item
+  local out="" n=0 total=$# item room
   for item in "$@"; do
     if [ "$n" -gt 0 ]; then
       [ "$n" -lt "$max_items" ] || break
       [ $(( ${#out} + ${#sep} + ${#item} )) -le "$max_chars" ] || break
+      out="$out$sep$item"
+      n=$((n + 1))
+      continue
     fi
-    out="${out:+$out$sep}$item"
+    # THE FIRST ITEM IS TRUNCATED, NOT EXEMPTED. It used to be admitted whole on
+    # the reasoning that a reason naming nothing is useless — which is true, and
+    # it made the character budget a suggestion: ONE staged path of 250
+    # characters rendered a 520-character W-COMMIT-DOC, over the corpus's bound,
+    # from an input a user can produce by accident. A truncated path still tells
+    # the reader which file and still fits, and the ellipsis says plainly that it
+    # was cut, which a silently over-long reason does not.
+    if [ "${#item}" -le "$max_chars" ]; then
+      out="$item"
+    else
+      room=$(( max_chars - 1 ))
+      [ "$room" -gt 0 ] || room=1
+      out="${item:0:$room}…"
+    fi
     n=$((n + 1))
   done
   if [ "$total" -gt "$n" ]; then
@@ -1000,11 +1033,27 @@ $text"
   return 0
 }
 
+# WHO OWNS THE LEDGER LINE on wv_block's enforce="warn" path.
+#
+# `0` (the default): the caller has no ledger line of its own, so wv_block writes
+# one carrying the warning — otherwise an event with no `additionalContext` channel
+# would allow the stop and leave no record at all of what it allowed.
+#
+# `1`: the caller writes its OWN line and wv_block must record the warning in the
+# state only. subagent-stop.sh sets this, because its line has a closed key set and
+# is keyed one-per-agent: a second `{event:"warn", …}` line beside it breaks the
+# dedupe key both scripts/wave-scorecard.sh and pre-agent.sh's budget gate read, and
+# leaves a reader unable to tell which line is the record. That duplicate shipped
+# once (progress ledger 118); the flag is what stops the next caller re-creating it,
+# and tests/cases/lib-block-warn-ledger-ownership.sh drives both modes.
+WV_LEDGER_OWNED="${WV_LEDGER_OWNED:-0}"
+
 wv_block() {
   # wv_block <rule> [args...] — the SubagentStop block shape. Under
   # enforce="warn" that event has no stdout warn channel, so the warning is
-  # recorded as state.phases[<phase>].warned plus a `warn` field on a ledger
-  # line, and the subagent is allowed to stop.
+  # recorded as state.phases[<phase>].warned plus — only when the caller has not
+  # declared WV_LEDGER_OWNED=1 — a `warn` field on a ledger line of its own, and
+  # the subagent is allowed to stop.
   local rule="$1"
   shift
   wv_can_emit "$rule" || return 1
@@ -1019,10 +1068,12 @@ wv_block() {
       "$(jq -Rn --arg p "$phase" '$p')" \
       "$(jq -Rn --arg p "$phase" '$p')" \
       "$(jq -Rn --arg t "$text" '$t')")"
-    wv_ledger_append "$(jq -nc --arg agent "${WV_AGENT_ID:-unknown}" --arg phase "$phase" --arg warn "$text" \
-      '{event: "warn", agent_id: $agent, phase: $phase, warn: [$warn]}')"
-    # The state row and the ledger line ARE this event's warn channel, so they
-    # count as the invocation's one emission.
+    if [ "$WV_LEDGER_OWNED" != "1" ]; then
+      wv_ledger_append "$(jq -nc --arg agent "${WV_AGENT_ID:-unknown}" --arg phase "$phase" --arg warn "$text" \
+        '{event: "warn", agent_id: $agent, phase: $phase, warn: [$warn]}')"
+    fi
+    # The state row (and the ledger line, when this function owns one) ARE this
+    # event's warn channel, so they count as the invocation's one emission.
     WV_EMITTED=1
     return 0
   fi
@@ -1266,9 +1317,40 @@ wv_latest_checkpoint() {
   return 0
 }
 
+wv_now_epoch() {
+  # wv_now_epoch -> the instant this layer treats as "now", in epoch seconds.
+  #
+  # THE ONE CLOCK ANY DECISION READS, and it is overridable because a rule whose
+  # outcome depends on the wall clock is a rule that changes its answer with no
+  # commit to blame. Every state fixture in the suite carries a literal
+  # `"started": "2026-09-09T12:00:00Z"`, and the staleness rule below compares it
+  # with `date`: the suite was green when it was written and went red on its own,
+  # hours later, the moment real time passed 24h after that constant — a failure
+  # that bisects to nothing and gets misattributed to whatever landed last.
+  #
+  # `WV_NOW` accepts epoch seconds or anything `date -u -d` parses. An
+  # unparseable value falls back to the real clock rather than to a guess: a hook
+  # that cannot read its own clock has not measured a duration, and must not
+  # invent one.
+  #
+  # Only DECISIONS read this. The `stopped`/`at` timestamps hooks record are
+  # observations of when they ran and stay on the real clock.
+  local override="${WV_NOW:-}" e
+  if [ -n "$override" ]; then
+    case "$override" in
+      ''|*[!0-9]*)
+        e="$(date -u -d "$override" +%s 2>/dev/null)"
+        case "$e" in ''|*[!0-9]*) : ;; *) printf '%s' "$e"; return 0 ;; esac
+        ;;
+      *) printf '%s' "$override"; return 0 ;;
+    esac
+  fi
+  date -u +%s
+}
+
 wv_wave_stale_24h() {
-  # wv_wave_stale_24h -> 0 (true) when state.started is more than 24h in the
-  # past. Never fails loudly: an unparseable or absent `started` is "not
+  # wv_wave_stale_24h -> 0 (true) when state.started is more than 24h before
+  # wv_now_epoch. Never fails loudly: an unparseable or absent `started` is "not
   # stale" (a hook must not invent a warning from a measurement it cannot
   # make).
   [ -n "$WV_STATE" ] || return 1
@@ -1277,6 +1359,7 @@ wv_wave_stale_24h() {
   [ -n "$started" ] || return 1
   started_epoch="$(date -u -d "$started" +%s 2>/dev/null)"
   case "$started_epoch" in ''|*[!0-9]*) return 1 ;; esac
-  now_epoch="$(date -u +%s)"
+  now_epoch="$(wv_now_epoch)"
+  case "$now_epoch" in ''|*[!0-9]*) return 1 ;; esac
   [ $((now_epoch - started_epoch)) -gt 86400 ]
 }

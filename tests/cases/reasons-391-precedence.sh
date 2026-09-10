@@ -161,33 +161,26 @@ case "$chain_ids" in ''|*[!0-9]*) chain_ids=0 ;; esac
 printf 'pre-agent.sh chain: %s deny rule(s) in evaluation order\n' "$chain_ids"
 [ "$chain_ids" -ge 12 ] || fail "only $chain_ids deny rule(s) were extracted from wv_main — the extractor is not reading the chain"
 
-# THE ONE DECLARED INVERSION, with its mechanism. `wv_condition_met`'s "the
-# findings file its condition reads is missing although its source phase is done"
-# branch denies W-ARTIFACT (and W-MARKER) through WV_COND_RULE, and it is
-# evaluated at chain step 11 — before the W-ORDER gate at step 12. So an input
-# that violates BOTH an unmet predecessor AND a missing findings artifact reports
-# W-ARTIFACT where the pinned precedence says W-ORDER. Both statements are true
-# of that input and both name a real, actionable problem, which is why it is
-# declared rather than reordered: the artifact message ("BC is done but wrote no
-# .wave/findings/BC.md") is the more specific of the two, and moving the condition
-# check after the order check would make a phase whose condition is unreadable
-# report an ordering problem instead. Listed EXACTLY, so a NEW inversion fails.
-# Matched as an EXACT ordered pair, never as a substring: allowing any line
-# mentioning W-ARTIFACT would also wave through an inversion in which W-ARTIFACT
-# is the rule being outranked, which is a different and undeclared defect.
-declared_inversions="W-ARTIFACT>W-ORDER W-MARKER>W-ORDER"
-inv_seen=0
+# ZERO INVERSIONS, and no allow-list. This check once carried a declared exception:
+# `wv_condition_met`'s missing-findings-artifact branch denied W-ARTIFACT (12) and
+# W-MARKER (13) at chain step 11, before the W-ORDER (11) gate at step 12, and the
+# same preemption existed inside the order walk itself. Both were REACHABLE with the
+# shipped table (VB, COMMIT, CL and CCP all list `after=BTEET-X,BF-BTEET`, and
+# BF-BTEET's condition is `findings:BTEET`), so the operator of a wave that had not
+# run BTEET-X was told to go and find a findings file. Fix round 1 reordered both
+# sites — the deny is held and emitted after the order gate, and the walk stops
+# letting an unreadable condition preempt an order violation it has already found —
+# so the chain now agrees with the precedence column with no exception at all.
+#
+# An allow-list is not kept "in case": an exception nobody needs is an exception
+# that grows.
 while IFS= read -r inv; do
   [ -n "$inv" ] || continue
-  pair="$(printf '%s' "$inv" | sed -E 's/^([A-Z-]+)@[0-9]+\(prec [0-9]+\)\tbefore\t([A-Z-]+)@.*$/\1>\2/')"
-  inv_seen=$((inv_seen + 1))
-  ok=0
-  for d in $declared_inversions; do
-    [ "$pair" = "$d" ] && ok=1
-  done
-  [ "$ok" = "1" ] || fail "undeclared precedence inversion in pre-agent.sh's chain: $inv"
+  fail "precedence inversion in pre-agent.sh's chain: $inv"
 done < <(command grep '^INVERSION' "$order_out" | sed 's/^INVERSION\t//')
-printf 'chain inversions found: %s (each must match a declared pair)\n' "$inv_seen"
+inv_seen="$(command grep -c '^INVERSION' "$order_out")"
+case "$inv_seen" in ''|*[!0-9]*) inv_seen=0 ;; esac
+printf 'chain inversions found: %s (the precedence column and the chain must agree exactly)\n' "$inv_seen"
 
 if command grep -q '^UNKNOWN' "$order_out"; then
   fail "pre-agent.sh denies an id hooks/reasons.tsv has no precedence for: $(command grep '^UNKNOWN' "$order_out")"

@@ -20,6 +20,23 @@ if [ -z "${WV_RUN_TMP:-}" ]; then
 fi
 mkdir -p "$WV_RUN_TMP/logs"
 
+# THE PINNED INSTANT every case runs at, unless the case names its own.
+#
+# Every state fixture carries `"started": "2026-09-09T12:00:00Z"`, and
+# session-start.sh's staleness rule compares that with the clock. Left on the real
+# clock, the suite was green when it was written and went red on its own, hours
+# later, the moment wall-clock time passed 24h after that constant: a failure with
+# no commit to blame, that bisects to nothing, and that gets misattributed to
+# whatever landed last. Pinning one instant an hour after the fixtures' `started`
+# makes "not stale" the deterministic default for every case, and a case that wants
+# the other answer says so with `"env": {"WV_NOW": "…"}` rather than waiting for a
+# calendar date.
+#
+# It is set per invocation, NEVER exported: a `.sh` case that drives a script
+# directly (tests/cases/session-328-staleness.sh derives both its timestamps from
+# the real clock, so the two move together) must keep the clock it chose.
+WV_PINNED_NOW="${WV_PINNED_NOW:-2026-09-09T13:00:00Z}"
+
 # Set by run_hook; read by the assert_* functions below.
 WV_PROJECT="${WV_PROJECT:-}"
 WV_LAST_EXIT=""
@@ -215,16 +232,20 @@ run_hook() {
   fi
 
   local -a env_args=()
+  local has_now=0
   if [ -n "$case_json" ] && [ -f "$case_json" ]; then
     local ekeys
     ekeys="$(jq -r '.env // {} | keys[]' "$case_json" 2>/dev/null)"
     while IFS= read -r ek; do
       [ -z "$ek" ] && continue
+      [ "$ek" = "WV_NOW" ] && has_now=1
       local ev
       ev="$(jq -r --arg k "$ek" '.env[$k]' "$case_json")"
       env_args+=("$ek=$ev")
     done <<<"$ekeys"
   fi
+  # The pinned clock, unless the case named its own.
+  [ "$has_now" = "1" ] || env_args+=("WV_NOW=$WV_PINNED_NOW")
 
   local stderr_tmp
   stderr_tmp="$(mktemp "$WV_RUN_TMP/stderr.XXXXXX")"
@@ -632,7 +653,7 @@ run_all_eleven() {
 
     local stderr_tmp out rc err
     stderr_tmp="$(mktemp "$WV_RUN_TMP/eleven-stderr.XXXXXX")"
-    out="$(cd "$proj" && printf '%s' "$stdin" | bash "$WV_REPO_ROOT/scripts/hooks/$script" 2>"$stderr_tmp")"
+    out="$(cd "$proj" && printf '%s' "$stdin" | WV_NOW="$WV_PINNED_NOW" bash "$WV_REPO_ROOT/scripts/hooks/$script" 2>"$stderr_tmp")"
     rc=$?
     err="$(cat "$stderr_tmp")"
     rm -f "$stderr_tmp"

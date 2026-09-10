@@ -31,6 +31,13 @@ WV_HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 # shellcheck source=scripts/hooks/lib.sh
 source "$WV_HOOK_DIR/lib.sh"
 
+# What is left of the reason corpus's 400-character bound after this template
+# (164 fixed characters) and its five other arguments at their longest (a wave id,
+# a mode, "enforce=warn (violations will be reported, not blocked)", a phase code,
+# and the wave id again). Measured, not guessed: tests/tools/reason-corpus.sh
+# prints the resulting maximum and fails if it is exceeded.
+WV_SESSION_EXTRA_MAX=150
+
 wv_main() {
   wv_parse_stdin || return 0
   [ "$WV_EVENT" = "SessionStart" ] || return 0
@@ -52,18 +59,36 @@ wv_main() {
     enforce_clause="enforce=$WV_ENFORCE"
   fi
 
-  local extra=""
+  # THE ADVISORY CLAUSES, collected and then BOUNDED.
+  #
+  # This banner is a template plus an `extra` assembled at run time, and `extra`
+  # grew with the situation: two clauses at once, one of them carrying a filename
+  # of any length, pushed the rendered reason to 440 characters against a
+  # 400-character bound — and it did so with no commit to blame, because the
+  # second clause only appears once real time passes 24h after the wave started.
+  # So the clauses are short, they are collected into a list, and the list is
+  # capped (lib.sh's wv_list_cap, which truncates rather than exempting a long
+  # item). WV_SESSION_EXTRA_MAX is what is left of the 400-character bound after
+  # the template and the five other arguments at their longest; it is stated here,
+  # in the code that enforces it, and tests/cases/session-327b-worst-case-banner
+  # is the fixture that turns every clause on so the corpus can see the maximum.
+  local -a clauses=()
   if [ "$source_val" = "compact" ]; then
     local latest
     if latest="$(wv_latest_checkpoint)"; then
-      extra="$extra Invariant 7: compaction just ran; re-read the latest checkpoint ($latest) in a fresh terminal before continuing."
+      clauses+=("compaction ran; re-read .wave/checkpoints/$latest in a fresh terminal (Invariant 7).")
     else
-      extra="$extra Invariant 7: compaction just ran, but no checkpoint was found under .wave/checkpoints/; a fresh terminal should re-derive state from .wave/state.json and .wave/ledger.jsonl."
+      clauses+=("compaction ran; no checkpoint — re-derive from .wave/state.json in a fresh terminal (Invariant 7).")
     fi
   fi
 
   if wv_wave_stale_24h; then
-    extra="$extra Wave $WV_WAVE has been active for over 24 hours; consider scripts/wave-close.sh if it should be closed."
+    clauses+=("wave open >24h; scripts/wave-close.sh closes it.")
+  fi
+
+  local extra=""
+  if [ "${#clauses[@]}" -gt 0 ]; then
+    extra=" $(wv_list_cap "${#clauses[@]}" "$WV_SESSION_EXTRA_MAX" ' ' "${clauses[@]}")"
   fi
 
   wv_rule_warn W-SESSION "$WV_WAVE" "$WV_MODE" "$enforce_clause" "$last_done" "$WV_WAVE" "$extra"

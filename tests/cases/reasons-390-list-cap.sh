@@ -95,6 +95,63 @@ else
   fail "W-COMMIT-DOC step: run_hook failed: $WV_LAST_STDERR"
 fi
 
+# ---- ONE staged path of 250 characters ------------------------------------
+#
+# The item-count cap alone does not bound the reason: wv_list_cap used to admit the
+# FIRST item whole, so a single long path rendered a 520-character W-COMMIT-DOC —
+# from an input a user can produce by accident. The first item is now truncated to
+# the remaining budget with an ellipsis, and BOTH halves are asserted: the reason
+# fits, AND it still names enough of the path to act on. A truncation that dropped
+# the path entirely would satisfy a length check and tell the operator nothing.
+
+WV_PROJECT="$(mkproj)"
+seed_state state/full-fresh.json
+mkdir -p "$WV_PROJECT/docs"
+long_stem=""
+while [ "${#long_stem}" -lt 240 ]; do long_stem="${long_stem}a-very-long-analysis-document-name-"; done
+long_path="docs/plan-${long_stem:0:238}.md"
+printf 'planning notes\n' > "$WV_PROJECT/$long_path"
+git -C "$WV_PROJECT" add -- "$long_path" >/dev/null 2>&1
+printf 'single staged path length: %s characters\n' "${#long_path}"
+[ "${#long_path}" -ge 240 ] || fail "the long-path fixture is only ${#long_path} characters; it must exceed the reason bound on its own"
+
+long_case="$WV_RUN_TMP/$name-longpath.json"
+jq -n --arg cmd 'git commit -m "wip"' '{
+  script: "pre-commit-guard.sh",
+  stdin: {
+    session_id: "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    cwd: ".",
+    hook_event_name: "PreToolUse",
+    tool_name: "Bash",
+    tool_input: {command: $cmd}
+  },
+  expect: {}
+}' > "$long_case"
+
+if run_hook pre-commit-guard.sh "$long_case"; then
+  r="$(reason_of)"
+  case "$r" in
+    "[W-COMMIT-DOC] "*) : ;;
+    *) fail "one 250-character path: want a W-COMMIT-DOC deny, got '$r'" ;;
+  esac
+  [ "${#r}" -le "$cap" ] || \
+    fail "one 250-character path: the reason is ${#r} characters, over the $cap bound: '$r'"
+  case "$r" in
+    *'docs/plan-a-very-long-analysis-document-name-'*) : ;;
+    *) fail "one 250-character path: the reason must still name enough of the path to act on: '$r'" ;;
+  esac
+  case "$r" in
+    *'…'*) : ;;
+    *) fail "one 250-character path: a truncated path must say so with an ellipsis: '$r'" ;;
+  esac
+  case "$r" in
+    *"$long_path"*) fail "one 250-character path: the path was not truncated at all: '$r'" ;;
+  esac
+  printf 'W-COMMIT-DOC with one %s-character path: %s characters\n' "${#long_path}" "${#r}"
+else
+  fail "long-path step: run_hook failed: $WV_LAST_STDERR"
+fi
+
 # ---- W-DR-OPEN with nine unanswered OPEN: lines ---------------------------
 
 WV_PROJECT="$(mkproj)"

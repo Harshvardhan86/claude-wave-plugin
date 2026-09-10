@@ -13,7 +13,7 @@
 # killed, because those fire on every narrow --filter regardless of the mutant
 # and would otherwise manufacture a false `killed`.
 #
-# Eighteen mutants: the eight properties the task brief names, the seven the
+# Twenty mutants: the eight properties the task brief names, the seven the
 # round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
 # a mutant now names its own target file), and the two Task 13 added with the
 # bounded transcript settle and the enforce=warn conversion.
@@ -48,6 +48,10 @@
 #  18. warnviablock   enforce=warn falls back to lib.sh's wv_block warn path,
 #                     which leaves the phase artifact-missing and appends a
 #                     second, differently-shaped ledger line
+#  19. settlewaitsmissing  a transcript path that names no file is waited on for
+#                     the whole cap again
+#  20. settlefastloose    the mtime fast path settles without checking that an
+#                     assistant turn is actually readable
 #
 # Exit status: 0 only when every mutant was applied, every mutant was killed,
 # and the final restore matches the pristine hash.
@@ -388,6 +392,32 @@ s = s.replace(old, new)
 PY
 }
 
+# --- 19. a path that names no file is waited on again ----------------------
+wv_body_settlewaitsmissing() { cat <<'PY'
+old = '  [ -e "$path" ] || return 0\n'
+assert old in s, "anchor missing: the missing-file shortcut"
+s = s.replace(old, "", 1)
+PY
+}
+
+# --- 20. the mtime fast path stops checking for an assistant turn ----------
+wv_body_settlefastloose() { cat <<'PY'
+old = '''      if [ -n "$size" ] && [ "$size" != "0" ] && wv_ts_quiet_for_one_interval "$path"; then
+        assistants="$(command grep -acE '"type"[[:space:]]*:[[:space:]]*"assistant"' "$path" 2>/dev/null)"
+        case "$assistants" in
+          ''|*[!0-9]*) : ;;
+          0) : ;;
+          *) return 0 ;;
+        esac
+      fi'''
+new = '''      if [ -n "$size" ] && [ "$size" != "0" ] && wv_ts_quiet_for_one_interval "$path"; then
+        return 0
+      fi'''
+assert old in s, "anchor missing: the mtime fast path"
+s = s.replace(old, new)
+PY
+}
+
 # --- 18. enforce=warn falls back to lib.sh's wv_block warn path ------------
 wv_body_warnviablock() { cat <<'PY'
 old = '      elif [ "$WV_ENFORCE" = "warn" ]; then'
@@ -431,6 +461,8 @@ WV_EXPECT[blockswallows]=stop-warn-flush-on-block
 WV_EXPECT[settleremoved]=stop-181-transcript-settle
 WV_EXPECT[settlenoflag]=stop-181-transcript-settle
 WV_EXPECT[warnviablock]=warn-mode-393-per-script
+WV_EXPECT[settlewaitsmissing]=taint-242-no-transcript
+WV_EXPECT[settlefastloose]=taint-243-zero-assistant
 
 wv_run_mutant closingrole    wv_body_closingrole    "$H" 'stop-229*' 'stop-228*'
 wv_run_mutant lastoneout     wv_body_lastoneout     "$H" 'stop-228*'
@@ -450,6 +482,8 @@ wv_run_mutant blockswallows  wv_body_blockswallows  "$L" 'stop-warn-flush*' 'mar
 wv_run_mutant settleremoved  wv_body_settleremoved  "$H" 'stop-181-*'
 wv_run_mutant settlenoflag   wv_body_settlenoflag   "$H" 'stop-181-*' 'taint-243*'
 wv_run_mutant warnviablock   wv_body_warnviablock   "$H" 'warn-mode-*'
+wv_run_mutant settlewaitsmissing wv_body_settlewaitsmissing "$H" 'taint-242*'
+wv_run_mutant settlefastloose    wv_body_settlefastloose    "$H" 'taint-243*' 'stop-181-*'
 
 # --- the table --------------------------------------------------------------
 

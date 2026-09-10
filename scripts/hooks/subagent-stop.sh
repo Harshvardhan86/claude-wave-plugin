@@ -98,7 +98,16 @@ WV_LONG_RETURN_CAP=2000
 # WV_TRANSCRIPT_SETTLE_TRIES of them: 12 x 200 ms = 2.4 s worst case, well inside
 # this hook's 60 s timeout, and paid ONLY by a transcript that never settles.
 WV_TRANSCRIPT_SETTLE_MS=200
-WV_TRANSCRIPT_SETTLE_TRIES=12
+WV_TRANSCRIPT_SETTLE_TRIES="${WV_TRANSCRIPT_SETTLE_TRIES:-12}"
+
+# THIS SCRIPT OWNS ITS LEDGER LINE. It appends exactly one line per agent, with the
+# closed key set of spec section 9, and lib.sh's wv_block warn path must therefore
+# not append a second one of its own shape beside it — two lines for one agent break
+# the one-per-agent dedupe key that wave-scorecard.sh and the budget gate both read.
+# The warning still reaches the state (`phases[<phase>].warned`) and this script's
+# own line (`warn:[…]`), which is the warn channel AC-395 names for an event with no
+# additionalContext channel. See lib.sh's WV_LEDGER_OWNED.
+WV_LEDGER_OWNED=1
 
 wv_tier_name() {
   # wv_tier_name <rank> -> the tier token with that rank, from hooks/models.tsv.
@@ -270,6 +279,19 @@ wv_transcript_settle() {
   # and nothing to claim. wv_transcript_stats records "no transcript" for it.
   [ -n "$path" ] || return 0
 
+  # A PATH THAT NAMES NO FILE IS NOT WAITED ON EITHER. The agent transcript lives
+  # under the account's projects directory, outside the project, so a stale or
+  # moved path is an ordinary occurrence — and burning the whole cap on every one
+  # of them would add 2.4s to a stop that has already told us everything it can.
+  # wv_transcript_stats records note:"no transcript", which is both true and
+  # complete; marking it transcript_incomplete as well would say the file was
+  # unreadable when the finding is that there is no file. The trade is stated
+  # plainly: a transcript whose FILE has not been created yet at the instant this
+  # hook runs is read as absent rather than waited for. The race that was measured
+  # presents differently — the file exists and is empty or short — and that is the
+  # one the loop below catches.
+  [ -e "$path" ] || return 0
+
   local i=0 prev="" size assistants
   while [ "$i" -lt "$WV_TRANSCRIPT_SETTLE_TRIES" ]; do
     if [ -f "$path" ]; then
@@ -279,6 +301,23 @@ wv_transcript_settle() {
       # for a settle to add and no reason to make this stop wait for it.
       if [ -n "$size" ] && [ "$size" -gt "$WV_TRANSCRIPT_CAP" ]; then
         return 0
+      fi
+      # THE COMMON CASE COSTS NOTHING. Two equal size samples need two samples,
+      # so the loop as first written slept 200ms on EVERY stop — including the
+      # overwhelming majority, where the client finished writing the transcript
+      # long before SubagentStop arrived (measured: 462ms mean per stop, of which
+      # the sleep was the largest single component). The file's own mtime already
+      # answers "is anything still being appended": if nothing has touched it for
+      # a full sample interval, a second sample cannot tell us more than the
+      # filesystem already has. Combined with the assistant-line check it is the
+      # same conjunction the loop enforces, obtained without waiting for it.
+      if [ -n "$size" ] && [ "$size" != "0" ] && wv_ts_quiet_for_one_interval "$path"; then
+        assistants="$(command grep -acE '"type"[[:space:]]*:[[:space:]]*"assistant"' "$path" 2>/dev/null)"
+        case "$assistants" in
+          ''|*[!0-9]*) : ;;
+          0) : ;;
+          *) return 0 ;;
+        esac
       fi
       if [ -n "$size" ] && [ "$size" = "$prev" ] && [ "$size" != "0" ]; then
         # `command grep`, never a bare grep: a wrapped searcher can decline a
@@ -300,6 +339,41 @@ wv_transcript_settle() {
   WV_TS_INCOMPLETE=1
   wv_warn W-STATE "transcript $(wv_rel "$path") held no complete assistant turn after $(( WV_TRANSCRIPT_SETTLE_TRIES * WV_TRANSCRIPT_SETTLE_MS ))ms, so its token sum and tier are unconfirmed and the ledger line is marked transcript_incomplete"
   return 1
+}
+
+wv_ts_quiet_for_one_interval() {
+  # wv_ts_quiet_for_one_interval <path> -> 0 when nothing has written to <path>
+  # for at least one sample interval, i.e. its mtime is that far in the past.
+  #
+  # Returns 1 whenever the answer cannot be MEASURED — no fractional mtime, an
+  # unreadable clock, arithmetic that does not parse — because the caller's
+  # fallback for "cannot tell" is to sample twice and wait, which is correct, and
+  # a fast path that guessed would defeat the whole settle.
+  local path="$1" mtime now
+  mtime="$(stat -c '%.Y' -- "$path" 2>/dev/null)"
+  case "$mtime" in ''|*[!0-9.]*) return 1 ;; esac
+  now="$(date +%s.%N 2>/dev/null)"
+  case "$now" in ''|*[!0-9.]*) return 1 ;; esac
+  # Milliseconds, in integer arithmetic: `awk` would be a second spawn on a path
+  # whose whole purpose is to be cheap, and bash has no floats.
+  local m_ms n_ms
+  m_ms="$(wv_ts_ms "$mtime")" || return 1
+  n_ms="$(wv_ts_ms "$now")" || return 1
+  [ $(( n_ms - m_ms )) -ge "$WV_TRANSCRIPT_SETTLE_MS" ]
+}
+
+wv_ts_ms() {
+  # wv_ts_ms <seconds.fraction> -> that instant in whole milliseconds.
+  local v="$1" sec frac
+  sec="${v%%.*}"
+  frac="${v#*.}"
+  [ "$frac" != "$v" ] || frac=0
+  # Pad or trim the fraction to exactly three digits.
+  frac="${frac}000"
+  frac="${frac:0:3}"
+  case "$sec" in ''|*[!0-9]*) return 1 ;; esac
+  case "$frac" in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s' $(( sec * 1000 + 10#$frac ))
 }
 
 wv_transcript_stats() {

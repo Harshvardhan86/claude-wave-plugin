@@ -1,0 +1,31 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-292 (the single-long-item bound)",
+  "note": "ONE staged planning document whose path is 251 characters. wv_list_cap used to admit the FIRST item whole, on the reasoning that a reason naming nothing is useless \u2014 which made the character budget a suggestion: this input rendered a reason far over the corpus's 400 bound, from a path a user can produce by accident. The path is now truncated to the remaining budget with an ellipsis, which still says which file and still fits. It lives in the corpus as a .json case so tests/tools/reason-corpus.sh drives it on every run and sees this whole class of input, rather than it being visible only inside one .sh case (fix round 1, item 5).",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "docs/plan-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-documen.md": "planning notes\n"
+    },
+    "staged": [
+      "docs/plan-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-document-name-a-very-long-analysis-documen.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"wip\""
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_template": "W-COMMIT-DOC",
+    "reason_contains": [
+      "docs/plan-a-very-long-analysis-document-name-",
+      "\u2026",
+      "git restore --staged"
+    ]
+  }
+}

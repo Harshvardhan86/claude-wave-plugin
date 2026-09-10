@@ -530,6 +530,30 @@ PY
 }
 
 
+# --- 28. the phase's own unreadable condition denies before the order gate ---
+wv_body_conddenyearly() { cat <<'PY'
+old = '''    2)
+      deferred_rule="$WV_COND_RULE"
+      deferred_args=("${WV_COND_ARGS[@]}")
+      ;;'''
+new = '''    2)
+      wv_rule_deny "$WV_COND_RULE" "${WV_COND_ARGS[@]}"
+      return 0
+      ;;'''
+assert old in s, "anchor missing: the deferred condition deny"
+s = s.replace(old, new)
+PY
+}
+
+# --- 29. the order walk lets an unreadable condition preempt an order violation
+wv_body_walkpreempts() { cat <<'PY'
+old = '    if [ -n "$WV_UNMET" ]; then\n      printf \'%s\' "$WV_UNMET"\n      return 1\n    fi\n    return 2'
+new = '    return 2'
+assert old in s, "anchor missing: the walk's order-outranks branch"
+s = s.replace(old, new)
+PY
+}
+
 # THE EXPECTED KILLER, one per mutant. Each names the case that must be among the
 # reds — measured from a real run, not chosen — so a mutant credited to some other
 # case in the same filter is reported WRONG-CASE rather than killed. Membership,
@@ -561,6 +585,8 @@ WV_EXPECT[artifactpending]=gate-083a-sea-findings-absent-artifact-deny
 WV_EXPECT[markerignored]=gate-083b-sea-findings-no-marker-deny
 WV_EXPECT[unknownisfalse]=scope-113a-dr-ui-unknown-scope-deny
 WV_EXPECT[scanwarnlost]=gate-scan-warning-survives
+WV_EXPECT[conddenyearly]=order-107-order-outranks-artifact
+WV_EXPECT[walkpreempts]=order-107-order-outranks-artifact
 
 wv_run_mutant offbyone     wv_body_offbyone     'tier-*' 'model-13*'
 wv_run_mutant anchor       wv_body_anchor       'tag-*'
@@ -600,6 +626,8 @@ wv_run_mutant artifactpending   wv_body_artifactpending   'gate-083*' 'gate-160b
 wv_run_mutant markerignored     wv_body_markerignored     'gate-083b*' 'gate-160*'
 wv_run_mutant unknownisfalse    wv_body_unknownisfalse    'scope-11*' 'order-071*' 'order-074b*'
 wv_run_mutant scanwarnlost      wv_body_scanwarnlost      'gate-scan-warning*' 'cond-080*'
+wv_run_mutant conddenyearly     wv_body_conddenyearly     'order-107*' 'gate-083*'
+wv_run_mutant walkpreempts      wv_body_walkpreempts      'order-107*' 'gate-083*'
 
 # --- the table ------------------------------------------------------------
 

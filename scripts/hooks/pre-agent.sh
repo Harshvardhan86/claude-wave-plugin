@@ -816,7 +816,26 @@ wv_after_unmet() {
   WV_UNMET_SEEN=""
   WV_UNMET_VISITED=""
   wv_after_unmet_walk "$1"
-  [ "$?" = "2" ] && return 2
+  if [ "$?" = "2" ]; then
+    # AN UNREADABLE CONDITION DOES NOT PREEMPT AN ORDER VIOLATION THE WALK HAS
+    # ALREADY FOUND. The walk returns 2 the moment any predecessor's condition
+    # cannot be answered, and it does so even when WV_UNMET already names a
+    # predecessor that is genuinely not done — so the dispatch was refused for the
+    # ARTIFACT (precedence 12) while the pinned order puts W-ORDER (11) above it,
+    # and the operator was told to go and find a findings file when what they
+    # actually had to do was run BTEET-X. Reachable with the shipped table: VB,
+    # COMMIT, CL and CCP all list `after=BTEET-X,BF-BTEET`, and BF-BTEET's
+    # condition is `findings:BTEET`.
+    #
+    # A REORDER, NOT A RELAXATION: nothing is allowed that was refused before. The
+    # dispatch is still denied, by the rule that outranks — and the artifact deny
+    # is not lost, it is what the operator sees once the order is satisfied.
+    if [ -n "$WV_UNMET" ]; then
+      printf '%s' "$WV_UNMET"
+      return 1
+    fi
+    return 2
+  fi
   [ -n "$WV_UNMET" ] || return 0
   printf '%s' "$WV_UNMET"
   return 1
@@ -1399,6 +1418,18 @@ wv_main() {
   # 11. The dispatched phase's OWN condition. A row whose condition is false is
   #     not part of this wave at all, so dispatching it is a mistake worth
   #     naming rather than an ordering problem.
+  # A DEFERRED DENY, not an immediate one. `wv_condition_met` returning 2 means
+  # this phase's own condition could not be ANSWERED — a `findings:<CODE>` file
+  # that is absent while <CODE> is done — and the rule that reports it is
+  # W-ARTIFACT (12) or W-MARKER (13). Both are outranked by W-ORDER (11), which is
+  # evaluated at the next step, so emitting here would report the lower-precedence
+  # rule on an input that violates both: the operator is sent to look for a
+  # findings file when what they have to do first is run the predecessor. The rule
+  # and its arguments are held and emitted AFTER the order gate, which is a
+  # reorder and not a relaxation — status 2 still denies, and still cannot be
+  # skipped through.
+  local deferred_rule=""
+  local -a deferred_args=()
   wv_condition_met "$WV_TAG_PHASE"
   case "$?" in
     1)
@@ -1406,8 +1437,8 @@ wv_main() {
       return 0
       ;;
     2)
-      wv_rule_deny "$WV_COND_RULE" "${WV_COND_ARGS[@]}"
-      return 0
+      deferred_rule="$WV_COND_RULE"
+      deferred_args=("${WV_COND_ARGS[@]}")
       ;;
   esac
   # 0 (met) and 3 (its own scan has not run yet) both fall through: for 3 the
@@ -1430,6 +1461,13 @@ wv_main() {
         return 0
         ;;
     esac
+  fi
+
+  # The order is satisfied, so the deny held back at step 11 is now the one this
+  # dispatch is refused for.
+  if [ -n "$deferred_rule" ]; then
+    wv_rule_deny "$deferred_rule" "${deferred_args[@]+"${deferred_args[@]}"}"
+    return 0
   fi
 
   # 13. The three gates that read an artifact at dispatch time rather than at
