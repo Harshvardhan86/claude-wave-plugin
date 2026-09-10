@@ -466,3 +466,238 @@ assert_ledger_prefix() {
   [ "$want" = "$got" ] && return 0
   _wv_die_diff "ledger_prefix_unchanged: the first $n lines changed; want '$want' got '$got'"
 }
+
+# ---- the eleven-script sweep (Task 11, AC-12/13/30/31/398) ----------------
+#
+# Every wired script must be a total no-op (exit 0, empty stdout, empty
+# stderr) whenever there is no active wave to enforce, and — the other half
+# of the same claim — must NOT be a no-op when there IS one: a sweep that
+# only ever proves silence would pass just as well against eleven scripts
+# that always do nothing. `_wv_eleven_stdin`/`_wv_eleven_active_state`/
+# `_wv_eleven_seed_files` below are copied, byte-for-byte where practical,
+# from an already-GREEN positive case for that script (cited in each case's
+# comment) — never invented — so "produces its rule" is grounded in a fixture
+# this suite has already proven fires, not a guess about what might.
+
+_wv_eleven_scripts() {
+  printf '%s\n' \
+    pre-agent.sh post-agent.sh subagent-stop.sh pre-edit.sh pre-read.sh \
+    pre-bash.sh pre-commit-guard.sh pre-compact.sh stop.sh session-start.sh \
+    user-prompt.sh
+}
+
+_wv_eleven_active_state() {
+  # The seed.state fixture each script's positive case (cited below) uses.
+  case "$1" in
+    pre-agent.sh)       printf 'state/full-all-done-cr.json' ;;
+    post-agent.sh)      printf 'state/full-all-done.json' ;;
+    subagent-stop.sh)   printf 'state/stop-ac-reviewer.json' ;;
+    pre-edit.sh)        printf 'state/valid-full.json' ;;
+    pre-read.sh)        printf 'state/valid-full.json' ;;
+    pre-bash.sh)        printf 'state/valid-full.json' ;;
+    pre-commit-guard.sh) printf 'state/full-fresh.json' ;;
+    pre-compact.sh)     printf 'state/valid-full.json' ;;
+    stop.sh)            printf 'state/full-all-done.json' ;;
+    session-start.sh)   printf 'state/full-ac-done.json' ;;
+    user-prompt.sh)     printf 'state/full-red-done.json' ;;
+  esac
+}
+
+_wv_eleven_seed_files() {
+  # Writes into $WV_PROJECT whatever on-disk fixture this script's positive
+  # case needs beyond state.json (an artifact file, a ledger line, a
+  # checkpoint). Safe to call regardless of scenario: unused files are inert.
+  local script="$1"
+  case "$script" in
+    subagent-stop.sh)
+      # tests/cases/marker-204-no-ac-line-block.json
+      mkdir -p "$WV_PROJECT/.wave"
+      printf 'no criteria here\njust prose about criteria\n' > "$WV_PROJECT/.wave/ac.md"
+      ;;
+    pre-edit.sh)
+      # tests/cases/edit-261-tracked-deny.json
+      mkdir -p "$WV_PROJECT/src"
+      printf 'x\n' > "$WV_PROJECT/src/app.ts"
+      git -C "$WV_PROJECT" add src/app.ts >/dev/null 2>&1
+      ;;
+    pre-read.sh)
+      # tests/cases/read-273-tracked-deny.json
+      mkdir -p "$WV_PROJECT/src"
+      printf 'x\n' > "$WV_PROJECT/src/app.ts"
+      ;;
+    stop.sh)
+      # tests/cases/stopcard-321-terminal-done-prints.json
+      mkdir -p "$WV_PROJECT/.wave"
+      printf '{"agent":"a1","phase":"AD","role":"executor","output":100}\n' \
+        > "$WV_PROJECT/.wave/ledger.jsonl"
+      ;;
+    session-start.sh)
+      # tests/cases/session-327-compact-advisory.json
+      mkdir -p "$WV_PROJECT/.wave/checkpoints"
+      printf '# checkpoint\n' \
+        > "$WV_PROJECT/.wave/checkpoints/2026-09-09T13:00:00Z-precompact.md"
+      ;;
+  esac
+}
+
+_wv_eleven_stdin() {
+  # Reads the `.stdin` object straight out of each script's cited positive
+  # case file, rather than retyping it here: byte-identical to the fixture
+  # that already proves the rule fires (never a second, driftable copy),
+  # and — for pre-commit-guard.sh specifically — it keeps that fixture's
+  # W-COMMIT-TRAILER trigger text (an AI-attribution trailer, spelled out in
+  # full in the fixture itself) confined to its one dedicated, already-
+  # excluded fixture file (tests/cases/commit-298-coauthoredby-claude-deny.json)
+  # instead of duplicating it inline into this shared library file, which
+  # would otherwise trip tests/cases/docs-377-ai-traces.sh's repo-wide
+  # AI-trace sweep (that sweep allow-lists individual fixture files by name,
+  # never a whole shared library).
+  local script="$1" fixture=""
+  case "$script" in
+    pre-agent.sh)       fixture="role-137b-cr-executor-deny.json" ;;
+    post-agent.sh)      fixture="launch-193-downgrade-warn.json" ;;
+    subagent-stop.sh)   fixture="marker-204-no-ac-line-block.json" ;;
+    pre-edit.sh)        fixture="edit-261-tracked-deny.json" ;;
+    pre-read.sh)        fixture="read-273-tracked-deny.json" ;;
+    pre-bash.sh)        fixture="bash-fix1-sudo-make-deny.json" ;;
+    pre-commit-guard.sh) fixture="commit-298-coauthoredby-claude-deny.json" ;;
+    pre-compact.sh)     fixture="solo-guard-336-precompact-checkpoint.json" ;;
+    stop.sh)            fixture="stopcard-321-terminal-done-prints.json" ;;
+    session-start.sh)   fixture="session-327-compact-advisory.json" ;;
+    user-prompt.sh)      fixture="prompt-inject-288-reminder.json" ;;
+  esac
+  [ -n "$fixture" ] || return 1
+  jq -c '.stdin' "$WV_TESTS_DIR/cases/$fixture"
+}
+
+WV_ELEVEN_FAILURES=""
+
+run_all_eleven() {
+  # run_all_eleven <scenario> -> 0 if all eleven scripts behaved as the
+  # scenario requires, 1 otherwise (WV_ELEVEN_FAILURES then names which and
+  # why). Every script gets its own fresh mkproj() so one script's state
+  # write can never leak into the next script's run. <scenario>:
+  #
+  #   active             each script's own positive-case state+seed -> the
+  #                      script must NOT be a total no-op (AC-13's second
+  #                      half: the control that proves the fixtures mean
+  #                      something).
+  #   closed             the same state+seed, status forced to "closed" ->
+  #                      silent (AC-13's first half).
+  #   leftover-wave-dir  .wave/ exists, holds no state.json -> silent (AC-12).
+  #   no-wave-dir        no .wave/ at all -> silent (AC-398: there is no
+  #                      channel to signal an "enforce: warn" intent without
+  #                      a state file, so this is also the case that AC
+  #                      exercises).
+  #   empty-stdin        active state+seed, 0-byte stdin -> silent (AC-30).
+  #   nonjson-stdin      active state+seed, "not json at all" stdin -> silent
+  #                      (AC-31).
+  local scenario="$1"
+  WV_ELEVEN_FAILURES=""
+  local script n=0
+
+  for script in $(_wv_eleven_scripts); do
+    n=$((n + 1))
+    local proj
+    proj="$(mkproj)"
+    WV_PROJECT="$proj"
+
+    local stdin
+    stdin="$(_wv_eleven_stdin "$script")"
+
+    case "$scenario" in
+      active)
+        seed_state "$(_wv_eleven_active_state "$script")"
+        _wv_eleven_seed_files "$script"
+        ;;
+      closed)
+        seed_state "$(_wv_eleven_active_state "$script")"
+        _wv_eleven_seed_files "$script"
+        jq '.status = "closed"' "$proj/.wave/state.json" > "$proj/.wave/state.json.tmp" \
+          && mv "$proj/.wave/state.json.tmp" "$proj/.wave/state.json"
+        ;;
+      leftover-wave-dir)
+        mkdir -p "$proj/.wave"
+        ;;
+      no-wave-dir)
+        : # nothing: no .wave/ at all.
+        ;;
+      empty-stdin)
+        seed_state "$(_wv_eleven_active_state "$script")"
+        _wv_eleven_seed_files "$script"
+        stdin=""
+        ;;
+      nonjson-stdin)
+        seed_state "$(_wv_eleven_active_state "$script")"
+        _wv_eleven_seed_files "$script"
+        stdin="not json at all"
+        ;;
+      *)
+        WV_ELEVEN_FAILURES="unknown scenario: $scenario"
+        return 1
+        ;;
+    esac
+
+    local stderr_tmp out rc err
+    stderr_tmp="$(mktemp "$WV_RUN_TMP/eleven-stderr.XXXXXX")"
+    out="$(cd "$proj" && printf '%s' "$stdin" | bash "$WV_REPO_ROOT/scripts/hooks/$script" 2>"$stderr_tmp")"
+    rc=$?
+    err="$(cat "$stderr_tmp")"
+    rm -f "$stderr_tmp"
+
+    if [ "$scenario" = "active" ]; then
+      # "Produces its rule": stdout carries a decision, or stderr carries a
+      # warning (SubagentStop/PreCompact have no additionalContext channel),
+      # or — pre-compact.sh only, whose whole observable effect is a file,
+      # never stdout/stderr (spec section 10) — a non-empty checkpoint landed.
+      local fired=0
+      [ -n "$out" ] && fired=1
+      [ -n "$err" ] && fired=1
+      if [ "$script" = "pre-compact.sh" ]; then
+        local cp
+        cp="$(find "$proj/.wave/checkpoints" -name '*-precompact.md' 2>/dev/null | head -n1)"
+        [ -n "$cp" ] && [ -s "$cp" ] && fired=1
+      fi
+      if [ "$rc" != "0" ] || [ "$fired" != "1" ]; then
+        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(active-did-not-fire: exit=$rc stdout='$out' stderr='$err')"
+      fi
+    elif [ "$scenario" = "empty-stdin" ] || [ "$scenario" = "nonjson-stdin" ]; then
+      # Global Constraint 4 ("jq absent -> fail open ... The same applies to
+      # unparseable stdin ... print exactly one line to stderr and exit 0")
+      # mandates the single diagnostic lib.sh's wv_parse_stdin already prints
+      # here — "stderr is empty" in AC-30/31's own wording therefore cannot
+      # mean byte-for-byte zero output without contradicting a binding
+      # Global Constraint every one of these eleven scripts already
+      # satisfies; read together with the qualifier immediately following it
+      # in the AC ("no unbound-variable trace, no partial state write"), the
+      # operative claim is "no CRASH trace", not "no diagnostic line at
+      # all". So: stdout must be empty and exit must be 0 unconditionally,
+      # and stderr must be either empty or exactly lib.sh's one sanctioned
+      # fail-open line for this stdin shape — anything else (an unbound
+      # variable trace, a stray second line, a partial write) still fails.
+      local allowed
+      allowed='wave-plugin: hook stdin was empty; nothing was measured, allowing.'
+      if [ "$scenario" = "nonjson-stdin" ]; then
+        allowed='wave-plugin: hook stdin was not a JSON object; nothing was measured, allowing.'
+      fi
+      if [ "$rc" != "0" ] || [ -n "$out" ]; then
+        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-not-silent: exit=$rc stdout='$out')"
+      elif [ -n "$err" ] && [ "$err" != "$allowed" ]; then
+        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-unexpected-stderr: want empty or '$allowed', got '$err')"
+      fi
+      # Also: no partial state write. A $proj/.wave/state.json newer than
+      # the one seed_state wrote, or any stray tmp file under .wave/, is a
+      # partial write this scenario must never produce.
+      if find "$proj/.wave" -maxdepth 1 -name '.state-*' -o -name '*.tmp' 2>/dev/null | command grep -q .; then
+        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-partial-write: a temp state file was left under .wave/)"
+      fi
+    else
+      if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
+        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-not-silent: exit=$rc stdout='$out' stderr='$err')"
+      fi
+    fi
+  done
+
+  [ "$n" -eq 11 ] || WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES incomplete-sweep:ran=$n"
+  [ -z "$WV_ELEVEN_FAILURES" ]
+}
