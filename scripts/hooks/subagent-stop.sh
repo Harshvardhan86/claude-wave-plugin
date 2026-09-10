@@ -961,6 +961,22 @@ wv_main() {
       ;;
   esac
 
+  # ENFORCE=WARN turns the lean-return block into a recorded warning, HERE —
+  # before the one-shot `long_return` marker below reads `block_lean`, because that
+  # marker exists to stop a SECOND block and under warn mode there was no first
+  # one. Clearing block_lean also un-defers the ledger line: it is deferred only so
+  # a blocked agent's following stop can carry the final totals, and warn mode has
+  # no following stop to wait for, so deferring would lose the spend entirely.
+  #
+  # The channel is wv_stop_warn, not lib.sh's wv_block warn path: that path
+  # appends a SECOND, differently-shaped ledger line ({event, agent_id, phase,
+  # warn}) beside this script's own closed-key-set line, and two lines for one
+  # agent break the dedupe key the scorecard and the budget gate both read.
+  if [ "$WV_ENFORCE" = "warn" ] && [ "$block_lean" = "1" ]; then
+    wv_stop_warn W-LONG-RETURN "$last_len" "$WV_STOP_PHASE" "$WV_STOP_ROLE" "$WV_STOP_AGENT"
+    block_lean=0
+  fi
+
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -1033,6 +1049,28 @@ wv_main() {
     if [ -z "$siblings" ]; then
       if wv_artifact_check "$WV_STOP_PHASE"; then
         status_new="done"
+      elif [ "$WV_ENFORCE" = "warn" ]; then
+        # ENFORCE=WARN, and the conversion happens HERE rather than at the block
+        # at the bottom of this function, for two reasons.
+        #
+        # The phase status. AC-395 requires the phase `done` with
+        # `warned:["W-ARTIFACT"]`: warn mode allows the hand-off and leaves a
+        # record of what it allowed. Converting later, after `status_new` had
+        # already been set to artifact-missing / failed / redo, would allow the
+        # stop and still record the phase as not settled — the wave would stall on
+        # a phase nothing was ever going to block.
+        #
+        # The ledger line's SHAPE. lib.sh's wv_block has a warn path of its own,
+        # and it appends a SECOND, differently-shaped line ({event, agent_id,
+        # phase, warn}) beside this script's own closed-key-set line. Two lines
+        # for one agent breaks the dedupe key the scorecard and the budget gate
+        # both read, and a reader cannot tell which is the record. Routing through
+        # wv_stop_warn puts the same rendered text on THIS stop's own single
+        # ledger line (`warn:[…]`) and on the phase's `warned` list, which is the
+        # warn channel AC-395 actually names for an event with no
+        # additionalContext.
+        status_new="done"
+        wv_stop_warn "$WV_AC_RULE" "${WV_AC_ARGS[@]}"
       else
         verdict_rule="$WV_AC_RULE"
         verdict_args=("${WV_AC_ARGS[@]}")

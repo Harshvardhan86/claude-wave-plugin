@@ -13,10 +13,10 @@
 # killed, because those fire on every narrow --filter regardless of the mutant
 # and would otherwise manufacture a false `killed`.
 #
-# Seventeen mutants: the eight properties the task brief names, the seven the
+# Eighteen mutants: the eight properties the task brief names, the seven the
 # round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
 # a mutant now names its own target file), and the two Task 13 added with the
-# bounded transcript settle.
+# bounded transcript settle and the enforce=warn conversion.
 #   1. closingrole    the artifact check is applied to EVERY role's stop, not
 #                     only the closing role's
 #   2. lastoneout     the last-one-out predicate always says "last", so the
@@ -45,6 +45,9 @@
 #                     unverifiable
 #  17. settlenoflag   reaching the settle cap is not recorded, so an
 #                     unconfirmed read is indistinguishable from a verified one
+#  18. warnviablock   enforce=warn falls back to lib.sh's wv_block warn path,
+#                     which leaves the phase artifact-missing and appends a
+#                     second, differently-shaped ledger line
 #
 # Exit status: 0 only when every mutant was applied, every mutant was killed,
 # and the final restore matches the pristine hash.
@@ -349,9 +352,18 @@ PY
 
 # --- 17. reaching the settle cap is not recorded ---------------------------
 wv_body_settlenoflag() { cat <<'PY'
-old = '  WV_TS_INCOMPLETE=1\n  wv_warn W-STATE "the subagent transcript'
-new = '  WV_TS_INCOMPLETE=0\n  wv_warn W-STATE "the subagent transcript'
+old = '  WV_TS_INCOMPLETE=1\n  wv_warn W-STATE'
+new = '  WV_TS_INCOMPLETE=0\n  wv_warn W-STATE'
 assert old in s, "anchor missing: the settle cap flag"
+s = s.replace(old, new)
+PY
+}
+
+# --- 18. enforce=warn falls back to lib.sh's wv_block warn path ------------
+wv_body_warnviablock() { cat <<'PY'
+old = '      elif [ "$WV_ENFORCE" = "warn" ]; then'
+new = '      elif [ "zzz-never" = "warn" ]; then'
+assert old in s, "anchor missing: the enforce=warn artifact conversion"
 s = s.replace(old, new)
 PY
 }
@@ -385,6 +397,7 @@ wv_run_mutant libtabcollapse wv_body_libtabcollapse "$L" 'stop-220*' 'stop-227*'
 wv_run_mutant blockswallows  wv_body_blockswallows  "$L" 'stop-warn-flush*' 'marker-204*' 'stop-214*'
 wv_run_mutant settleremoved  wv_body_settleremoved  "$H" 'stop-181-*'
 wv_run_mutant settlenoflag   wv_body_settlenoflag   "$H" 'stop-181-*' 'taint-243*'
+wv_run_mutant warnviablock   wv_body_warnviablock   "$H" 'warn-mode-*'
 
 # --- the table --------------------------------------------------------------
 
