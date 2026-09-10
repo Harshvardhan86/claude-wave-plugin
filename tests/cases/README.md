@@ -15,6 +15,7 @@ the whole tree.
   "env": { "SOME_VAR": "value" },
   "seed": {
     "state": "state/valid-full.json",
+    "started_hours_before_now": 1,
     "files": { "relative/path.txt": "file contents" },
     "transcripts": { ".wave/tr/agent.jsonl": "transcripts/all-opus.jsonl" },
     "staged": ["relative/path.txt"]
@@ -51,6 +52,16 @@ present (a case does not need to assert every field).
   path) copied to `<tmp-project>/.wave/state.json` before the run; an empty
   `.wave/lock` file is also created (mirroring `wave-init.sh`, which does not
   exist yet).
+- **`seed.started_hours_before_now`** — rewrites the seeded state's `started` to
+  that many whole hours before the instant this case runs at (`env.WV_NOW` if the
+  case names one, else the pinned clock in `tests/lib/assert.sh`). Needs
+  `seed.state`. Use it in any case whose assertion depends on which side of
+  session-start.sh's 24h staleness boundary the wave falls: a fixture's literal
+  `started` and the pin are two constants nothing holds a fixed distance apart, so
+  a case that asserted the not-stale branch went red the moment
+  `WV_PINNED_NOW=2026-11-01T00:00:00Z` moved the pin past it — with the product
+  behaving exactly as specified. Deriving one side from the other is what makes
+  `WV_PINNED_NOW=<any instant> bash tests/run.sh` a proof rather than a window.
 - **`seed.files`** — a map of project-relative path -> file contents, written
   before the run.
 - **`seed.transcripts`** — a map of project-relative destination path ->

@@ -99,9 +99,25 @@ mkproj() {
 }
 
 seed_state() {
-  # seed_state <fixture> — copies a state fixture into $WV_PROJECT/.wave/state.json.
+  # seed_state <fixture> [hours-before-now] [now-iso] — copies a state fixture into
+  # $WV_PROJECT/.wave/state.json.
   # <fixture> may be a path relative to tests/fixtures/, or absolute/repo-relative.
-  local fixture="$1" src
+  #
+  # WITH <hours-before-now>, `started` IS DERIVED FROM THE CLOCK THE CASE RUNS AT
+  # rather than left at the fixture's literal — <now-iso> minus that many hours,
+  # where <now-iso> defaults to the pinned instant above.
+  #
+  # A fixture's literal `started` and the pinned clock are two constants that have to
+  # stay a fixed distance apart, and nothing held them there: session-start.sh's
+  # staleness clause fires 24h after `started`, so moving WV_PINNED_NOW past
+  # 2026-09-10T12:00:00Z flipped the branch under every case that had ASSERTED THE
+  # OTHER ONE — session-327 and session-327c went red at a pin of 2026-11-01 with the
+  # product behaving exactly as specified. Pinning the clock (above) removed the wall
+  # clock as a source of failure; deriving `started` from that same clock is the other
+  # half, and it is what makes `WV_PINNED_NOW=<any instant> bash tests/run.sh` a proof
+  # rather than a window. A case that WANTS the stale branch says so with a larger
+  # number here (or its own `env.WV_NOW`), which reads as the intent it is.
+  local fixture="$1" hours="${2:-}" now="${3:-$WV_PINNED_NOW}" src
   if [ -f "$fixture" ]; then
     src="$fixture"
   elif [ -f "$WV_TESTS_DIR/fixtures/$fixture" ]; then
@@ -113,7 +129,22 @@ seed_state() {
     return 1
   fi
   mkdir -p "$WV_PROJECT/.wave"
-  cp "$src" "$WV_PROJECT/.wave/state.json"
+  if [ -n "$hours" ]; then
+    case "$hours" in
+      ''|*[!0-9]*)
+        printf 'seed_state: hours-before-now must be a whole number of hours, got: %s\n' "$hours" >&2
+        return 1 ;;
+    esac
+    local started
+    started="$(date -u -d "$now -$hours hours" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+    if [ -z "$started" ]; then
+      printf 'seed_state: cannot derive started from now=%s minus %sh\n' "$now" "$hours" >&2
+      return 1
+    fi
+    jq --arg s "$started" '.started = $s' "$src" > "$WV_PROJECT/.wave/state.json" || return 1
+  else
+    cp "$src" "$WV_PROJECT/.wave/state.json"
+  fi
   [ -f "$WV_PROJECT/.wave/lock" ] || : > "$WV_PROJECT/.wave/lock"
 }
 
@@ -129,10 +160,18 @@ plant_control() {
 _wv_apply_seed() {
   # _wv_apply_seed <case-json-path>
   local case_json="$1"
-  local state_fixture
+  local state_fixture hours case_now
   state_fixture="$(jq -r '.seed.state // empty' "$case_json")"
+  # The clock this case will run at: its own `env.WV_NOW` if it names one (run_hook
+  # honours that over the pin), else the pin. `started` has to be derived against the
+  # instant the hook will actually read, not against a different one.
+  hours="$(jq -r '.seed.started_hours_before_now // empty' "$case_json")"
+  case_now="$(jq -r '.env.WV_NOW // empty' "$case_json")"
   if [ -n "$state_fixture" ]; then
-    seed_state "$state_fixture"
+    seed_state "$state_fixture" "$hours" "${case_now:-$WV_PINNED_NOW}" || return 1
+  elif [ -n "$hours" ]; then
+    printf 'seed.started_hours_before_now needs seed.state: there is no state.json to rewrite\n' >&2
+    return 1
   fi
   local file_keys
   file_keys="$(jq -r '.seed.files // {} | keys[]' "$case_json" 2>/dev/null)"

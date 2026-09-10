@@ -224,6 +224,7 @@ Release gates, from the repository root:
 ```bash
 bash tests/run.sh
 bash tests/run.sh --coverage
+WV_PINNED_NOW=2026-11-01T00:00:00Z bash tests/run.sh --coverage
 bash tests/clean-clone-check.sh
 bash tests/tools/mutants-all.sh
 bash tests/tools/reason-corpus.sh
@@ -231,7 +232,12 @@ bash tests/e2e.sh
 ```
 
 The first runs the cases; `--coverage` also fails missing positive/negative rule
-controls. The clean-clone check covers the committed tree. `mutants-all.sh` runs
+controls. The **pinned-clock run** is the time-bomb gate: every case reads the clock
+through one injectable source (`WV_NOW`, pinned once per run by
+`tests/lib/assert.sh`), so moving that pin to any instant must leave the suite green.
+It must be run at a pin far past the fixtures' own timestamps — a wall-clock-dependent
+case reds there and nowhere else, months before the calendar would find it, with no
+commit to blame. The clean-clone check covers the committed tree. `mutants-all.sh` runs
 every mutation driver under `tests/tools/` — one per hook script plus the 78
 phase-table tier cells — and fails on any surviving mutant or failed restore; a
 green suite over a rule no mutant can break has proved nothing about that rule.
