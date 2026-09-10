@@ -96,7 +96,10 @@ present (a case does not need to assert every field).
   routinely carries `*`, `[`, `$` and `\`. Use it when an AC says the reason
   must *name* something (the active wave id, the offending prefix, the roles a
   phase defines) — `reason_template` only checks the `[<rule>] ` prefix. A
-  substring cannot span a newline (the list is read line by line).
+  substring MAY span a newline: the list is decoded whole rather than read line by
+  line, so a two-line needle is one assertion. It used to be split on newlines
+  into two independent single-line assertions, both of which a reason can satisfy
+  without ever containing the two-line string the case asked for.
 - **`expect.stderr_contains`** — a list of **literal** substrings stderr must
   contain. `SubagentStop` and `PreCompact` have no `additionalContext` channel, so
   a warning on those events reaches the operator on stderr and nowhere else; this
@@ -164,13 +167,14 @@ that `wv_transcript_stats` is tested against.
 ## Self-check cases (`tests/cases/_selfcheck/`)
 
 These cases test the harness itself, not any hook. Each one is a
-deliberately broken or incomplete fixture that exercises one of the four
+deliberately broken or incomplete fixture that exercises one of the five
 built-in detections:
 
 1. a case naming a script that does not exist,
 2. a case file that is exactly 0 bytes,
-3. a case whose `stdin` uses a key absent from `measured-keys.txt`,
-4. a rule id with a positive case (`expect.rule`) and no negative control.
+3. a case file that is not a parseable JSON object,
+4. a case whose `stdin` uses a key absent from `measured-keys.txt`,
+5. a rule id with a positive case (`expect.rule`) and no negative control.
 
 For (1), (3) and (4) the case JSON carries `"expect": {"harness_fails": true, ...}`.
 A case with `harness_fails: true` inverts the normal PASS/FAIL meaning: it
@@ -183,7 +187,10 @@ plain failure of the suite, except when it lives under
 `tests/cases/_selfcheck/`, where it is understood to be the deliberate
 self-check of the "0 bytes" detector** and is reported PASS once that
 detector correctly flags it. A 0-byte file anywhere else in the corpus is a
-real bug and is never inverted.
+real bug and is never inverted. The same inversion applies to a case file that
+is not parseable JSON (`_selfcheck-unparseable.json`), which is that detector's
+planted control — AC-401 names the detection, and without a control it was code
+no case had ever executed.
 
 `tests/cases/_selfcheck/` also carries one ordinary (non-inverted) case
 proving the plumbing end to end — seeding an active state fixture, running a
