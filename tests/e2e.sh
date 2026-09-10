@@ -109,7 +109,7 @@ WV_E2E_ASSERTIONS=(
   "load-proof: hooks/hooks.json loads with no 'Duplicate hooks'/'Hook load failed', and this plugin's per-plugin load lines plus the aggregate registered-hook count appear in --debug-file"
   "scenario-a (AC-380): an UNTAGGED Agent dispatch during an active wave (mode full, ui/behaviour_change/cr_enabled all false, enforce block) is denied, the transcript's tool_result carries the [W-TAG] reason, and no subagent transcript directory is created for it"
   "scenario-b (AC-381): [W:1 P:AC R:lead] dispatched with model \"haiku\" is denied, the transcript's tool_result carries the [W-TIER] reason naming \"opus\""
-  "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, and state.active records a real agentId + resolvedModel written by post-agent.sh"
+  "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
   "scenario-f (AC-385): /<plugin>:wave-start \"x\" run WITHOUT --dangerously-skip-permissions needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json"
@@ -580,11 +580,23 @@ wv_e2e_scenario_c_attempt() {
   esac
   [ -n "$active_id" ] || { WV_SC_C_MSG="state.active has no agentId key for the AD/executor record"; return; }
 
+  # AC-382's other half, preserved by the AD substitution: the phase itself
+  # must be recorded done, not just the per-agent active/ledger records.
+  # subagent-stop.sh writes this at the closing role's stop once the
+  # artifact check passes (AD's artifact/marker are both "-", so it passes
+  # trivially — see the header comment above this function).
+  local phase_status
+  phase_status="$(jq -r '.phases.AD.status // empty' "$state" 2>/dev/null)"
+  if [ "$phase_status" != "done" ]; then
+    WV_SC_C_MSG="state.phases.AD.status is \"${phase_status:-<absent>}\", expected \"done\" (found via jq -r '.phases.AD.status' on $state)"
+    return
+  fi
+
   WV_SC_C_OK=1
-  WV_SC_C_DETAIL="$(printf '  prompt: %s\n  session: %s (%s)\n  ledger line: %s\n  state.active[%s]: phase=AD role=executor resolved_model=%s\n' \
+  WV_SC_C_DETAIL="$(printf '  prompt: %s\n  session: %s (%s)\n  ledger line: %s\n  state.active[%s]: phase=AD role=executor resolved_model=%s\n  state.phases.AD.status: %s\n' \
     "$prompt" "$sid" "$transcript" \
     "$(jq -sc '[.[] | select(.phase == "AD" and .role == "executor")][0]' "$ledger" 2>/dev/null)" \
-    "$active_id" "$active_resolved")"
+    "$active_id" "$active_resolved" "$phase_status")"
 }
 
 wv_e2e_scenario_c() {
