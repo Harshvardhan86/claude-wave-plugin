@@ -212,11 +212,12 @@ Columns (12): `code`, `modes`, `when`, `condition`, `after`, `fanout`, `lead`,
 - `condition`: `always`, `ui|behaviour_change` (either state flag true), `cr`
   (`state.cr_enabled`), or `findings:<CODE>` — the findings file named by
   `<CODE>`'s `findings` column reports ≥1 finding.
-- `after`: comma list of phase codes that must be `done`. **A row whose
-  `condition` is false, or whose `modes` excludes the active mode, is treated as
-  `done` for every `after` that names it.** That single rule is what makes a
-  clean scan (`FINDINGS: 0`, so its `BF-*` never runs) and the demo subset
-  proceed instead of deadlocking.
+- `after`: comma list of phase codes that must be `done`. **The skip rule is
+  transitive: a row whose `condition` is false, or whose `modes` excludes the
+  active mode, is skipped, but its own `after` is looked through recursively.**
+  Its applicable predecessors must still be `done`. This lets a clean scan
+  (`FINDINGS: 0`, so its `BF-*` never runs) and the demo subset proceed without
+  bypassing unfinished work behind a skipped conditional row.
 - `fanout`: how many concurrent dispatches of the same phase+role count as
   **one** round (PDT fan-out: 3 TEET-TC writers, 3 TEET testers, 3 BTEET-X
   executors, 3 BC scanners, 2 AC executors, 2 DR executors). It also multiplies
@@ -289,12 +290,12 @@ Gates that read an artifact at dispatch time rather than at stop:
 **Solo mode.** `phases.tsv` is not consulted at all when `mode` is `solo`: no
 row applies, no phase is gated, and a dispatch carrying a valid tag is recorded
 but not judged against the table. Untagged dispatches are ledgered under phase
-`SOLO`. §7's "every dispatch names its model" and everything in §9 (ledger,
-scorecard) and §10 (commit guard, PreCompact checkpoint) still apply; §6, §7's
-tier comparison, §8.1–8.6, the round ceiling and the budget gate do not. Solo is
-for medium tasks the user drives directly with at most a separate review
-dispatch, and it exists so the cheap invariants do not have to be turned off to
-get out of the way.
+`SOLO`. Solo keeps only the explicit-model rule, the commit guard, the
+PreCompact checkpoint and the ledger. There are no prompt caps, phase-order
+checks, tier comparisons, orchestrator-only rules, round ceilings or budget
+gates. Solo is for medium tasks the user drives directly with at most a
+separate review dispatch, and it exists so the cheap invariants do not have to
+be turned off to get out of the way.
 
 ## 7. Model routing (`hooks/models.tsv` + tiers)
 

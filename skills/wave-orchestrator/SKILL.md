@@ -97,3 +97,155 @@ Keep it terse. Artifacts live in files; the user reads those, not your play-by-p
 ## When auto-compact looms
 
 Invoke `/wave-checkpoint` before context fills. The next session resumes from `.wave/checkpoints/<latest>.md`.
+
+## Hook-enforced contract
+
+In v0.2.0, `hooks/hooks.json` is auto-loaded with the plugin. Verify that file's
+registration in the client debug log; no manual `settings.json` wiring is required.
+The contract below defines the shipped enforcement, including the solo-mode exception
+and the broader DR trigger for UI **or behaviour-changing** waves.
+
+`/wave-start` initialises `.wave/state.json` through `scripts/wave-init.sh` before
+any dispatch. Full/demo scope answers go through `scripts/wave-set.sh
+ui|behaviour-change|cr true|false` and are recorded in `.wave/approvals/scope.md`.
+All three flags must be known before `TDE-RED`. `.wave/` is local recovery state,
+excluded through `.git/info/exclude`.
+
+- **Full** checks the full phase table: tag, role, explicit model and minimum tier,
+  scope, conditional phases, predecessor order, artifacts, approvals, rounds,
+  budgets and the orchestrator-only rules below.
+- **Demo** applies the same checks to `AC`, `DR`, `TDE-RED`, `TDE-GREEN`, `TEET`.
+  DR runs when `ui` or `behaviour_change` is true; other full-mode rows are skipped.
+- **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit guard,
+  PreCompact checkpoint and ledger. Drive the task directly. No tag is required;
+  an untagged dispatch is ledgered as `SOLO`. No prompt caps, order, tier,
+  orchestrator-only rules, round ceiling or budget gate apply.
+
+`enforce` is `block` by default. `wave-init.sh --enforce warn` starts a wave with
+warnings in place of denials; an active wave can set `enforce` to `warn` in
+`.wave/state.json`. The same rule ids remain visible. `wave-set.sh` only changes
+scope flags. No active wave means no plugin hook enforcement.
+
+**Dispatch identity.** Every main-session full/demo `Agent` dispatch starts its
+`description` at byte 0 with this case-sensitive tag, with exactly one space
+between fields:
+
+```text
+[W:<wave> P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]
+```
+
+For example: `[W:1 P:TDE-GREEN R:executor] implement AC-3..AC-7`. Use the active
+wave id. The first line of `prompt` is accepted as a fallback; description wins.
+Descriptions over 120 characters warn. `hooks/roles.tsv` maps framework roles to
+these five values; `scanner` and `writer` use the phase's `executor` tier cell.
+A `-` role cell means that role does not exist. Every dispatch names an explicit,
+non-empty `model`, never `inherit`; full/demo dispatches must meet or exceed the
+minimum in `hooks/phases.tsv`. Unknown or ambiguous model aliases warn and allow.
+Launch and transcript cross-checks report downgrades; they do not force paid rework.
+
+**Artifacts and markers.** Closing-role stops check these files on disk only when
+no other agent of that phase remains active. A marker is a line-matching regex.
+
+| Phase | Artifact | Marker |
+|---|---|---|
+| AC | `.wave/ac.md` | `^AC-[0-9]+` |
+| ACB | `.wave/acb.md` | `^ACB-VERIFIED` |
+| DR | `.wave/dr.md` | `^DR-VERIFIED` |
+| TDE-RED | `.wave/red.md` | `^RED-VERIFIED failing=[1-9][0-9]*$` |
+| TDE-GREEN | `.wave/green.md` | `^GREEN-VERIFIED passing=[1-9][0-9]* failing=0$` |
+| CR | `.wave/cr.md` | `^CR-VERIFIED` |
+| BC / SEA / DS / BSEA | `.wave/findings/<PHASE>.md` | `^FINDINGS: [0-9]+$` |
+| BF-`<X>` | `.wave/bf-<X>.md` | `^BF-VERIFIED` |
+| OA | `.wave/oa.md` | `^ALIGNMENT: [0-9]+%$` |
+| TEET-TC | `.wave/teet-tc.md` | `^TEET-TC-VERIFIED$` |
+| TEET | `.wave/teet.md` | `^TEET-VERIFIED$` |
+| BTEET | `.wave/bteet.md` | `^BTEET-VERIFIED$` |
+| BTEET-X | `.wave/bteet-x.md` | `^BTEET-X-VERIFIED$` |
+| CCP | `.wave/checkpoints/<ts>-ccp.md` | exists |
+| VB, COMMIT, CL, AD | — | — |
+
+TEET and BTEET also produce `.wave/findings/TEET.md` and
+`.wave/findings/BTEET.md`, with `^FINDINGS: [0-9]+$`. The six BF rows are
+`BF-BC`, `BF-SEA`, `BF-DS`, `BF-BSEA`, `BF-TEET` and `BF-BTEET`.
+UI GREEN additionally needs a non-empty `.wave/screenshots/green-<name>.png`.
+A `*-precompact.md` checkpoint does not satisfy CCP. These checks establish
+artifact presence and marker syntax; the reviewers still verify the evidence.
+
+Order follows each row's `after`, not file order. Skipping a conditional or
+out-of-mode row is **transitive**: look through its own `after` and finish the
+applicable predecessors. Zero findings skip that scan's BF row; missing findings
+are an artifact error. `VB`, `COMMIT`, `CL` and `CCP` share the predecessor set
+`BTEET-X,BF-BTEET`. `AD` is `anytime`, exempt from order, rounds and budgets.
+
+**Approvals.** Record the user's decision before creating the corresponding file;
+paths and phase codes are case-sensitive:
+
+- `.wave/approvals/dr-open.md`: one `RESOLVED:` line for every `^OPEN:` line in
+  `.wave/dr.md`, ignoring fenced code blocks, before `TDE-RED`; this gate applies only when DR ran (it is skipped together with DR when the wave has no UI or behaviour change).
+- `.wave/approvals/green-visual.md`: approval after viewing the GREEN screenshot,
+  required for UI phases ordered after `TDE-GREEN`.
+- `.wave/approvals/bf-<X>.md`: the selected strategy before a `BF-<X>` dispatch.
+- `.wave/approvals/rerun-<PHASE>-<role>.md`: approval before a third round of the
+  same phase and role. A bare `rerun-<PHASE>.md` does **not** satisfy the rule.
+- `.wave/approvals/budget-<PHASE>.md`: approval to exceed twice the phase budget.
+- `.wave/approvals/commit-doc.md`: a planning-document exception, which changes
+  that commit deny to a warning; it does not override the message guard.
+
+Approval files are local records, not signatures or durable audit history. Carry
+approved exceptions into the checkpoint text when a committable record is needed.
+
+**Orchestrator-only rules (full/demo).** Dispatch implementation and verification:
+
+- Main-session `Edit`, `Write`, `NotebookEdit` and `MultiEdit` cannot change a
+  git-tracked path inside the project outside `.wave/`, unless it matches
+  `hooks/orchestrator-writable.tsv` (`README.md`, `CHANGELOG.md`,
+  `CONTINUE-HERE.md`, `docs/**`). Paths are resolved before checking symlinks.
+- Main-session `Read` is restricted to `.wave/` and paths outside the project.
+  Locate with `Grep`/`Glob`; a subagent reads source and returns conclusions.
+  `Grep`, `Glob` and `LS` are not gated.
+- Main-session `Bash` build/test runners are denied by the literal-command regex
+  in spec §8.3. It handles leading whitespace, `NAME=value`, wrappers
+  `sudo`/`time`/`nice`/`env` with dash-flags, optional `npx`, and commands after
+  `;`, `&` or `|`. Delegate those runs. Inspection commands remain available.
+- Nested `Agent` calls and `subagent_type: "fork"` are denied. Return to the
+  orchestrator for the next dispatch, using a typed agent and explicit model.
+- A return over 2,000 characters blocks once: write the full report to
+  `.wave/reports/<PHASE>-<ROLE>-<agent_id>.md` and return a shorter summary.
+  `stop_hook_active: true` never triggers another block.
+- Prompts over 8,000 or 24,000 characters warn. A block of at least 4,000
+  characters copied byte-for-byte from a `.wave/` file is denied; pass its path.
+  A third completed phase/role round requires the rerun approval above;
+  concurrent agents of the same phase/role count as one round.
+
+**Declared bounds.** A `Bash` source write is not gated by the edit rule. The
+build/test filter does not interpret `bash -c`, variables or aliases, or skip
+bare wrapper-flag arguments such as the `5` in `nice -n 5`. Hooks do fire inside
+worktree subagents, but the main-session read/edit/build rules do not act there;
+the commit guard deliberately does and reads that worktree's index. Nested
+Agent dispatch remains separately denied in full/demo mode.
+
+**Ledger and scorecard.** `SubagentStop` appends one `.wave/ledger.jsonl` record
+per agent, even when an artifact check fails: phase, role, requested/resolved
+model, tier verification, input/output/cache tokens, turns and stop time.
+Unusable transcripts are noted, not treated as zero-cost proof. State and ledger
+writes share `.wave/lock`; timed-out appends are spooled in `.wave/ledger.pending/`
+and drained once. Output spend is a per-phase total against `hooks/budgets.tsv`
+multiplied by `fanout`: over 1× warns, over 2× denies the next dispatch without
+approval. Unreadable accounting cannot justify a deny.
+
+`scripts/wave-scorecard.sh` writes `.wave/scorecard.md` with phase/role/model spend,
+budget ratios and rework, plus GREEN output tokens per changed line and its
+passing-test count.
+The Stop hook's terminal-phase pointer is intended to appear once (`AD` full,
+`TEET` demo), not on every turn. Close a wave manually with `scripts/wave-close.sh`;
+solo has no terminal phase. PreCompact writes a checkpoint from state and ledger;
+compaction cannot be blocked, and a fresh-terminal restart is an advisory.
+
+**Responding to a deny.** A reason has the form `[W-RULE] <observed problem>;
+remedy: <next action>`. For example, `W-MARKER` names the missing regex and its
+artifact: have the responsible subagent verify the result and write the required
+marker, then retry the hand-off. Do not invent passing evidence to satisfy a
+marker. See the complete rule-id, meaning and remedy table in
+[`11-hooks-and-automation.md`](../../framework/references/11-hooks-and-automation.md).
+Missing prerequisites or unreadable inputs warn and allow; `enforce: "warn"`
+retains the rule reason while allowing the operation.

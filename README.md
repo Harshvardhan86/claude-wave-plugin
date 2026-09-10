@@ -1,6 +1,6 @@
 # claude-wave-plugin
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
 
 > Run Claude Code like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
 
@@ -20,6 +20,7 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 - [Install](#install)
 - [Quickstart — your first wave](#quickstart--your-first-wave)
 - [What you get](#what-you-get)
+- [Hook enforcement (v0.2.0)](#hook-enforcement-v020)
 - [The 10 invariants](#the-10-invariants-verbatim-from-v1-preserved-in-v2)
 - [The 5 hard-won rules](#the-5-hard-won-rules-the-demo-skills-add-on-top)
 - [Repository structure](#repository-structure)
@@ -38,7 +39,7 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 |------------------------------|------------------------------|--------------------------|---------------------|
 | Workflow philosophy          | Evidence-first verification  | Brainstorm → plan → execute | One-shot prompts |
 | Phases per feature           | 17 base + 2 conditional      | 7 stages                 | None                |
-| TDD enforcement              | Hook-enforced                | Recommended              | None                |
+| TDD enforcement              | Hooks gate RED → GREEN order and evidence-file markers | Recommended              | None                |
 | Visual verification gates    | ✅ Computed-style assertions | ❌                       | ❌                  |
 | Sub-agent isolation          | ✅ Per-phase, lean context   | ✅                       | ❌                  |
 | Auto-compact recovery        | ✅ Checkpoint resume          | ❌                       | ❌                  |
@@ -58,6 +59,8 @@ This plugin packages that workflow.
 
 - **Claude Code** installed and authenticated. See the [official docs](https://docs.claude.com/en/docs/claude-code/overview).
 - A project to run waves against (any language / stack).
+- For hook enforcement: Bash, Git, `jq`, `flock`, `realpath` and standard shell utilities.
+  Missing hook prerequisites warn and allow; install them for the gates to operate.
 - For UI waves: a browser-driving setup such as Playwright. The framework's TEET phase uses Playwright via the official MCP.
 - Optional but recommended: the [CodeRabbit plugin](https://www.coderabbit.ai/) if you want the `[CR]` Code Review gate at Phase 3.5.
 
@@ -130,7 +133,7 @@ For first-time users, small features, and live-demo segments, the plugin ships *
 
 | Skill | Phase | Owns |
 | --- | --- | --- |
-| `wave-orchestrator` | Router | Mode dispatch (`full` vs `demo`), hand-off gates |
+| `wave-orchestrator` | Router | Full/demo dispatch and hand-off gates; solo mode for direct tasks |
 | `ac-writer` | 1. Acceptance Criteria | Brutal, testable ACs grounded in real visual vocabulary |
 | `design-reviewer` | UI: pre-RED gate (matches Phase 1.5) | Component API audit, per-route mockup, visual ACs |
 | `red-tests` | RED | Failing tests *first*, prove they fail before any code is written |
@@ -143,7 +146,93 @@ These run as `/wave-start --demo "<feature>"`. The recommended starting point.
 
 - `/wave-start <feature>` — runs the full v2 pipeline (17 base + conditional `[DR]` and `[CR]` gates)
 - `/wave-start --demo <feature>` — runs the trimmed 5-phase entry subset
+- `/wave-start --solo <feature>` — runs a direct task with explicit models, commit guard,
+  PreCompact checkpoint and token ledger
 - `/wave-checkpoint` — saves wave state to disk so an auto-compact (or laptop battery dying) doesn't kill the run
+
+## Hook enforcement (v0.2.0)
+
+An active wave now has executable gates: phase order, valid phase/role/model,
+hand-off artifacts and markers, scope answers, design-review resolutions, UI
+screenshot approval and bug-fix strategy approval. Hooks keep the full/demo
+orchestrator focused on dispatch by gating tracked source edits, source reads,
+recognised build/test commands, nested dispatches and forks. Third phase/role
+rounds and output-token budget overruns require recorded approval.
+
+Every main-session full/demo `Agent` dispatch starts its `description` with:
+
+```text
+[W:<wave> P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]
+```
+
+For example: `[W:1 P:TDE-GREEN R:executor] implement AC-3`. The tag is
+case-sensitive, begins at byte 0 and has exactly one space between fields. The
+first line of `prompt` is accepted as a fallback. Name `model` explicitly;
+full/demo routing requires at least the tier in `hooks/phases.tsv`.
+
+- **Full** applies the full phase table and all process gates. DR runs for UI
+  **or behaviour-changing** waves; CR is conditional on its scope flag.
+- **Demo** applies the same rules to `AC`, `DR`, `TDE-RED`, `TDE-GREEN`, `TEET`.
+  Skipped conditional or out-of-mode rows are looked through transitively so
+  unfinished applicable predecessors cannot be bypassed.
+- **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit
+  guard, PreCompact checkpoint and ledger. No tag, prompt caps, phase order,
+  tiers, orchestrator-only rules, rounds or budgets are enforced.
+
+`/wave-start` creates `.wave/state.json` before dispatch and records full/demo
+scope answers with `scripts/wave-set.sh`. The state defaults to `enforce: "block"`.
+**Escape hatch:** use `--enforce warn` when invoking `scripts/wave-init.sh`, or
+set `enforce` to `warn` in the active `.wave/state.json`. Event-hook denials become
+warnings with the same rule id and remedy. `wave-set.sh` changes scope flags only.
+Close the wave with `scripts/wave-close.sh` when finished. With no active state,
+plugin event hooks are silent; unreadable inputs and missing prerequisites warn
+and allow.
+
+Approvals, reports and checkpoints live under `.wave/`, excluded locally through
+`.git/info/exclude`. Approval files record the user's decision; they are not
+signatures or durable audit history. The commit guard checks staged planning
+paths and message hygiene; `.wave/approvals/commit-doc.md` permits an intentional
+planning-document exception. `wave-init.sh` also installs a Git `commit-msg`
+guard when one is absent. That separate message guard remains active after a
+wave closes and does not consult `enforce`.
+
+The append-only `.wave/ledger.jsonl` records requested/resolved models and
+input/output/cache tokens per agent, including failed hand-offs.
+`scripts/wave-scorecard.sh` writes `.wave/scorecard.md` with spend, budget ratios,
+rework and GREEN output per changed line. Model downgrades warn and are recorded. Long prompts
+warn; copying ≥4,000 characters from a `.wave/` file into a prompt is denied.
+Pass a report path and return a summary under 2,000 characters.
+
+PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
+`/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
+advised: Claude Code cannot block compaction through this hook. Start a fresh
+terminal from the recorded resume instructions.
+
+These gates check evidence files and markers, not the truth of test results.
+Reviewers still verify the evidence. A Bash source write is outside the edit
+guard; the build/test filter does not interpret shell indirection or aliases.
+Main-session edit/read/build restrictions do not apply inside worktree
+subagents, where the commit guard still inspects the worktree's index.
+
+The plugin auto-loads `hooks/hooks.json`; **do not add `hooks` to the plugin
+manifest**, because duplicate registration can drop all hooks. See the
+[hook reference](framework/references/11-hooks-and-automation.md) for wiring,
+stdin fields, every rule id and remedy, approval paths, load verification and rollback.
+
+Release gates, from the repository root:
+
+```bash
+bash tests/run.sh
+bash tests/run.sh --coverage
+bash tests/clean-clone-check.sh
+bash tests/e2e.sh
+```
+
+The first runs the cases; `--coverage` also fails missing positive/negative rule
+controls. The clean-clone check covers the committed tree. Mutation drivers live
+at `tests/tools/mutants-*.sh`. The end-to-end gate verifies an actual plugin load
+and headless wave; it reports a skip when `claude` is unavailable. A filtered
+pass, skipped live test or successful manifest validation alone is not a release gate.
 
 ## The 10 invariants (verbatim from v1, preserved in v2)
 
@@ -158,7 +247,8 @@ These run as `/wave-start --demo "<feature>"`. The recommended starting point.
 9. No hanging the system — teams must not deadlock or block indefinitely.
 10. The orchestrator is the single throat to choke — all decisions and user interactions flow through it.
 
-Invariants 6 and 7 are hook-enforced in v2; see [`framework/references/11-hooks-and-automation.md`](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/framework/references/11-hooks-and-automation.md).
+Invariant 6 is hook-enforced in v0.2.0. Invariant 7’s checkpoint is enforced;
+its fresh-terminal stop is advised because PreCompact cannot block compaction. See [`framework/references/11-hooks-and-automation.md`](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/framework/references/11-hooks-and-automation.md).
 
 ## The 5 hard-won rules the demo skills add on top
 
@@ -177,7 +267,8 @@ Each rule was learned from a specific incident, not from a blog post.
 ```
 claude-wave-plugin/
 ├── .claude-plugin/
-│   └── plugin.json                              # plugin manifest
+│   ├── plugin.json                              # plugin manifest (no hooks field)
+│   └── marketplace.json                         # marketplace listing
 ├── README.md                                    # you are here
 ├── LICENSE                                      # MIT
 ├── CHANGELOG.md                                 # release history
@@ -209,11 +300,36 @@ claude-wave-plugin/
 │   └── teet-verify/SKILL.md
 │
 ├── commands/
-│   ├── wave-start.md                            # /wave-start [--demo] "<feature>"
+│   ├── wave-start.md                            # /wave-start [--demo|--solo] "<feature>"
 │   └── wave-checkpoint.md                       # /wave-checkpoint
 │
-└── scripts/
-    └── qr.html                                  # parametric QR-code generator
+├── hooks/                                       # auto-loaded wiring + rule data
+│   ├── hooks.json                              # events, matchers, command timeouts
+│   ├── phases.tsv                              # order, tiers, artifacts, markers
+│   ├── models.tsv
+│   ├── roles.tsv
+│   ├── budgets.tsv
+│   ├── planning-paths.tsv
+│   ├── orchestrator-writable.tsv
+│   └── reasons.tsv                             # rule ids, precedence, remedies
+│
+├── scripts/
+│   ├── hooks/                                  # 11 event scripts + shared lib.sh
+│   ├── wave-init.sh                            # state, local exclude, commit-msg guard
+│   ├── wave-set.sh                             # scope answers
+│   ├── wave-close.sh                           # wave lifetime
+│   ├── wave-scorecard.sh                       # ledger report
+│   └── qr.html                                 # parametric QR-code generator
+│
+└── tests/
+    ├── run.sh                                  # cases; --coverage release gate
+    ├── clean-clone-check.sh                     # committed-tree verification
+    ├── e2e.sh                                   # plugin load + live headless checks
+    ├── cases/                                  # JSON fixtures and shell cases
+    ├── fixtures/                               # payloads, state and transcripts
+    ├── golden/                                 # independent phase/tier and budget data
+    ├── lib/                                    # harness assertions
+    └── tools/mutants-*.sh                       # focused mutation drivers
 ```
 
 ## Community
@@ -233,7 +349,9 @@ This plugin is in early public release. If you're shipping with `claude-wave-plu
 
 ## Status
 
-**v0.1.0** — initial public release. The framework itself is battle-tested in private production work; this is its first public packaging. Expect rough edges around platform integration as Claude Code's plugin system evolves. Issues and PRs are welcome.
+**v0.2.0** — hook enforcement for active waves, three modes, token accounting and
+automatic recovery checkpoints. See the contract and declared bounds above.
+Issues and PRs are welcome.
 
 ## Contributing
 
