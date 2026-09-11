@@ -217,6 +217,12 @@ approved exceptions into the checkpoint text when a committable record is needed
   A third completed phase/role round requires the rerun approval above;
   concurrent agents of the same phase/role count as one round.
 
+**v0.2.1 contracts (silent Task 2 wiring; enforcement lands in Tasks 3–5):**
+
+- **W-BGWAIT:** full/demo subagents finish background Bash tasks before returning; one block creates a durable latch, only a later latched stop can fail for orphans, and warn mode records immediately.
+- **W-POLL:** full/demo Bash denies lexical unbounded loops and bare sleeps over 300 seconds after stripping quoted spans; leave Monitor to the main session.
+- **W-LEFTOVER:** closing SubagentStop, still-active completion Stop and PreCompact write checkpoint/scorecard inventories, warn once and print spared pids without killing; wave lifetime stays unchanged and solo receives the inventory too.
+
 **Declared bounds.** A `Bash` source write is not gated by the edit rule. The
 build/test filter does not interpret `bash -c`, variables or aliases, or skip
 bare wrapper-flag arguments such as the `5` in `nice -n 5`. Hooks do fire inside

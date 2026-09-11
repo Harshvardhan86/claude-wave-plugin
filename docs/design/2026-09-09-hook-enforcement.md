@@ -132,9 +132,24 @@ inject with `additionalContext`.
   "phases": { "AC": { "status": "done", "at": "…", "agent": "…" } },
   "active": { "<agent_id>": { "phase": "TDE-RED", "role": "executor", "requested_model": "sonnet", "resolved_model": "…", "tool_use_id": "…", "status": "launched" } },
   "pending": { "<tool_use_id>": { "phase": "…", "role": "…" } },
-  "rounds": { "TDE-GREEN/executor": 1 }
+  "rounds": { "TDE-GREEN/executor": 1 },
+  "bg_tasks": { "<agent_id>": ["<backgroundTaskId>"] },
+  "bg_blocked": { "<agent_id>": true },
+  "bg_orphaned": { "<agent_id>": { "phase": "TDE-GREEN", "ids": ["<backgroundTaskId>"] } }
 }
 ```
+
+The v0.2.1 background maps are optional schema-1 extensions; a missing map means
+`{}`. `bg_tasks[<agent_id>]` holds unique Bash `backgroundTaskId` strings.
+`bg_blocked[<agent_id>]` is persisted before that agent's first background-wait
+block, never on a warning. A later stop with that latch and still-running shells
+records their phase and ids in `bg_orphaned`; this record is retained across
+replays. Warn mode records orphan ids immediately without setting the latch.
+All writes use `wv_state_update` under the state lock. The maps live outside
+`active`, whose launch records can be replaced. The existing single per-agent
+ledger line gains `"bg_orphaned":["<id>"]`, not a separate line or a new ledger
+syntax; `warn` remains an array of rendered reasons. There is no `leftovers`
+state key: the checkpoint is the inventory authority. Wave lifetime is unchanged.
 
 `ui`, `behaviour_change` and `cr_enabled` start as `"unknown"`, not `false`. A
 default of `false` would silently switch off `[DR]` and the visual gate, which
@@ -189,8 +204,8 @@ from either field (description first, then the prompt's first line). A
 
 Dispatches made **inside** a subagent (stdin carries `agent_id`) are denied
 outright by §8.4 — the orchestrator is the single dispatcher — so the tag rule
-never needs to judge them. `run_in_background` is a `Bash` parameter and no rule
-keys on it; `isolation: "remote"` and `isolation: "worktree"` agents still raise
+never needs to judge them. `run_in_background` is a `Bash` parameter; §8.8 records
+background Bash launches in v0.2.1. `isolation: "remote"` and `isolation: "worktree"` agents still raise
 an ordinary main-session `PreToolUse(Agent)` and are gated normally.
 
 Role vocabulary: the tag enum is exactly those five values. The framework's
@@ -344,7 +359,8 @@ Cross-checks:
 ## 8. Orchestrator-only session (subagent-driven development)
 
 Every rule in this section applies only while a `full` or `demo` wave is
-`active`, and every one of them honours `enforce: "warn"`.
+`active`, except §8.10 also inventories solo waves. Every rule honours
+`enforce: "warn"`; §8.10 is always advisory.
 
 **8.1 Edits.** A main-session `Edit`, `Write`, `NotebookEdit` or `MultiEdit`
 (stdin carries no `agent_id`) is denied (`W-EDIT`) when the target, after
@@ -419,6 +435,83 @@ by `subagent-stop.sh` when the last concurrent agent of that phase+role stops,
 so a `fanout` of 3 PDT writers is one round and a denied or user-rejected
 dispatch never burns the ceiling. The approval file is scoped to the phase **and
 role** it names. `anytime` rows are exempt.
+
+**8.8 Background waits (`W-BGWAIT`).** In an active full/demo wave,
+`PostToolUse(Bash)` with stdin `agent_id` and literal
+`tool_input.run_in_background: true` records the nonempty string
+`tool_response.backgroundTaskId` under `state.bg_tasks[<agent_id>]`. The id is
+read by that exact name; an absent or wrong-type response/id warns W-STATE,
+writes nothing, and allows. A main-session launch has no `agent_id` and is not
+recorded here; its remaining work is inventoried by §8.10.
+
+At `SubagentStop`, intersect that agent's recorded ids with `background_tasks[]`
+rows whose `type` is `"shell"` and `status` is `"running"`. The stopping agent's
+own `type:"subagent"` row is also running and must never enter the intersection.
+A nonempty intersection blocks once, only if no higher-priority block consumed
+the stop, `stop_hook_active` is false, and no durable `bg_blocked` latch exists.
+Persist the latch before emitting the block. On a later stop with that latch
+and a nonempty intersection, do not block again: record the phase `failed` and
+the ids in `state.bg_orphaned` and the single ledger line's `bg_orphaned` array.
+`stop_hook_active:true` disarms blocking but does not arm failure: without a
+prior latch there is no BGWAIT orphan verdict. Missing/malformed arrays are
+unmeasured and allow; absence of an id from a valid array means it finished,
+because completed tasks are pruned. An empty intersection follows normal
+artifact checks. Under `enforce:"warn"`, warn and record orphan ids on the first
+stop, with no latch or deferred ledger; leave the phase to artifact rules.
+Default block-once then failure gives one opportunity to finish work without a
+repeated-block loop. Remedy: wait in a bounded foreground timeout loop or stop
+the task, then return; do not use Monitor from the subagent.
+
+**8.9 Unbounded waits (`W-POLL`).** In an active full/demo wave,
+`PreToolUse(Bash)` from any agent checks `tool_input.command` before the
+main-session-only build/test exemption. Strip single- and double-quoted spans,
+then deny `while true`, `while :`, or `until … ; do` with sleep in its body
+unless the offending command has an anchored prefix timeout wrapper:
+`(^|[;&|])\s*timeout(\s+-<flag>)*\s+<n>`, with literal integer `n >= 1`.
+A timeout elsewhere exempts nothing; `timeout 0` and `timeout $N` do not prove
+a bound. Token delimiters after `:` must admit whitespace and shell separators.
+The timeout exemption exits only this check, never the remaining build/test gate.
+A bare literal sleep over 300 seconds is denied: convert `s`, `m`, `h` units,
+compare decimals on their integer part, deny `inf` and unsupported suffixes,
+and allow an unmeasured `sleep $VAR`. Thus `sleep 1m` and `sleep 300.5` pass,
+while `sleep 301`, `sleep 10m`, and `sleep 1h` do not.
+
+`PreToolUse(Monitor)` uses only event/tool, active full/demo state and stdin
+identity: deny when `agent_id` is present, allow when absent. Never inspect its
+`tool_input.command`, which describes the watched command. Both denials use
+the PreToolUse JSON shape with exit 0; warn mode emits additional context.
+Default denial prevents unbounded waits while permitting a bounded foreground
+wait and main-session monitoring. Remedy: bound loops, keep bare sleeps at or
+under 300 seconds, and leave Monitor to the main session.
+
+**8.10 Leftovers (`W-LEFTOVER`).** Inventory at the closing `SubagentStop`,
+immediately before `wv_close_if_terminal`; at `Stop` while state is still active
+and the mode's terminal phase is done; and at every active-wave `PreCompact`.
+For solo, which has no terminal phase, retain Stop's existing nonempty-ledger
+completion signal and the PreCompact path. Do not move or defer wave closure.
+At SubagentStop use that stdin's `background_tasks` and `session_crons`, excluding
+the stopping agent's own subagent row. Stop also carries both arrays; PreCompact
+carries neither and records them unavailable, never as measured-empty arrays.
+
+Scan `/proc/<pid>/cwd` outside the state lock, comparing `readlink -f` with the
+canonical project root for exact equality. Exclude the hook pid and ancestors.
+Print spared pids whose resolved cwd differs, including worktree cwd; skip and
+count unreadable cwd entries. Put the inventory, source availability, observed
+event/time, spared pids and unreadable count in the checkpoint's `## Leftovers`
+section and the scorecard. Use distinct `*-stop.md` and `*-precompact.md` files.
+No `/proc` is unavailable, not clean; `[]` is measured empty. **The hook never
+kills, signals or reaps anything.** Default warning preserves visibility without
+blocking completion. At close emit at most one warning per wave, before closure;
+W-LEFTOVER outranks the scorecard pointer and includes it. Re-evaluate terminality
+and refresh inventory before Stop's printed-marker or empty-ledger returns;
+Stop can fire twice with `stop_hook_active:false` in one async session.
+PreCompact writes the inventory but warns to stderr only on its own live watcher
+evidence or a failed watcher scan, not merely because its payload lacks arrays.
+No leftovers and no failed sources means no W-LEFTOVER warning. Remedy: inspect
+the checkpoint/scorecard and stop or wait out named resources before the next wave.
+
+Task 2 establishes these v0.2.1 contracts and wires silent entry points only;
+Tasks 3–5 implement the rules and add each reason row with its executable tests.
 
 ## 9. Token ledger and budgets (point 4)
 
@@ -524,6 +617,8 @@ scripts/hooks/session-start.sh
 scripts/hooks/user-prompt.sh      §8.6
 scripts/hooks/pre-agent.sh        tag, mode, role, model, tier, scope, order, condition, artifacts, round, budget, prompt
 scripts/hooks/post-agent.sh       record agent id + resolvedModel
+scripts/hooks/post-bash.sh        §8.8 (silent stub until Task 3)
+scripts/hooks/pre-monitor.sh      §8.9 (silent stub until Task 4)
 scripts/hooks/subagent-stop.sh    artifact + marker, transcript tiers, ledger, mark done, lean return
 scripts/hooks/pre-edit.sh         §8.1
 scripts/hooks/pre-read.sh         §8.2
@@ -546,7 +641,8 @@ Hook wiring rules, all load-bearing:
 
 - Matchers are unanchored JavaScript regexes over **tool names**:
   `^Agent$` for the dispatch hooks, `^(Edit|Write|NotebookEdit|MultiEdit)$` for
-  §8.1, `^Read$` for §8.2, `^Bash$` for §8.3 and the commit guard; `Stop`,
+  §8.1, `^Read$` for §8.2, `^Bash$` for §8.3 and the commit guard plus
+  PostToolUse §8.8, and `^Monitor$` for PreToolUse §8.9; `Stop`,
   `PreCompact`, `SubagentStop` and `UserPromptSubmit` take no matcher, and
   `SessionStart` uses `startup|resume|clear|compact`. `MultiEdit` stays in the
   regex as forward-compatibility; it is not a tool on the client of record.
@@ -556,7 +652,8 @@ Hook wiring rules, all load-bearing:
   state they write.
 - The command-hook `timeout` default is 10 minutes. `subagent-stop.sh` sets an
   explicit `timeout: 60` (it streams a possibly multi-MB transcript with
-  `jq -c` per line and a byte cap); the fast hooks set 5–10 s. A long default is
+  `jq -c` per line and a byte cap); Stop sets 20 s, and the new post-bash and
+  pre-monitor entries each set 10 s. The fast hooks set 5–10 s. A long default is
   the hazard, not a short one.
 - State writes: `flock` a dedicated, never-replaced `.wave/lock` created by
   `wave-init.sh` — **not** `state.json`, because writing via `tmp && mv`
@@ -638,16 +735,34 @@ Changed (minimal):
   apart from the scratch files an orchestrator legitimately writes, and a rule
   that guessed would deny those. The gate on new code is the commit guard, which
   sees the file once it is staged.
-- Rules inside a worktree-isolated subagent. Hooks **do** fire there and can
-  read the main project's state — the reason they are not gated is the
-  `agent_id` discriminator, not the working directory. The commit guard is the
-  one rule that deliberately does run there, and it reads the worktree's index.
+- Main-session edit/read/build rules inside a worktree-isolated subagent.
+  Hooks **do** fire there and read the main project's state; the exemption uses
+  `agent_id`, not cwd. The commit guard reads the worktree's index, and the
+  full/demo background-wait and polling rules still apply to subagents.
 - Verifying that a user really approved an approval file: the file is an audit
   record, not a signature. Approval records are local to the working copy and
   are not durable; the only committable trace is the line the checkpoint carries.
 - Pricing in currency; the ledger records tokens by type, cost is a later
   multiplication.
-- Enforcing anything in `solo` mode beyond §7's explicit-model rule, §9 and §10.
+- Enforcing anything in `solo` mode beyond §7's explicit-model rule, §9, §10
+  and §8.10's advisory inventory.
+- W-POLL is lexical, not a shell interpreter. Single- and double-quoted spans
+  are stripped: `echo "while true"` passes, and quoted inner `bash -c` text is
+  not inspected. Heredoc bodies are not parsed and may produce lexical false
+  positives. Variables/aliases are not expanded: `sleep $VAR` passes;
+  `timeout $N` is not a recognized bound for a loop that remains visible after
+  stripping. `while [ ! -f x ]; do sleep 1; done`, `for`, `watch`, `tail -f`,
+  `inotifywait` and `yes |` are outside the loop matcher. Decimal sleeps compare
+  on the integer part (`sleep 300.5` passes), not fractional seconds.
+- No leftover hook can kill, signal or reap a process. Its canonical cwd scan
+  uses exact root equality; subdirectory and worktree cwd are spared and printed.
+- W-BGWAIT follows W-LONG-RETURN in reason precedence. A stop already consumed
+  by W-ARTIFACT, W-MARKER or W-LONG-RETURN never gets a W-BGWAIT block. Without
+  the durable BGWAIT latch the following active-stop flag does not orphan or
+  fail the phase; W-LEFTOVER reports the remaining shell at close instead.
+- Finished background tasks are pruned: absence of an id from a valid
+  `background_tasks` array means finished, not successful. An absent or malformed
+  array is unmeasured. PreCompact's absent arrays are unavailable, never clean.
 
 ## 14. Decisions taken from the design review
 
@@ -700,6 +815,24 @@ by `fanout`. Nested dispatch: denied (§8.4, §15). Prior state on
 `wave-init.sh`: archived when closed, refused when active without `--force`.
 Ref 11's per-project override: survives as an approval file (F30).
 Description length: 120-character warning plus the prompt-line tag (F32).
+
+v0.2.1 probe and contract audit (2026-09-11, client 2.1.268):
+
+- 2026-09-11: PostToolUse(Bash) with `run_in_background:true` returns the string
+  `tool_response.backgroundTaskId`; Monitor uses `taskId`, Agent uses `agentId`.
+  Finished tasks are pruned rather than assigned a terminal status; a shell row
+  has `type:"shell",status:"running"`, distinct from the running self-subagent row.
+- 2026-09-11: Stop carries `background_tasks` and `session_crons`. With an async
+  Agent, the probe observed two Stop fires in one `-p` session, both with
+  `stop_hook_active:false`; terminality must be checked on every fire.
+- 2026-09-11: PreCompact is reachable via `-p "/compact"`, even when the client
+  reports insufficient messages. It carries neither task nor cron array;
+  record unavailable sources and warn only from its own watcher evidence.
+- 2026-09-11: `CLAUDE_AGENT_ID` was empty on every hook event, including subagent
+  events. Use stdin `agent_id`; it is present on subagent Bash and Monitor calls.
+- 2026-09-11: Preserve §4 lifetime and existing block precedence. Inventory at
+  closing SubagentStop before `wv_close_if_terminal`, active Stop and PreCompact;
+  Stop timeout is 20 s. Reasons and their goldens ship with Tasks 3–5, not Task 2.
 
 ## 15. Decisions the user may want to revisit
 

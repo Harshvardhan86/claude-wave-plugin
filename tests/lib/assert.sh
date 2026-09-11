@@ -519,7 +519,7 @@ assert_ledger_prefix() {
   _wv_die_diff "ledger_prefix_unchanged: the first $n lines changed; want '$want' got '$got'"
 }
 
-# ---- the eleven-script sweep (Task 11, AC-12/13/30/31/398) ----------------
+# ---- the thirteen-script sweep (AC-12/13/30/31/398) ----------------------
 #
 # Every wired script must be a total no-op (exit 0, empty stdout, empty
 # stderr) whenever there is no active wave to enforce, and — the other half
@@ -530,17 +530,22 @@ assert_ledger_prefix() {
 # from an already-GREEN positive case for that script (cited in each case's
 # comment) — never invented — so "produces its rule" is grounded in a fixture
 # this suite has already proven fires, not a guess about what might.
+# The historical helper names stay stable for callers. Task 2 adds post-bash.sh
+# and pre-monitor.sh as silent stubs: their positive cases land in Tasks 3–4.
+# Until then those two entries must prove silence even in the active scenario;
+# the original eleven retain the non-vacuous positive check.
 
 _wv_eleven_scripts() {
   printf '%s\n' \
     pre-agent.sh post-agent.sh subagent-stop.sh pre-edit.sh pre-read.sh \
     pre-bash.sh pre-commit-guard.sh pre-compact.sh stop.sh session-start.sh \
-    user-prompt.sh
+    user-prompt.sh post-bash.sh pre-monitor.sh
 }
 
 _wv_eleven_active_state() {
   # The seed.state fixture each script's positive case (cited below) uses.
   case "$1" in
+    post-bash.sh|pre-monitor.sh) printf 'state/valid-full.json' ;;
     pre-agent.sh)       printf 'state/full-all-done-cr.json' ;;
     post-agent.sh)      printf 'state/full-all-done.json' ;;
     subagent-stop.sh)   printf 'state/stop-ac-reviewer.json' ;;
@@ -606,6 +611,9 @@ _wv_eleven_stdin() {
   # never a whole shared library).
   local script="$1" fixture=""
   case "$script" in
+    # Task 2 tests silence, not a rule trigger. Tasks 3–4 supply positive fixtures.
+    post-bash.sh) printf '%s' '{"hook_event_name":"PostToolUse","tool_name":"Bash"}'; return 0 ;;
+    pre-monitor.sh) printf '%s' '{"hook_event_name":"PreToolUse","tool_name":"Monitor"}'; return 0 ;;
     pre-agent.sh)       fixture="role-137b-cr-executor-deny.json" ;;
     post-agent.sh)      fixture="launch-193-downgrade-warn.json" ;;
     subagent-stop.sh)   fixture="marker-204-no-ac-line-block.json" ;;
@@ -625,7 +633,7 @@ _wv_eleven_stdin() {
 WV_ELEVEN_FAILURES=""
 
 run_all_eleven() {
-  # run_all_eleven <scenario> -> 0 if all eleven scripts behaved as the
+  # run_all_eleven <scenario> -> 0 if all thirteen scripts behaved as the
   # scenario requires, 1 otherwise (WV_ELEVEN_FAILURES then names which and
   # why). Every script gets its own fresh mkproj() so one script's state
   # write can never leak into the next script's run. <scenario>:
@@ -697,7 +705,13 @@ run_all_eleven() {
     err="$(cat "$stderr_tmp")"
     rm -f "$stderr_tmp"
 
-    if [ "$scenario" = "active" ]; then
+    if [ "$script" = "post-bash.sh" ] || [ "$script" = "pre-monitor.sh" ]; then
+      # Temporary Task 2 contract: positives land in Tasks 3–4. Do not count a
+      # warning or error as an active-rule success for these silent stubs.
+      if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
+        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(stub-not-silent: exit=$rc stdout='$out' stderr='$err')"
+      fi
+    elif [ "$scenario" = "active" ]; then
       # "Produces its rule": stdout carries a decision, or stderr carries a
       # warning (SubagentStop/PreCompact have no additionalContext channel),
       # or — pre-compact.sh only, whose whole observable effect is a file,
@@ -750,6 +764,6 @@ run_all_eleven() {
     fi
   done
 
-  [ "$n" -eq 11 ] || WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES incomplete-sweep:ran=$n"
+  [ "$n" -eq 13 ] || WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES incomplete-sweep:ran=$n"
   [ -z "$WV_ELEVEN_FAILURES" ]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/allscripts-030-empty-stdin-silent.sh — AC-30.
 #
-# An active wave, but every one of the eleven scripts is fed empty stdin (0
+# An active wave, but every one of the thirteen scripts is fed empty stdin (0
 # bytes): each must exit 0, emit no deny/block, write nothing under PROJ.
 #
 # Global Constraint 4 ("jq absent -> fail open ... The same applies to
@@ -14,7 +14,7 @@
 # no partial state write"): the operative claim this case enforces is no
 # CRASH trace and no partial write, not literally zero bytes on stderr,
 # which would contradict a binding Global Constraint every one of these
-# eleven scripts already correctly satisfies. See run_all_eleven's own
+# thirteen scripts already correctly satisfies. See run_all_eleven's own
 # comment in tests/lib/assert.sh for the exact allow-listed line.
 set -u
 
@@ -27,9 +27,9 @@ mkdir -p "$(dirname "$log")"
 
 rc=0
 if run_all_eleven empty-stdin; then
-  printf 'RAN allscripts-030 empty-stdin eleven=11 decision=silent\n' >> "$log"
+  printf 'RAN allscripts-030 empty-stdin scripts=13 decision=silent\n' >> "$log"
 else
-  printf 'RAN allscripts-030 empty-stdin eleven=partial decision=silent\n' >> "$log"
+  printf 'RAN allscripts-030 empty-stdin scripts=partial decision=silent\n' >> "$log"
   printf 'ASSERT FAIL: %s\n' "$WV_ELEVEN_FAILURES" >&2
   rc=1
 fi

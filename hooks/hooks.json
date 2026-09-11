@@ -51,6 +51,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "^Monitor$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/pre-monitor.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -60,6 +70,16 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/post-agent.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/post-bash.sh",
             "timeout": 10
           }
         ]
@@ -105,7 +125,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/stop.sh",
-            "timeout": 5
+            "timeout": 20
           }
         ]
       }

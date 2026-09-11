@@ -3,7 +3,8 @@
 #
 # Matchers are literally ^Agent$ (the dispatch hooks: pre-agent.sh,
 # post-agent.sh), ^(Edit|Write|NotebookEdit|MultiEdit)$ (pre-edit.sh),
-# ^Read$ (pre-read.sh), ^Bash$ twice (pre-bash.sh and pre-commit-guard.sh),
+# ^Read$ (pre-read.sh), ^Bash$ three times (pre-bash.sh, pre-commit-guard.sh,
+# post-bash.sh), ^Monitor$ (pre-monitor.sh),
 # startup|resume|clear|compact on SessionStart, and absent on Stop,
 # PreCompact, SubagentStop and UserPromptSubmit.
 set -u
@@ -52,8 +53,17 @@ while IFS=$'\t' read -r event matcher cmd; do
     pre-read.sh)
       [ "$matcher" = "^Read\$" ] || fail "$script ($event): want matcher ^Read\$, got $matcher"
       ;;
-    pre-bash.sh|pre-commit-guard.sh)
+    pre-bash.sh|pre-commit-guard.sh|post-bash.sh)
       [ "$matcher" = "^Bash\$" ] || fail "$script ($event): want matcher ^Bash\$, got $matcher"
+      if [ "$script" = "post-bash.sh" ]; then
+        [ "$event" = "PostToolUse" ] || fail "$script: want PostToolUse, got $event"
+      else
+        [ "$event" = "PreToolUse" ] || fail "$script: want PreToolUse, got $event"
+      fi
+      ;;
+    pre-monitor.sh)
+      [ "$matcher" = "^Monitor\$" ] || fail "$script: want matcher ^Monitor\$, got $matcher"
+      [ "$event" = "PreToolUse" ] || fail "$script: want PreToolUse, got $event"
       ;;
     session-start.sh)
       [ "$matcher" = "startup|resume|clear|compact" ] \
@@ -68,21 +78,25 @@ while IFS=$'\t' read -r event matcher cmd; do
   esac
 done <<<"$pairs"
 
-# The two ^Bash$ matchers must be pre-bash.sh AND pre-commit-guard.sh, not
-# the same script twice.
+# The three ^Bash$ matchers must name distinct scripts, including post-bash.sh.
 bash_scripts="$(printf '%s\n' "$pairs" | awk -F'\t' '$2=="^Bash$"{print $3}')"
 # `command grep`, never a bare grep: a wrapped searcher can decline its input and
 # print nothing where real grep prints 0, and `|| true` would then turn that
 # failed scan into a clean count of "". An absent count fails the case.
 n_bash="$(printf '%s\n' "$bash_scripts" | command grep -c .)"
 case "$n_bash" in ''|*[!0-9]*) fail "the ^Bash\$ matcher scan returned no count, so it did not run"; n_bash=-1 ;; esac
-[ "$n_bash" -eq 2 ] || fail "want exactly 2 ^Bash\$ entries, found $n_bash"
+[ "$n_bash" -eq 3 ] || fail "want exactly 3 ^Bash\$ entries, found $n_bash"
 printf '%s\n' "$bash_scripts" | command grep -q 'pre-bash.sh' \
   || fail "no ^Bash\$ entry resolves to pre-bash.sh"
 printf '%s\n' "$bash_scripts" | command grep -q 'pre-commit-guard.sh' \
   || fail "no ^Bash\$ entry resolves to pre-commit-guard.sh"
 
-[ "$n" -eq 11 ] || fail "want 11 hook entries, found $n"
+printf '%s\n' "$bash_scripts" | command grep -q 'post-bash.sh' \
+  || fail "no ^Bash\$ entry resolves to post-bash.sh"
+jq -e '[.hooks.PreToolUse[] | select(.matcher == "^Monitor$")] | length == 1' "$hooks_json" >/dev/null \
+  || fail "want exactly one PreToolUse Monitor entry"
+
+[ "$n" -eq 13 ] || fail "want 13 hook entries, found $n"
 
 printf 'RAN wiring-369 entries=%s\n' "$n" >> "$log"
 exit $rc

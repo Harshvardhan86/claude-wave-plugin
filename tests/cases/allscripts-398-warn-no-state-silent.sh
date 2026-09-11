@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/allscripts-398-warn-no-state-silent.sh — AC-398.
 #
-# "enforce: warn" and no state.json: silent no-op for all eleven -- warn
+# "enforce: warn" and no state.json: silent no-op for all thirteen -- warn
 # mode is an escape hatch INSIDE a wave, never a reason to emit anything
 # outside one. There is no channel to signal an "enforce: warn" intent
 # without a state.json file at all (every script's enforce value is read
@@ -21,9 +21,9 @@ mkdir -p "$(dirname "$log")"
 
 rc=0
 if run_all_eleven no-wave-dir; then
-  printf 'RAN allscripts-398 no-wave-dir eleven=11 decision=silent\n' >> "$log"
+  printf 'RAN allscripts-398 no-wave-dir scripts=13 decision=silent\n' >> "$log"
 else
-  printf 'RAN allscripts-398 no-wave-dir eleven=partial decision=silent\n' >> "$log"
+  printf 'RAN allscripts-398 no-wave-dir scripts=partial decision=silent\n' >> "$log"
   printf 'ASSERT FAIL: %s\n' "$WV_ELEVEN_FAILURES" >&2
   rc=1
 fi
