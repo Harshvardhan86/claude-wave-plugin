@@ -355,9 +355,12 @@ claude-wave-plugin/
 
 ## Listed on
 
-- [Flowy](https://www.flowy.sh/listings/harshvardhan86-claude-wave-plugin) — plugin directory entry with skills, commands and repo listed
-- [Vibed Lab Plugins](https://plugins.vibed-lab.com/plugin/harshvardhan86-claude-wave-plugin) — weekly-curated Claude Code plugin directory listing
-- [MCP Market](https://mcpmarket.com/tools/skills/brutal-acceptance-criteria-writer) — skill listing for `ac-writer`, the brutal acceptance criteria phase
+- [Flowy](https://www.flowy.sh/listings/harshvardhan86-claude-wave-plugin) — plugin directory entry listing skills, commands, and repo
+- [Vibed Lab Plugins](https://plugins.vibed-lab.com/plugin/harshvardhan86-claude-wave-plugin) — curated Claude Code plugin directory
+- [MCP Market](https://mcpmarket.com/tools/skills/wave-orchestrator) — lists all seven skills individually, e.g. ac-writer as "Brutal Acceptance Criteria Writer"
+- [Skills Directory](https://www.skillsdirectory.com/skills?author=Harshvardhan86) — all seven skills listed with `npx skills add` install commands
+- [SkillsMP](https://skillsmp.com/creators/harshvardhan86) — creator page listing the plugin's seven skills
+- [Claude Code Insights](https://zhoux77899.github.io/claude-code-insights/) — daily-updated tracker of active Claude Code repositories
 
 ## Used in production by
 
