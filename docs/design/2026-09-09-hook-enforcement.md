@@ -476,8 +476,9 @@ unless the offending command has an anchored prefix timeout wrapper:
 A timeout elsewhere exempts nothing; `timeout 0` and `timeout $N` do not prove
 a bound. After `true` or `:`, require whitespace, `;`, `&`, `|` or end of string:
 `\bwhile[[:space:]]+(true|:)([[:space:];&|]|$)`, never a trailing `\b`.
-An inner `bash -c` string is analysed as literal text AFTER quote stripping;
-a loop inside a quoted span is therefore not seen (the declared §13 bound).
+Exception: a `bash -c` or `sh -c` string argument is inspected as shell code
+for one level after stripping its own quoted spans; every other quoted span
+is stripped, so `echo "while true"` passes.
 The timeout exemption exits only this check, never the remaining build/test gate.
 A bare literal sleep over 300 seconds is denied: convert `s`, `m`, `h` units,
 compare decimals on their integer part, deny `inf` and unsupported suffixes,
@@ -761,10 +762,11 @@ Changed (minimal):
 - Enforcing anything in `solo` mode beyond §7's explicit-model rule, §9, §10
   and §8.10's advisory inventory.
 - W-POLL is lexical, not a shell interpreter. Single- and double-quoted spans
-  are stripped: `echo "while true"` passes. An inner `bash -c` string is
-  analysed as literal text AFTER quote stripping, so loops inside quoted spans
-  are not seen; unquoted surviving text is still analysed. Heredoc bodies are not parsed and may produce lexical false
-  positives. Variables/aliases are not expanded: `sleep $VAR` passes;
+  other than a `bash -c`/`sh -c` string argument are stripped and not inspected:
+  `echo "while true"` passes. That argument is inspected for one level after
+  stripping its own quoted spans. Heredoc bodies, variables and aliases are
+  not interpreted as shell syntax: heredoc text may still produce lexical
+  false positives, and `sleep $VAR` passes;
   `timeout 0` is not a wrapper, and `timeout $N` is not a recognized bound
   for a loop that remains visible after
   stripping. `while [ ! -f x ]; do sleep 1; done`, `for`, `watch`, `tail -f`,

@@ -1,0 +1,27 @@
+{
+  "script": "pre-monitor.sh",
+  "seed": {
+    "state": "state/valid-full.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Monitor",
+    "tool_input": {
+      "command": "echo x",
+      "timeout_ms": 5000,
+      "persistent": false,
+      "description": "probe"
+    },
+    "agent_id": "a1"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-POLL",
+    "reason_template": "W-POLL",
+    "reason_contains": [
+      "remedy:",
+      "Monitor"
+    ]
+  }
+}

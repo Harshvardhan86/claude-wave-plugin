@@ -79,7 +79,7 @@ git -C "$WV_TREE" init -q 2>/dev/null
 # Every file a mutant might touch, pristine copies kept by basename.
 declare -A WV_PRISTINE=()
 declare -A WV_BASE_SHA=()
-for f in scripts/hooks/pre-edit.sh scripts/hooks/pre-read.sh scripts/hooks/pre-bash.sh scripts/hooks/lib.sh; do
+for f in scripts/hooks/pre-edit.sh scripts/hooks/pre-read.sh scripts/hooks/pre-bash.sh scripts/hooks/pre-monitor.sh scripts/hooks/lib.sh; do
   base="$(basename "$f")"
   cp "$WV_TREE/$f" "$WV_TMP/$base.pristine"
   WV_PRISTINE["$f"]="$WV_TMP/$base.pristine"
@@ -301,6 +301,33 @@ wv_run_mutant regex-unanchored     scripts/hooks/pre-bash.sh wv_body_regex_unanc
 wv_run_mutant writable-ignored     scripts/hooks/pre-edit.sh wv_body_writable_ignored      'edit-267*'
 wv_run_mutant symlink-realpath-removed scripts/hooks/lib.sh  wv_body_symlink_removed       'edit-271*'
 wv_run_mutant prefix-group-removed scripts/hooks/pre-bash.sh wv_body_prefix_group_removed  'bash-fix1-*'
+
+# W-POLL controls: a bounded wrapper, the inclusive 300-second allowance,
+# and main-session Monitor must each survive normal enforcement.
+wv_body_poll_timeout_removed() { cat <<'PYM'
+old = '  if wv_poll_timeout_wraps "$cmd"; then'
+assert old in s, "anchor missing: timeout exemption"
+s = s.replace(old, '  if false; then', 1)
+PYM
+}
+wv_body_poll_sleep_boundary() { cat <<'PYM'
+old = '"$secs" -gt 300'
+assert old in s, "anchor missing: sleep threshold"
+s = s.replace(old, '"$secs" -gt 301', 1)
+PYM
+}
+wv_body_poll_monitor_identity() { cat <<'PYM'
+old = '  [ -n "$WV_AGENT_ID" ] || return 0\n'
+assert old in s, "anchor missing: Monitor identity guard"
+s = s.replace(old, '', 1)
+PYM
+}
+WV_EXPECT[polltimeoutremoved]=poll-416-timeout-wrapped-allow
+WV_EXPECT[pollsleepoffbyone]=poll-418-sleep-boundary
+WV_EXPECT[pollmonitoragentid]=poll-420-monitor-main-allow
+wv_run_mutant polltimeoutremoved scripts/hooks/pre-bash.sh wv_body_poll_timeout_removed 'poll-416*'
+wv_run_mutant pollsleepoffbyone scripts/hooks/pre-bash.sh wv_body_poll_sleep_boundary 'poll-418*'
+wv_run_mutant pollmonitoragentid scripts/hooks/pre-monitor.sh wv_body_poll_monitor_identity 'poll-420*'
 
 # --- the table --------------------------------------------------------------
 

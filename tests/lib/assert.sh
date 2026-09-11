@@ -531,7 +531,7 @@ assert_ledger_prefix() {
 # comment) — never invented — so "produces its rule" is grounded in a fixture
 # this suite has already proven fires, not a guess about what might.
 # Historical helper names stay stable. post-bash.sh now proves the recording
-# observed in bgwait-410; pre-monitor.sh remains a silent reserved entry point.
+# observed in bgwait-410; pre-monitor.sh proves the denial in poll-419.
 
 _wv_eleven_scripts() {
   printf '%s\n' \
@@ -609,9 +609,9 @@ _wv_eleven_stdin() {
   # never a whole shared library).
   local script="$1" fixture=""
   case "$script" in
-    # Background recording follows bgwait-410; monitoring is still reserved.
+    # Background recording follows bgwait-410; monitoring follows poll-419.
     post-bash.sh) printf '%s' '{"hook_event_name":"PostToolUse","tool_name":"Bash","agent_id":"a1","tool_input":{"run_in_background":true},"tool_response":{"backgroundTaskId":"b2emx28v6"}}'; return 0 ;;
-    pre-monitor.sh) printf '%s' '{"hook_event_name":"PreToolUse","tool_name":"Monitor"}'; return 0 ;;
+    pre-monitor.sh) fixture="poll-419-monitor-subagent-deny.json" ;;
     pre-agent.sh)       fixture="role-137b-cr-executor-deny.json" ;;
     post-agent.sh)      fixture="launch-193-downgrade-warn.json" ;;
     subagent-stop.sh)   fixture="marker-204-no-ac-line-block.json" ;;
@@ -704,14 +704,6 @@ run_all_eleven() {
     rm -f "$stderr_tmp"
 
     if [ "$scenario" = "active" ]; then
-      if [ "$script" = "pre-monitor.sh" ]; then
-        # Monitoring is still reserved. Other scenarios use the normal
-        # arms below, including the sanctioned malformed-input diagnostic.
-        if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
-          WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(stub-not-silent: exit=$rc stdout='$out' stderr='$err')"
-        fi
-        continue
-      fi
       # "Produces its rule": stdout carries a decision, or stderr carries a
       # warning (SubagentStop/PreCompact have no additionalContext channel),
       # or — pre-compact.sh only, whose whole observable effect is a file,

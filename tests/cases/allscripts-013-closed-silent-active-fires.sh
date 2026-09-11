@@ -6,7 +6,7 @@
 #     on its own denyable fixture (a closed wave stops enforcing without
 #     deleting state).
 #   - status:"active" (the same fixtures) -> every one of the thirteen scripts
-#     produces its rule or recording, except the reserved pre-monitor.sh.
+#     produces its rule or recording, including the poll-419 Monitor denial.
 #     post-bash.sh now proves the bgwait-410 recording; silence alone cannot
 #     satisfy its active assertion.
 set -u
