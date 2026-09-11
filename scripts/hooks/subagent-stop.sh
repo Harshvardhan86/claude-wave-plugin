@@ -825,6 +825,23 @@ wv_ledger_has_agent() {
     "$ledger" 2>/dev/null | command grep -q '^hit$'
 }
 
+wv_bg_running() {
+  # Recorded ids intersect only measured running shell rows. Missing or
+  # malformed payload arrays are unmeasured, never evidence of an orphan.
+  jq -cne --argjson state "$WV_STATE" --argjson input "$WV_JSON" --arg id "$WV_STOP_AGENT" '
+    ($state.bg_tasks // {}) as $map
+    | if ($map | type) != "object" then error("invalid task map") else
+      ($map[$id] // []) as $ids
+      | if ($ids | type) != "array" then error("invalid task ids")
+        elif any($ids[]; type != "string") then error("invalid task id")
+        elif ($input.background_tasks | type) != "array" then []
+        else [$input.background_tasks[] | select(type == "object")
+          | select(.status == "running" and .type == "shell")
+          | .id | select(type == "string") | select(. as $task | $ids | index($task))] | unique
+        end
+      end' 2>/dev/null
+}
+
 wv_main() {
   wv_parse_stdin || return 0
   # Wired to SubagentStop only. Any other event has not been measured by this
@@ -963,6 +980,8 @@ wv_main() {
   local have_lock=0
   if wv_lock_acquire; then
     have_lock=1
+    # Re-read after waiting: background launch writes may have won this lock.
+    if ! wv_state_read; then wv_lock_release; return 0; fi
     # A line an earlier hook could not write reaches the ledger before this one
     # reads it for the dedupe, and before Task 6's budget gate sums it.
     wv_ledger_drain_locked
@@ -1098,6 +1117,20 @@ wv_main() {
       "$(wv_jq_str "$WV_STOP_AGENT")" "$(wv_jq_str "$WV_STOP_AGENT")")"
   fi
 
+  local bg_running="[]" bg_orphans="[]" bg_latched="false" bg_detail=""
+  if [ "$have_lock" = "1" ]; then
+    case "$WV_MODE" in
+      full|demo)
+        if ! bg_running="$(wv_bg_running)"; then
+          wv_warn W-STATE 'background task state could not be measured; no background verdict was recorded'
+          bg_running="[]"
+        fi
+        bg_latched="$(printf '%s' "$WV_STATE" | jq -r --arg id "$WV_STOP_AGENT" '.bg_blocked[$id] == true' 2>/dev/null)"
+        bg_orphans="$(printf '%s' "$WV_STATE" | jq -ce --arg id "$WV_STOP_AGENT" '(.bg_orphaned[$id].ids // []) | select(type == "array")' 2>/dev/null)" || bg_orphans="[]"
+        ;;
+    esac
+  fi
+
   # ---- 2. the artifact, at the closing role's stop, last one out ----------
   local status_new="" prev_status="" existing_agent="" verdict_rule=""
   local -a verdict_args=()
@@ -1178,6 +1211,43 @@ wv_main() {
     fi
   fi
 
+  local emit_rule=""
+  if [ -n "$verdict_rule" ] && [ "$stop_active" = "false" ] \
+    && [ "$verdict_blocked_before" = "0" ]; then
+    emit_rule="$verdict_rule"
+  elif [ "$block_lean" = "1" ]; then
+    emit_rule=W-LONG-RETURN
+  fi
+
+  # Background waiting is below artifact and long-return precedence. Only a
+  # durable prior latch arms failure; the payload flag merely disarms a block.
+  if [ "$bg_running" != "[]" ] && [ "$WV_STOP_SEEN" = "0" ]; then
+    local -a bg_ids=()
+    mapfile -t bg_ids < <(printf '%s' "$bg_running" | jq -r '.[]')
+    bg_detail="$(wv_list_cap 5 120 ', ' "${bg_ids[@]}")"
+    if [ "$WV_ENFORCE" = "warn" ] || [ "$bg_latched" = "true" ]; then
+      local bg_filter
+      bg_filter=".bg_orphaned[$(wv_jq_str "$WV_STOP_AGENT")] = {phase: $(wv_jq_str "$WV_STOP_PHASE"), ids: $bg_running}"
+      if wv_state_update "$bg_filter"; then
+        bg_orphans="$bg_running"
+        if [ "$WV_ENFORCE" = "warn" ]; then
+          wv_stop_warn W-BGWAIT "$bg_detail"
+        fi
+      fi
+    elif [ -z "$emit_rule" ] && [ "$stop_active" = "false" ]; then
+      # Never emit without a persisted latch, including on a failed write.
+      if wv_state_update ".bg_blocked[$(wv_jq_str "$WV_STOP_AGENT")] = true"; then
+        emit_rule=W-BGWAIT
+        status_new=""
+      fi
+    fi
+  fi
+  # A replay retains its orphan verdict even after the payload prunes the ids.
+  if [ "$bg_orphans" != "[]" ] && [ "$WV_ENFORCE" != "warn" ] \
+    && [ "$WV_STOP_GATED" = "1" ]; then
+    status_new="failed"
+  fi
+
   local warnjson="[]" warns_new=0
   if [ "${#WV_STOP_WARN[@]}" -gt 0 ]; then
     warnjson="$(printf '%s\n' "${WV_STOP_WARN[@]}" | jq -Rsc 'split("\n") | map(select(. != ""))')"
@@ -1254,25 +1324,21 @@ wv_main() {
   # hooks/reasons.tsv), `stop_hook_active` disarms the artifact block, and the
   # RECORD disarms both — a rule already blocked for this agent is never blocked
   # for it again.
-  local emit_rule=""
-  if [ -n "$verdict_rule" ] && [ "$stop_active" = "false" ] \
-    && [ "$verdict_blocked_before" = "0" ]; then
-    emit_rule="$verdict_rule"
-  elif [ "$block_lean" = "1" ]; then
-    emit_rule=W-LONG-RETURN
-  fi
 
   local defer_ledger=0
-  if [ "$emit_rule" = "W-LONG-RETURN" ]; then
+  if [ "$emit_rule" = "W-LONG-RETURN" ] || [ "$emit_rule" = "W-BGWAIT" ]; then
     defer_ledger=1
   fi
+  # Orphan settlement owns this stop's ledger line even if a different rule
+  # blocks the return. Never postpone that durable orphan evidence again.
+  [ "$bg_orphans" = "[]" ] || defer_ledger=0
 
   if [ "$WV_STOP_SEEN" = "0" ] && [ "$defer_ledger" = "0" ]; then
     local extras
     extras="$(jq -nc --arg note "$WV_TS_NOTE" --arg skipped "$WV_TS_SKIPPED" \
       --arg excluded "$WV_TS_EXCLUDED" --arg turns "$WV_TS_TURNS" \
       --argjson incomplete "$([ "$WV_TS_INCOMPLETE" = "1" ] && printf 'true' || printf 'false')" \
-      --argjson long "$long_return" --argjson warn "$warnjson" '
+      --argjson bg "$bg_orphans" --argjson long "$long_return" --argjson warn "$warnjson" '
         {}
         + (if $incomplete then {transcript_incomplete: true} else {} end)
         + (if $note != "" then {note: $note}
@@ -1280,6 +1346,7 @@ wv_main() {
              {note: ("\($excluded) of \($turns) assistant line(s) were excluded from the tier vote (no message.model, or output_tokens 0)")}
            else {} end)
         + (if ($skipped | tonumber) > 0 then {skipped_lines: ($skipped | tonumber)} else {} end)
+        + (if ($bg | length) > 0 then {bg_orphaned: $bg} else {} end)
         + (if $long then {long_return: true} else {} end)
         + (if ($warn | length) > 0 then {warn: $warn} else {} end)')"
     local line
@@ -1311,7 +1378,7 @@ wv_main() {
   # emitted without it would be repeated on the agent's next stop (the measured
   # log shows a third stop with stop_hook_active FALSE, so the flag cannot carry
   # this).
-  if [ "$have_lock" = "1" ] && [ -n "$emit_rule" ]; then
+  if [ "$have_lock" = "1" ] && [ -n "$emit_rule" ] && [ "$emit_rule" != "W-BGWAIT" ]; then
     local id_lit2 rule_lit
     id_lit2="$(wv_jq_str "$WV_STOP_AGENT")"
     rule_lit="$(wv_jq_str "$emit_rule")"
@@ -1329,6 +1396,10 @@ wv_main() {
   # goes, and `stop_hook_active` disarms every block path without disarming any
   # of the recording.
   case "$emit_rule" in
+    W-BGWAIT)
+      wv_stop_block W-BGWAIT "$bg_detail"
+      return 0
+      ;;
     W-ARTIFACT|W-MARKER)
       wv_stop_block "$emit_rule" "${verdict_args[@]}"
       return 0

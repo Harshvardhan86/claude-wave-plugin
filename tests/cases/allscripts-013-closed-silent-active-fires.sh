@@ -6,9 +6,9 @@
 #     on its own denyable fixture (a closed wave stops enforcing without
 #     deleting state).
 #   - status:"active" (the same fixtures) -> every one of the thirteen scripts
-#     produces its rule, except post-bash.sh and pre-monitor.sh: their positive
-#     cases land in Tasks 3–4; Task 2 asserts those two remain silent. The
-#     original eleven still prove both halves, so silence alone cannot pass.
+#     produces its rule or recording, except the reserved pre-monitor.sh.
+#     post-bash.sh now proves the bgwait-410 recording; silence alone cannot
+#     satisfy its active assertion.
 set -u
 
 # shellcheck source=tests/lib/assert.sh

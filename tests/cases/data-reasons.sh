@@ -96,7 +96,7 @@ check_reasons() {
   fi
 
   # 31 through Task 9; Task 10 added W-SESSION, W-REMINDER and W-SCORECARD.
-  [ "${#actual_order[@]}" = "34" ] || echo "expected 34 rule rows, got ${#actual_order[@]}"
+  [ "${#actual_order[@]}" = "35" ] || echo "expected 35 rule rows, got ${#actual_order[@]}"
 
   # The third leg: the independent golden. Read here rather than in the caller so
   # the mutation proof below exercises it too.

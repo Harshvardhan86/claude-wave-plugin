@@ -328,9 +328,9 @@ for path in glob.glob("scripts/hooks/*.sh"):
     if path.endswith("/lib.sh"):
         continue
     text = open(path).read()
-    ids = set(re.findall(r"wv_(?:rule_)?(?:deny|warn|block|stop_warn)\s+(W-[A-Z0-9-]+)", text))
+    ids = set(re.findall(r"wv_(?:rule_)?(?:deny|warn|block|stop_warn|stop_block)\s+(W-[A-Z0-9-]+)", text))
     # ids reached through a variable
-    for var in re.findall(r"wv_(?:rule_)?(?:deny|warn|block|stop_warn)\s+\"\$([A-Za-z_][A-Za-z0-9_]*)\"", text):
+    for var in re.findall(r"wv_(?:rule_)?(?:deny|warn|block|stop_warn|stop_block)\s+\"\$([A-Za-z_][A-Za-z0-9_]*)\"", text):
         ids |= set(re.findall(r"\b%s=(W-[A-Z0-9-]+)" % re.escape(var), text))
     for rid in ids:
         emits.setdefault(rid, set()).add(path.rsplit("/", 1)[1])

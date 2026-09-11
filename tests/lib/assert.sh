@@ -530,10 +530,8 @@ assert_ledger_prefix() {
 # from an already-GREEN positive case for that script (cited in each case's
 # comment) — never invented — so "produces its rule" is grounded in a fixture
 # this suite has already proven fires, not a guess about what might.
-# The historical helper names stay stable for callers. Task 2 adds post-bash.sh
-# and pre-monitor.sh as silent stubs: their positive cases land in Tasks 3–4.
-# Until then those two entries must prove silence even in the active scenario;
-# the original eleven retain the non-vacuous positive check.
+# Historical helper names stay stable. post-bash.sh now proves the recording
+# observed in bgwait-410; pre-monitor.sh remains a silent reserved entry point.
 
 _wv_eleven_scripts() {
   printf '%s\n' \
@@ -611,8 +609,8 @@ _wv_eleven_stdin() {
   # never a whole shared library).
   local script="$1" fixture=""
   case "$script" in
-    # Task 2 tests silence, not a rule trigger. Tasks 3–4 supply positive fixtures.
-    post-bash.sh) printf '%s' '{"hook_event_name":"PostToolUse","tool_name":"Bash"}'; return 0 ;;
+    # Background recording follows bgwait-410; monitoring is still reserved.
+    post-bash.sh) printf '%s' '{"hook_event_name":"PostToolUse","tool_name":"Bash","agent_id":"a1","tool_input":{"run_in_background":true},"tool_response":{"backgroundTaskId":"b2emx28v6"}}'; return 0 ;;
     pre-monitor.sh) printf '%s' '{"hook_event_name":"PreToolUse","tool_name":"Monitor"}'; return 0 ;;
     pre-agent.sh)       fixture="role-137b-cr-executor-deny.json" ;;
     post-agent.sh)      fixture="launch-193-downgrade-warn.json" ;;
@@ -706,8 +704,8 @@ run_all_eleven() {
     rm -f "$stderr_tmp"
 
     if [ "$scenario" = "active" ]; then
-      if [ "$script" = "post-bash.sh" ] || [ "$script" = "pre-monitor.sh" ]; then
-        # Positive cases land in Tasks 3–4. Other scenarios use the normal
+      if [ "$script" = "pre-monitor.sh" ]; then
+        # Monitoring is still reserved. Other scenarios use the normal
         # arms below, including the sanctioned malformed-input diagnostic.
         if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
           WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(stub-not-silent: exit=$rc stdout='$out' stderr='$err')"
@@ -725,6 +723,10 @@ run_all_eleven() {
         local cp
         cp="$(find "$proj/.wave/checkpoints" -name '*-precompact.md' 2>/dev/null | head -n1)"
         [ -n "$cp" ] && [ -s "$cp" ] && fired=1
+      fi
+      if [ "$script" = "post-bash.sh" ]; then
+        fired=0
+        if [ -z "$out" ] && [ -z "$err" ] && jq -e ' .bg_tasks.a1 == ["b2emx28v6"]' "$proj/.wave/state.json" >/dev/null 2>&1; then fired=1; fi
       fi
       if [ "$rc" != "0" ] || [ "$fired" != "1" ]; then
         WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(active-did-not-fire: exit=$rc stdout='$out' stderr='$err')"

@@ -436,6 +436,39 @@ s = s.replace(old, new)
 PY
 }
 
+# Background-wait controls use a payload with both non-shell and stopped ids
+# in the recorded set; a pruned id alone cannot kill a removed status filter.
+wv_body_bgtyperemoved() { cat <<'PYBODY'
+old = '.status == "running" and .type == "shell"'
+assert old in s
+s = s.replace(old, '.status == "running"')
+PYBODY
+}
+wv_body_bgrunningremoved() { cat <<'PYBODY'
+old = '.status == "running" and .type == "shell"'
+assert old in s
+s = s.replace(old, '.type == "shell"')
+PYBODY
+}
+wv_body_bglatchremoved() { cat <<'PYBODY'
+old = 'if wv_state_update ".bg_blocked[$(wv_jq_str "$WV_STOP_AGENT")] = true"; then'
+assert old in s
+s = s.replace(old, 'if true; then')
+PYBODY
+}
+wv_body_bgorphanledgeromitted() { cat <<'PYBODY'
+old = '+ (if ($bg | length) > 0 then {bg_orphaned: $bg} else {} end)'
+assert old in s
+s = s.replace(old, '+ {}')
+PYBODY
+}
+wv_body_bgflagonlyorphan() { cat <<'PYBODY'
+old = '[ "$bg_latched" = "true" ]'
+assert old in s
+s = s.replace(old, '[ "$stop_active" = "true" ]')
+PYBODY
+}
+
 H="$WV_HOOK_REL"
 L="$WV_LIB_REL"
 
@@ -484,6 +517,17 @@ wv_run_mutant settlenoflag   wv_body_settlenoflag   "$H" 'stop-181-*' 'taint-243
 wv_run_mutant warnviablock   wv_body_warnviablock   "$H" 'warn-mode-*'
 wv_run_mutant settlewaitsmissing wv_body_settlewaitsmissing "$H" 'taint-242*'
 wv_run_mutant settlefastloose    wv_body_settlefastloose    "$H" 'taint-243*' 'stop-181-*'
+
+WV_EXPECT[bgtyperemoved]=bgwait-407-partial-intersection
+WV_EXPECT[bgrunningremoved]=bgwait-407-partial-intersection
+WV_EXPECT[bglatchremoved]=bgwait-408-second-stop-orphans
+WV_EXPECT[bgorphanledgeromitted]=bgwait-408-second-stop-orphans
+WV_EXPECT[bgflagonlyorphan]=bgwait-409-consumed-first-stop
+wv_run_mutant bgtyperemoved wv_body_bgtyperemoved "$H" 'bgwait-407*'
+wv_run_mutant bgrunningremoved wv_body_bgrunningremoved "$H" 'bgwait-407*'
+wv_run_mutant bglatchremoved wv_body_bglatchremoved "$H" 'bgwait-408*'
+wv_run_mutant bgorphanledgeromitted wv_body_bgorphanledgeromitted "$H" 'bgwait-408*'
+wv_run_mutant bgflagonlyorphan wv_body_bgflagonlyorphan "$H" 'bgwait-409*'
 
 # --- the table --------------------------------------------------------------
 
