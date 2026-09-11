@@ -25,6 +25,7 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 - [The 5 hard-won rules](#the-5-hard-won-rules-the-demo-skills-add-on-top)
 - [Repository structure](#repository-structure)
 - [Community](#community)
+- [Listed on](#listed-on)
 - [Used in production by](#used-in-production-by)
 - [Talks & writing](#talks--writing)
 - [Status](#status)
@@ -351,6 +352,12 @@ claude-wave-plugin/
 - **X / Twitter:** [@Anim1986](https://x.com/Anim1986) — DM open for questions, suggestions, war stories
 - **Issues & ideas:** Open an issue with the `.wave/<phase>.md` excerpt that surfaced the question
 - **Discussions:** [GitHub Discussions](https://github.com/Harshvardhan86/claude-wave-plugin/discussions) for design questions and patterns
+
+## Listed on
+
+- [Flowy](https://www.flowy.sh/listings/harshvardhan86-claude-wave-plugin) — plugin directory entry with skills, commands and repo listed
+- [Vibed Lab Plugins](https://plugins.vibed-lab.com/plugin/harshvardhan86-claude-wave-plugin) — weekly-curated Claude Code plugin directory listing
+- [MCP Market](https://mcpmarket.com/tools/skills/brutal-acceptance-criteria-writer) — skill listing for `ac-writer`, the brutal acceptance criteria phase
 
 ## Used in production by
 
