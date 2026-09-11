@@ -204,10 +204,10 @@ rework and GREEN output per changed line. Model downgrades warn and are recorded
 warn; copying ≥4,000 characters from a `.wave/` file into a prompt is denied.
 Pass a report path and return a summary under 2,000 characters.
 
-v0.2.1 contracts (Task 2 wiring is silent; rule implementations land in Tasks 3–5):
+Reserved contracts for a later release (the new entry points are currently silent):
 
 - **W-BGWAIT:** full/demo subagents must finish background Bash tasks; block once, then fail only after a prior background-wait latch; warn mode records orphans immediately.
-- **W-POLL:** full/demo Bash rejects lexical unbounded waits and bare sleeps over 300 seconds; quoted spans are stripped, and only the main session may call Monitor.
+- **W-POLL:** full/demo Bash rejects lexical unbounded waits and bare sleeps over 300 seconds; quoted spans are stripped, and only the main session may call Monitor (stdin identity only; its command is never inspected).
 - **W-LEFTOVER:** closing SubagentStop, still-active completion Stop and PreCompact inventory remaining work into checkpoint/scorecard; warn once, print spared pids, never kill, and preserve wave lifetime (solo included).
 
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;

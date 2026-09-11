@@ -142,8 +142,9 @@ inject with `additionalContext`.
 The v0.2.1 background maps are optional schema-1 extensions; a missing map means
 `{}`. `bg_tasks[<agent_id>]` holds unique Bash `backgroundTaskId` strings.
 `bg_blocked[<agent_id>]` is persisted before that agent's first background-wait
-block, never on a warning. A later stop with that latch and still-running shells
-records their phase and ids in `bg_orphaned`; this record is retained across
+block, never on a warning. A later stop with that latch and a nonempty
+intersection of recorded ids with running shell rows records their phase and
+ids in `bg_orphaned`; this record is retained across
 replays. Warn mode records orphan ids immediately without setting the latch.
 All writes use `wv_state_update` under the state lock. The maps live outside
 `active`, whose launch records can be replaced. The existing single per-agent
@@ -168,7 +169,8 @@ rules over an unrelated later session. `wave-init.sh` archives a `closed`
 state to `.wave/archive/<started>-state.json` and refuses (non-zero, nothing
 written) while an `active` wave exists unless `--force` is passed.
 `session-start.sh` prints one warning when an `active` wave is older than 24 h,
-naming the close command.
+naming the close command. The close-time inventory in §8.10 runs immediately
+before `wv_close_if_terminal`; it does not move or defer wave closure.
 
 Project root resolution, in order: `CLAUDE_PROJECT_DIR`; else `cwd` with a
 `/.claude/worktrees/<name>` suffix stripped; else the first ancestor of `cwd`
@@ -306,7 +308,7 @@ Gates that read an artifact at dispatch time rather than at stop:
 row applies, no phase is gated, and a dispatch carrying a valid tag is recorded
 but not judged against the table. Untagged dispatches are ledgered under phase
 `SOLO`. Solo keeps only the explicit-model rule, the commit guard, the
-PreCompact checkpoint and the ledger. There are no prompt caps, phase-order
+PreCompact checkpoint, the ledger and §8.10's advisory inventory. There are no prompt caps, phase-order
 checks, tier comparisons, orchestrator-only rules, round ceilings or budget
 gates. Solo is for medium tasks the user drives directly with at most a
 separate review dispatch, and it exists so the cheap invariants do not have to
@@ -380,7 +382,7 @@ returns the conclusion. `Grep`, `Glob` and `LS` are never gated.
 
 **8.3 Builds and tests.** A main-session `Bash` whose `tool_input.command`
 matches a test/build runner is denied (`W-BASH`). Shipped form (widened by
-the Task 9 review's Fix round 1, 2026-09-10 — the original anchor admitted
+the review correction of 2026-09-10 — the original anchor admitted
 none of leading whitespace, an env-var assignment, or a wrapper command, so
 `sudo make`, `CI=1 npm test` and ` make` all silently passed):
 
@@ -449,15 +451,18 @@ rows whose `type` is `"shell"` and `status` is `"running"`. The stopping agent's
 own `type:"subagent"` row is also running and must never enter the intersection.
 A nonempty intersection blocks once, only if no higher-priority block consumed
 the stop, `stop_hook_active` is false, and no durable `bg_blocked` latch exists.
-Persist the latch before emitting the block. On a later stop with that latch
-and a nonempty intersection, do not block again: record the phase `failed` and
-the ids in `state.bg_orphaned` and the single ledger line's `bg_orphaned` array.
+Persist the latch before emitting the block; defer the per-agent ledger line.
+On a later stop with that latch and a nonempty intersection, do not block again:
+reuse the existing phase status `failed` (no new enum), record the ids in
+`state.bg_orphaned`, and write the per-agent ledger line exactly once at orphan
+time with its `bg_orphaned` array. Replays must not append a duplicate line.
 `stop_hook_active:true` disarms blocking but does not arm failure: without a
 prior latch there is no BGWAIT orphan verdict. Missing/malformed arrays are
 unmeasured and allow; absence of an id from a valid array means it finished,
 because completed tasks are pruned. An empty intersection follows normal
 artifact checks. Under `enforce:"warn"`, warn and record orphan ids on the first
-stop, with no latch or deferred ledger; leave the phase to artifact rules.
+stop, writing the per-agent ledger line exactly once immediately, with no latch
+or deferred ledger; leave the phase to artifact rules.
 Default block-once then failure gives one opportunity to finish work without a
 repeated-block loop. Remedy: wait in a bounded foreground timeout loop or stop
 the task, then return; do not use Monitor from the subagent.
@@ -469,7 +474,10 @@ then deny `while true`, `while :`, or `until … ; do` with sleep in its body
 unless the offending command has an anchored prefix timeout wrapper:
 `(^|[;&|])\s*timeout(\s+-<flag>)*\s+<n>`, with literal integer `n >= 1`.
 A timeout elsewhere exempts nothing; `timeout 0` and `timeout $N` do not prove
-a bound. Token delimiters after `:` must admit whitespace and shell separators.
+a bound. After `true` or `:`, require whitespace, `;`, `&`, `|` or end of string:
+`\bwhile[[:space:]]+(true|:)([[:space:];&|]|$)`, never a trailing `\b`.
+An inner `bash -c` string is analysed as literal text AFTER quote stripping;
+a loop inside a quoted span is therefore not seen (the declared §13 bound).
 The timeout exemption exits only this check, never the remaining build/test gate.
 A bare literal sleep over 300 seconds is denied: convert `s`, `m`, `h` units,
 compare decimals on their integer part, deny `inf` and unsupported suffixes,
@@ -487,14 +495,17 @@ under 300 seconds, and leave Monitor to the main session.
 **8.10 Leftovers (`W-LEFTOVER`).** Inventory at the closing `SubagentStop`,
 immediately before `wv_close_if_terminal`; at `Stop` while state is still active
 and the mode's terminal phase is done; and at every active-wave `PreCompact`.
-For solo, which has no terminal phase, retain Stop's existing nonempty-ledger
-completion signal and the PreCompact path. Do not move or defer wave closure.
+Solo has no terminal phase: its Stop eligibility uses the existing active-wave,
+nonempty-ledger and absent `.scorecard-printed` gate together, not a new
+per-turn completion signal. Later Stops may refresh inventory but must not
+repeat the warning. Solo also uses PreCompact. Do not move or defer wave closure.
 At SubagentStop use that stdin's `background_tasks` and `session_crons`, excluding
 the stopping agent's own subagent row. Stop also carries both arrays; PreCompact
 carries neither and records them unavailable, never as measured-empty arrays.
 
 Scan `/proc/<pid>/cwd` outside the state lock, comparing `readlink -f` with the
-canonical project root for exact equality. Exclude the hook pid and ancestors.
+project root from `realpath "$WV_ROOT"` for exact equality. Exclude the hook pid
+and ancestors.
 Print spared pids whose resolved cwd differs, including worktree cwd; skip and
 count unreadable cwd entries. Put the inventory, source availability, observed
 event/time, spared pids and unreadable count in the checkpoint's `## Leftovers`
@@ -507,11 +518,14 @@ and refresh inventory before Stop's printed-marker or empty-ledger returns;
 Stop can fire twice with `stop_hook_active:false` in one async session.
 PreCompact writes the inventory but warns to stderr only on its own live watcher
 evidence or a failed watcher scan, not merely because its payload lacks arrays.
-No leftovers and no failed sources means no W-LEFTOVER warning. Remedy: inspect
+At close, no leftovers AND all sources measured means silence; a failed or
+unavailable source is itself a warning condition. PreCompact is the explicit
+exception: its expected absent arrays are recorded unavailable without warning;
+only live watcher evidence or failure of its watcher scan warns. Remedy: inspect
 the checkpoint/scorecard and stop or wait out named resources before the next wave.
 
-Task 2 establishes these v0.2.1 contracts and wires silent entry points only;
-Tasks 3–5 implement the rules and add each reason row with its executable tests.
+These contracts are reserved for a later release. The new entry points are
+currently silent; rule enforcement and its reason rows are not yet implemented.
 
 ## 9. Token ledger and budgets (point 4)
 
@@ -617,8 +631,8 @@ scripts/hooks/session-start.sh
 scripts/hooks/user-prompt.sh      §8.6
 scripts/hooks/pre-agent.sh        tag, mode, role, model, tier, scope, order, condition, artifacts, round, budget, prompt
 scripts/hooks/post-agent.sh       record agent id + resolvedModel
-scripts/hooks/post-bash.sh        §8.8 (silent stub until Task 3)
-scripts/hooks/pre-monitor.sh      §8.9 (silent stub until Task 4)
+scripts/hooks/post-bash.sh        §8.8 (reserved silent entry point)
+scripts/hooks/pre-monitor.sh      §8.9 (reserved silent entry point)
 scripts/hooks/subagent-stop.sh    artifact + marker, transcript tiers, ledger, mark done, lean return
 scripts/hooks/pre-edit.sh         §8.1
 scripts/hooks/pre-read.sh         §8.2
@@ -652,8 +666,8 @@ Hook wiring rules, all load-bearing:
   state they write.
 - The command-hook `timeout` default is 10 minutes. `subagent-stop.sh` sets an
   explicit `timeout: 60` (it streams a possibly multi-MB transcript with
-  `jq -c` per line and a byte cap); Stop sets 20 s, and the new post-bash and
-  pre-monitor entries each set 10 s. The fast hooks set 5–10 s. A long default is
+  `jq -c` per line and a byte cap); Stop sets 20 s, post-bash sets 15 s to exceed the 10 s lock wait,
+  and pre-monitor sets 10 s. The fast hooks set 5–10 s. A long default is
   the hazard, not a short one.
 - State writes: `flock` a dedicated, never-replaced `.wave/lock` created by
   `wave-init.sh` — **not** `state.json`, because writing via `tmp && mv`
@@ -747,10 +761,12 @@ Changed (minimal):
 - Enforcing anything in `solo` mode beyond §7's explicit-model rule, §9, §10
   and §8.10's advisory inventory.
 - W-POLL is lexical, not a shell interpreter. Single- and double-quoted spans
-  are stripped: `echo "while true"` passes, and quoted inner `bash -c` text is
-  not inspected. Heredoc bodies are not parsed and may produce lexical false
+  are stripped: `echo "while true"` passes. An inner `bash -c` string is
+  analysed as literal text AFTER quote stripping, so loops inside quoted spans
+  are not seen; unquoted surviving text is still analysed. Heredoc bodies are not parsed and may produce lexical false
   positives. Variables/aliases are not expanded: `sleep $VAR` passes;
-  `timeout $N` is not a recognized bound for a loop that remains visible after
+  `timeout 0` is not a wrapper, and `timeout $N` is not a recognized bound
+  for a loop that remains visible after
   stripping. `while [ ! -f x ]; do sleep 1; done`, `for`, `watch`, `tail -f`,
   `inotifywait` and `yes |` are outside the loop matcher. Decimal sleeps compare
   on the integer part (`sleep 300.5` passes), not fractional seconds.
@@ -762,7 +778,10 @@ Changed (minimal):
   fail the phase; W-LEFTOVER reports the remaining shell at close instead.
 - Finished background tasks are pruned: absence of an id from a valid
   `background_tasks` array means finished, not successful. An absent or malformed
-  array is unmeasured. PreCompact's absent arrays are unavailable, never clean.
+  array is unmeasured. Stop carries `background_tasks` and `session_crons`;
+  PreCompact carries neither, and records both unavailable, never clean. Stop
+  can fire twice per `-p` session with an async Agent, both times with
+  `stop_hook_active:false`; that flag cannot deduplicate close-time warnings.
 
 ## 14. Decisions taken from the design review
 
@@ -832,7 +851,8 @@ v0.2.1 probe and contract audit (2026-09-11, client 2.1.268):
   events. Use stdin `agent_id`; it is present on subagent Bash and Monitor calls.
 - 2026-09-11: Preserve §4 lifetime and existing block precedence. Inventory at
   closing SubagentStop before `wv_close_if_terminal`, active Stop and PreCompact;
-  Stop timeout is 20 s. Reasons and their goldens ship with Tasks 3–5, not Task 2.
+  Stop timeout is 20 s. The new rule reasons and their goldens are reserved for
+  a later release alongside enforcement.
 
 ## 15. Decisions the user may want to revisit
 

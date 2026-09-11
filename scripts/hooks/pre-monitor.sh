@@ -5,7 +5,8 @@ set -u
 
 WV_HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 # shellcheck source=scripts/hooks/lib.sh
-source "$WV_HOOK_DIR/lib.sh" >/dev/null 2>&1
+source "$WV_HOOK_DIR/lib.sh"
 
 # Do not parse stdin yet: even malformed input must leave this stub silent.
+wv_emit_flush
 exit 0

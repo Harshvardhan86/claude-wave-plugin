@@ -80,7 +80,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/post-bash.sh",
-            "timeout": 10
+            "timeout": 15
           }
         ]
       }

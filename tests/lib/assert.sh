@@ -705,13 +705,15 @@ run_all_eleven() {
     err="$(cat "$stderr_tmp")"
     rm -f "$stderr_tmp"
 
-    if [ "$script" = "post-bash.sh" ] || [ "$script" = "pre-monitor.sh" ]; then
-      # Temporary Task 2 contract: positives land in Tasks 3–4. Do not count a
-      # warning or error as an active-rule success for these silent stubs.
-      if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
-        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(stub-not-silent: exit=$rc stdout='$out' stderr='$err')"
+    if [ "$scenario" = "active" ]; then
+      if [ "$script" = "post-bash.sh" ] || [ "$script" = "pre-monitor.sh" ]; then
+        # Positive cases land in Tasks 3–4. Other scenarios use the normal
+        # arms below, including the sanctioned malformed-input diagnostic.
+        if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
+          WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(stub-not-silent: exit=$rc stdout='$out' stderr='$err')"
+        fi
+        continue
       fi
-    elif [ "$scenario" = "active" ]; then
       # "Produces its rule": stdout carries a decision, or stderr carries a
       # warning (SubagentStop/PreCompact have no additionalContext channel),
       # or — pre-compact.sh only, whose whole observable effect is a file,
