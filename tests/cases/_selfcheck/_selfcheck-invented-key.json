@@ -1,0 +1,5 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "stdin": { "hook_event_name": "PreToolUse", "made_up_field": "no such platform field" },
+  "expect": { "harness_fails": true }
+}

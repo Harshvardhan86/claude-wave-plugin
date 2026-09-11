@@ -1,0 +1,29 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-297",
+  "note": ".wave/approvals/commit-doc.md present + a genuinely matching planning doc staged -> warn, not deny",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "tasks/todo.md": "todo\n",
+      ".wave/approvals/commit-doc.md": "approved by the user\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-COMMIT-DOC",
+    "reason_contains": [
+      "tasks/todo.md"
+    ]
+  }
+}

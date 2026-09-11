@@ -1,0 +1,25 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-335",
+  "note": "mode:solo, a staged planning doc still denies W-COMMIT-DOC",
+  "seed": {
+    "state": "state/solo.json",
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC"
+  }
+}

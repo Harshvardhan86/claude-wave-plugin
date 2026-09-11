@@ -1,0 +1,25 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-307",
+  "note": "'git   commit -m x' is recognised as a git commit despite the -C/cd/spacing variation",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git   commit -m x"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC"
+  }
+}

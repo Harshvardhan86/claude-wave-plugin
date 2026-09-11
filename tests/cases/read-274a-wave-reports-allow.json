@@ -1,0 +1,8 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-274",
+  "note": "a .wave/reports/* read is allowed",
+  "seed": { "state": "state/valid-full.json", "files": { ".wave/reports/BC-scanner-a1.md": "findings\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": ".wave/reports/BC-scanner-a1.md" } },
+  "expect": { "decision": "silent" }
+}

@@ -1,0 +1,16 @@
+{
+  "script": "user-prompt.sh",
+  "ac": "AC-291",
+  "note": "mode:solo -> silent no-op; solo enforces no process, so there is nothing to remind about",
+  "seed": {
+    "state": "state/solo.json"
+  },
+  "stdin": {
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "hi"
+  },
+  "expect": {
+    "decision": "silent",
+    "negative_control_for": "W-REMINDER"
+  }
+}

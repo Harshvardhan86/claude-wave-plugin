@@ -1,0 +1,36 @@
+{
+  "ac": "AC-84",
+  "note": "BF-SEA after SEA with .wave/approvals/bf-SEA.md present and SEA not done: W-ORDER naming SEA.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-bfbc.json",
+    "files": {
+      ".wave/approvals/bf-SEA.md": "Approved by the user on 2026-09-09.\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:BF-SEA R:executor] fix the silent-error findings",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-ORDER",
+    "reason_template": "W-ORDER",
+    "reason_contains": [
+      "predecessor(s) not done: SEA"
+    ]
+  }
+}

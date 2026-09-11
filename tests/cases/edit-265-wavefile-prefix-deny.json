@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-265",
+  "note": "the .wave/ exemption is a directory prefix, not a string prefix: .wavefile.ts still denies",
+  "seed": { "state": "state/valid-full.json", "files": { ".wavefile.ts": "x\n" }, "staged": [".wavefile.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": ".wavefile.ts" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT", "reason_contains": [".wavefile.ts"] }
+}

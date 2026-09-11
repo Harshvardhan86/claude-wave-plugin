@@ -1,0 +1,22 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-325",
+  "note": "an active wave names the wave id, mode, the last phase marked done, and the literal tag template",
+  "seed": {
+    "state": "state/full-ac-done.json"
+  },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SESSION",
+    "reason_contains": [
+      "wave 1 active",
+      "mode=full",
+      "last phase done: AC",
+      "[W:1 P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]"
+    ]
+  }
+}

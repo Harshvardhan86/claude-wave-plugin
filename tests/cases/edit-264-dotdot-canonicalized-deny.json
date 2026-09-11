@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-264",
+  "note": "a .wave/../ traversal is canonicalised before the .wave/ exemption test, so it still denies",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": ".wave/../src/app.ts" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT", "reason_contains": ["src/app.ts"], "stdout_absent": [".wave/../"] }
+}

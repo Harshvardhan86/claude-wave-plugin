@@ -1,0 +1,39 @@
+{
+  "ac": "AC-235",
+  "note": "a re-dispatched AC closing agent (a2) whose artifact and marker now pass, over a phases.AC already done by a1: status stays done with prev:\"done\" recorded, the new agent id written, and no successor marked stale.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-ac-reviewer-done.json",
+    "files": {
+      ".wave/ac.md": "AC-1 the ledger records the spend of every agent\nAC-2 and the tier that actually ran\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a2",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a2",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "ledger_lines": 1,
+    "state_assert": ".phases.AC.status == \"done\" and .phases.AC.prev == \"done\" and .phases.AC.agent == \"a2\" and (.phases.ACB.stale // false) == false and (.phases[\"TDE-RED\"].stale // false) == false"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-279",
+  "note": "enforce:warn converts the W-READ deny into an additionalContext warning, never a deny",
+  "seed": { "state": "state/full-all-done-warn.json", "files": { "src/app.ts": "x\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "warn", "rule": "W-READ" }
+}

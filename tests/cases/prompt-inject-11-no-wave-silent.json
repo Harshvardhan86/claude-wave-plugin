@@ -1,0 +1,12 @@
+{
+  "script": "user-prompt.sh",
+  "ac": "AC-11",
+  "note": "no active wave; silent no-op",
+  "stdin": {
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "hello"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

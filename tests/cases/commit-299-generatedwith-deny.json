@@ -1,0 +1,22 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-299",
+  "note": "a literal Generated with [Claude Code] marker denies W-COMMIT-TRAILER",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"add a feature\n\nGenerated with [Claude Code](https://claude.com/claude-code)\""
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-TRAILER",
+    "reason_contains": [
+      "Generated with [Claude Code]"
+    ]
+  }
+}

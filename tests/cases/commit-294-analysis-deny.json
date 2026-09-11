@@ -1,0 +1,29 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-294",
+  "note": "a staged analysis/x.md denies W-COMMIT-DOC naming that path and its matched row (analysis-documents)",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "analysis/x.md": "x\n"
+    },
+    "staged": [
+      "analysis/x.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_contains": [
+      "analysis/x.md",
+      "analysis-documents"
+    ]
+  }
+}

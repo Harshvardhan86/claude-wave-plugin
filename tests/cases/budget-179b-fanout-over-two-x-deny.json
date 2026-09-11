@@ -1,0 +1,37 @@
+{
+  "ac": "AC-179",
+  "note": "the same phase with the ledger summing 13000 (6.5x the row value): denied, naming the effective budget 6000 and the ratio against it.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-teettc.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"agent-TEET-1\",\"phase\":\"TEET\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":5000,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}\n{\"agent\":\"agent-TEET-2\",\"phase\":\"TEET\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":5000,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}\n{\"agent\":\"agent-TEET-3\",\"phase\":\"TEET\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":3000,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:TEET R:executor] run the end-to-end suite",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-BUDGET",
+    "reason_template": "W-BUDGET",
+    "reason_contains": [
+      "spent 13000, limit 6000, >2.1x",
+      ".wave/approvals/budget-TEET.md"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "script": "pre-commit-guard.sh",
+  "note": "a Bash call made INSIDE a subagent (stdin carries agent_id) is never judged by this rule; only the main session is gated (spec section 8, applied here too)",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": { "tasks/todo.md": "todo\n" },
+    "staged": ["tasks/todo.md"]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "agent_id": "a6a129f2ae0850db1",
+    "tool_input": { "command": "git commit -m wip" }
+  },
+  "expect": { "decision": "silent" }
+}

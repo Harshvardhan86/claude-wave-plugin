@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "AC-281",
+  "note": "negative control for W-BASH: ordinary inspection produces no noise at all",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "git diff --stat" } },
+  "expect": { "decision": "silent", "negative_control_for": "W-BASH" }
+}

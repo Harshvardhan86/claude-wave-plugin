@@ -1,0 +1,15 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-316",
+  "note": "trigger:manual is named verbatim in the checkpoint body",
+  "seed": {
+    "state": "state/full-red-done.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "manual"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

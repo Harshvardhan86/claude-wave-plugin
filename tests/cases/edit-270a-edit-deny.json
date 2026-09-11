@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-270",
+  "note": "Edit on a tracked source file denies W-EDIT",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT" }
+}

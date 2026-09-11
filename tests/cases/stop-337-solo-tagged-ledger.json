@@ -1,0 +1,45 @@
+{
+  "ac": "AC-337",
+  "note": "solo mode and a TAGGED dispatch recorded as AC/lead with model haiku (below the table tier): the ledger records the tag phase and role and tier_ok stays null — phases.tsv is not consulted in solo, so no artifact check and no tier comparison happen at all.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-solo-tagged.json",
+    "transcripts": {
+      ".wave/tr/a1.jsonl": "transcripts/all-haiku.jsonl"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": [],
+    "agent_transcript_path": ".wave/tr/a1.jsonl"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "stdout_absent": [
+      "W-TAINT",
+      "W-ARTIFACT"
+    ],
+    "ledger_lines": 1,
+    "ledger_assert": ".phase == \"AC\" and .role == \"lead\" and .requested == \"haiku\" and .tier_ok == null",
+    "state_assert": ".phases == {}"
+  }
+}

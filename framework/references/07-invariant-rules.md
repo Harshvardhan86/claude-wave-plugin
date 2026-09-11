@@ -15,10 +15,10 @@ These rules are **NON-NEGOTIABLE** regardless of wave, team, or context.
 5. **Save learnings.** Every bug fix → learning saved globally. No duplicates. Enhance existing.
 
 6. **Planning docs never committed.** Analysis and planning docs stay SEPARATE from code repo.
-   - *v2 enforcement:* `PreToolUse` hook on `Bash(git commit *)` blocks any commit whose staged diff touches paths matching planning-doc patterns (see [`11-hooks-and-automation.md`](11-hooks-and-automation.md)).
+   - *v2 enforcement:* `PreToolUse` hook on `Bash` enforces `git commit`: W-COMMIT-DOC blocks any commit whose staged diff touches paths matching `hooks/planning-paths.tsv`, and W-COMMIT-TRAILER blocks literal AI-attribution trailers.
 
 7. **Auto-compact = STOP.** Save checkpoint. Fresh terminal. Resume from checkpoint.
-   - *v2 enforcement:* `PreCompact` hook forces a Checkpoint Team dispatch before any compaction; compaction is blocked if the save fails.
+   - *v2 enforcement:* `PreCompact` hook writes `.wave/checkpoints/<ts>-precompact.md` from state and the ledger itself; no agent is spawned, and the checkpoint is enforced while the stop is advised.
 
 8. **No team self-declares success.** The team's internal reviewer must sign off before the team reports done.
    - *v2 enforcement:* The fresh-eyes SDT-seq pattern requires a separate Reviewer dispatch whose context contains only the executor's output — the Reviewer literally cannot "see" the executor's self-justification.

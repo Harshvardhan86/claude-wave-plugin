@@ -1,0 +1,42 @@
+{
+  "ac": "AC-66",
+  "note": "a demo wave with ui true, AC+DR+TDE-RED+TDE-GREEN done and the green-visual approval present, dispatching TEET: silent allow (no W-MODE, and no W-ORDER once Task 6 lands).",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/demo-through-green.json",
+    "files": {
+      ".wave/approvals/green-visual.md": "Reviewed .wave/screenshots/green-*.png; approved.\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:TEET R:executor] run the end-to-end suite",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "stdout_absent": [
+      "W-TAG",
+      "W-NESTED",
+      "W-FORK",
+      "W-MODE",
+      "W-ROLE",
+      "W-MODEL-MISSING",
+      "W-TIER",
+      "W-MODEL-UNKNOWN",
+      "W-DESC"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-261",
+  "note": "main-session Write on a git-tracked source file denies W-EDIT",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-EDIT",
+    "reason_template": "W-EDIT",
+    "reason_contains": ["src/app.ts", "orchestrator-only session mode", "subagent dispatch"]
+  }
+}

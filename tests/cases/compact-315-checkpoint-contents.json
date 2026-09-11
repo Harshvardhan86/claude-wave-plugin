@@ -1,0 +1,18 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-315",
+  "note": "an active wave's checkpoint names the feature, wave id, mode, last done phase, artifacts present, ledger totals, trigger and a resume command naming the file",
+  "seed": {
+    "state": "state/full-red-done.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"TDE-RED\",\"role\":\"executor\",\"output\":250}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "auto"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

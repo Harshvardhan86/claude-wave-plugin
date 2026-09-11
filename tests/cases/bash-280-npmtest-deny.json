@@ -1,0 +1,13 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "AC-280",
+  "note": "a main-session Bash matching a test/build runner denies W-BASH, naming the matched runner",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "npm test" } },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-BASH",
+    "reason_template": "W-BASH",
+    "reason_contains": ["npm test", "dispatch a subagent"]
+  }
+}

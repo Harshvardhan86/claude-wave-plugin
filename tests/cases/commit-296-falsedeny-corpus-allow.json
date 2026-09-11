@@ -1,0 +1,36 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-296",
+  "note": "seven near-miss paths that an over-broad substring pattern would wrongly flag; all seven staged together must allow",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "src/analysis/service.ts": "x\n",
+      "metrics_analysis/README.md": "x\n",
+      "docs/waveform.ts": "x\n",
+      "docs/planner.ts": "x\n",
+      "plan.md.snap": "x\n",
+      "tasks.json": "x\n",
+      "docs/design/2026-09-09-hook-enforcement.md": "x\n"
+    },
+    "staged": [
+      "src/analysis/service.ts",
+      "metrics_analysis/README.md",
+      "docs/waveform.ts",
+      "docs/planner.ts",
+      "plan.md.snap",
+      "tasks.json",
+      "docs/design/2026-09-09-hook-enforcement.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "allow"
+  }
+}

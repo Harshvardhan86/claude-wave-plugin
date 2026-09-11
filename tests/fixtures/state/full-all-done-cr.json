@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "wave": "1",
+  "mode": "full",
+  "status": "active",
+  "ui": false,
+  "behaviour_change": false,
+  "cr_enabled": true,
+  "enforce": "block",
+  "feature": "hook enforcement layer",
+  "started": "2026-09-09T12:00:00Z",
+  "ended": null,
+  "base_sha": "2294917",
+  "phases": {
+    "AC": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "ACB": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "DR": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "TDE-RED": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "TDE-GREEN": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "CR": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BC": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-BC": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "SEA": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-SEA": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "DS": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-DS": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BSEA": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-BSEA": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "OA": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "TEET-TC": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "TEET": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-TEET": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BTEET": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BTEET-X": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-BTEET": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "VB": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "COMMIT": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "CL": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "CCP": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "AD": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    }
+  },
+  "active": {},
+  "pending": {},
+  "rounds": {}
+}

@@ -1,0 +1,38 @@
+{
+  "ac": "AC-107 (fix round 1: the controller ruling on \"unknown\")",
+  "note": "ui \"unknown\" with AC+ACB done: a DR dispatch is denied W-SCOPE naming ui and the command that answers it - NOT W-COND, which would state that the wave declares no design review when nobody has said so.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-acb-ui-unknown.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:DR R:lead] review the design",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-SCOPE",
+    "reason_template": "W-SCOPE",
+    "reason_contains": [
+      "without ui set",
+      "scripts/wave-set.sh ui true|false"
+    ],
+    "stdout_absent": [
+      "W-COND",
+      "declares no design review"
+    ]
+  }
+}

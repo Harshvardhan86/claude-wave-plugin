@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-269",
+  "note": "a call carrying agent_id is inside a subagent; subagents implement, only the main session is gated",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "agent_id": "a6a129f2ae0850db1", "agent_type": "general-purpose", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "silent" }
+}

@@ -1,0 +1,12 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-278",
+  "note": "the other half of the same distinction, and the reason read-278b cannot stand alone: a real .wave/ path IS exempt. A guard that denied everything would satisfy read-278b perfectly.",
+  "seed": { "state": "state/valid-full.json", "files": { ".wave/reports/AC-lead-a1.md": "report\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": ".wave/reports/AC-lead-a1.md" } },
+  "expect": {
+    "decision": "silent",
+    "negative_control_for": "W-READ",
+    "stdout_absent": ["W-READ"]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-273",
+  "note": "main-session Read on a project source file denies W-READ",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" } },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-READ",
+    "reason_template": "W-READ",
+    "reason_contains": ["src/app.ts", "Grep/Glob", "subagent"]
+  }
+}

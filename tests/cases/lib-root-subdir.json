@@ -1,0 +1,33 @@
+{
+  "script": "tests/fixtures/drive-lib.sh",
+  "env": {
+    "WV_DRIVE": "deny:W-TAG"
+  },
+  "seed": {
+    "state": "state/valid-full.json",
+    "files": {
+      "src/deep/keep.txt": "a file so the subdirectory exists\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "cwd": "src/deep",
+    "tool_input": {
+      "description": "probe dispatch",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    },
+    "tool_use_id": "toolu_016jDXUebmA9qCw58g1rxGuH",
+    "permission_mode": "bypassPermissions",
+    "session_id": "1bef630c-7045-49ac-9e69-05deadbbb4ab"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-TAG",
+    "reason_template": "W-TAG",
+    "state_assert": ".enforce == \"block\""
+  }
+}

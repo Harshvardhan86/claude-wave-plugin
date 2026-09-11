@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-331",
+  "note": "solo mode: section 8.1 is not enforced at all, even on a tracked source file",
+  "seed": { "state": "state/solo.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "silent" }
+}

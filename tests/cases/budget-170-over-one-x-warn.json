@@ -1,0 +1,36 @@
+{
+  "ac": "AC-170",
+  "note": "hooks/budgets.tsv gives TDE-GREEN 3000 output tokens and its fanout is 1, so the effective budget is 3000; the ledger sums 4200 (1.4x): allowed with a W-BUDGET warning naming 4200, 3000 and 1.4x.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-red.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"agent-TDE-GREEN-1\",\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":2000,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}\n{\"agent\":\"agent-TDE-GREEN-2\",\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":1500,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}\n{\"agent\":\"agent-TDE-GREEN-3\",\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested\":\"sonnet\",\"resolved\":\"claude-sonnet-4-5-20250929\",\"tier_ok\":true,\"tier_verified\":true,\"input\":1234,\"output\":700,\"cache_read\":0,\"cache_create\":0,\"turns\":7,\"stopped\":\"2026-09-09T12:30:00Z\"}"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:TDE-GREEN R:executor] make the tests pass",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "warn",
+    "rule": "W-BUDGET",
+    "reason_template": "W-BUDGET",
+    "reason_contains": [
+      "TDE-GREEN exceeded budget (spent 4200, limit 3000, 1.4x)"
+    ]
+  }
+}

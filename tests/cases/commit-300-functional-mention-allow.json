@@ -1,0 +1,19 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-300",
+  "note": "a functional mention of claude in the message text is not an attribution trailer (negative control for W-COMMIT-TRAILER)",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"fix claude-config parser for the claude CLI path\""
+    }
+  },
+  "expect": {
+    "decision": "allow",
+    "negative_control_for": "W-COMMIT-TRAILER"
+  }
+}

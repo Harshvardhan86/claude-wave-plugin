@@ -1,0 +1,27 @@
+{
+  "ac": "AC-2 (companion: Global Constraint 3, asserted per script)",
+  "note": "a wave whose status is \"closed\": the same untagged, model-less dispatch is a silent no-op. No AC in this task's list names the closed-wave path for pre-agent.sh, but Global Constraint 3 requires \"no wave -> exit 0, no output\" to be asserted per script, and an inactive wave is a no-wave.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/closed.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "implement the executor slice",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent"
+  }
+}

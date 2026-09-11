@@ -1,0 +1,21 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-321",
+  "note": "AD done + no scorecard-printed marker yet -> prints the scorecard pointer and writes the marker",
+  "seed": {
+    "state": "state/full-all-done.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SCORECARD",
+    "reason_contains": [
+      "wave-scorecard.sh"
+    ]
+  }
+}

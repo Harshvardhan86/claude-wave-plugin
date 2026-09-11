@@ -1,0 +1,22 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-318",
+  "note": "full data state: every declared artifact present, the checkpoint lists all of them",
+  "seed": {
+    "state": "state/full-all-done.json",
+    "files": {
+      ".wave/ac.md": "AC-1\n",
+      ".wave/acb.md": "ACB-VERIFIED\n",
+      ".wave/dr.md": "DR-VERIFIED\n",
+      ".wave/red.md": "RED-VERIFIED failing=3\n",
+      ".wave/green.md": "GREEN-VERIFIED passing=3 failing=0\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "auto"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

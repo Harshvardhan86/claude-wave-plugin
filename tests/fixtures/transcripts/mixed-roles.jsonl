@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","usage":{"input_tokens":9999,"output_tokens":9999}}}
+{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+{"type":"system","subtype":"note","message":{"usage":{"input_tokens":5555,"output_tokens":5555}}}
+{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":30,"output_tokens":40,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+{"type":"user","message":{"role":"user","content":"again"}}

@@ -1,0 +1,17 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-323",
+  "note": "demo mode, TEET done, but an empty ledger -> silent, nothing to score",
+  "seed": {
+    "state": "state/demo-teet-done.json",
+    "files": {
+      ".wave/ledger.jsonl": ""
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

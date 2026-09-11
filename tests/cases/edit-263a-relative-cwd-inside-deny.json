@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-263",
+  "note": "a relative file_path resolves against the stdin cwd (here a relative cwd of src/, proving the cwd field itself is consumed rather than the process PWD alone)",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": "src", "tool_input": { "file_path": "app.ts" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT", "reason_contains": ["src/app.ts"] }
+}

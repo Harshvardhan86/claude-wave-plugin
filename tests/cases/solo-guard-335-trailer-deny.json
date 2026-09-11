@@ -1,0 +1,19 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-335",
+  "note": "mode:solo, a commit carrying an attribution trailer still denies W-COMMIT-TRAILER",
+  "seed": {
+    "state": "state/solo.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"fix: x\n\nCo-Authored-By: Claude\""
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-TRAILER"
+  }
+}

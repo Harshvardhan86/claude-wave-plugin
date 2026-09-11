@@ -1,0 +1,33 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-292",
+  "note": "a staged tasks/todo.md denies W-COMMIT-DOC naming the path, the matched planning-paths.tsv row, the unstage remedy and the commit-doc.md override",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "tasks/todo.md": "todo\n"
+    },
+    "staged": [
+      "tasks/todo.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_template": "W-COMMIT-DOC",
+    "reason_contains": [
+      "tasks/todo.md",
+      "tasks/todo.md`",
+      "task-tracking",
+      "git restore --staged",
+      ".wave/approvals/commit-doc.md"
+    ]
+  }
+}

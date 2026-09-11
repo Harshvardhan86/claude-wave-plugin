@@ -1,0 +1,8 @@
+{
+  "script": "pre-bash.sh",
+  "ac": "AC-287",
+  "note": "mode:solo: section 8.3 is not enforced at all",
+  "seed": { "state": "state/solo.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "npm test" } },
+  "expect": { "decision": "silent" }
+}

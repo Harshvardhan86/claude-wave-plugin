@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-270",
+  "note": "NotebookEdit carries tool_input.notebook_path, not file_path (measured 2026-09-10, see tests/fixtures/measured-keys.txt) and still denies on a tracked notebook",
+  "seed": { "state": "state/valid-full.json", "files": { "nb.ipynb": "{}\n" }, "staged": ["nb.ipynb"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "NotebookEdit", "tool_input": { "notebook_path": "nb.ipynb" } },
+  "expect": { "decision": "deny", "rule": "W-EDIT", "reason_contains": ["nb.ipynb"] }
+}

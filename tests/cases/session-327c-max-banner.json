@@ -1,0 +1,33 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-327 (the longest W-SESSION input the plugin accepts)",
+  "note": "W-SESSION's LONGEST ACCEPTED INPUT, so the corpus measures the bound rather than the test data (fix round 2, item 1). Every argument is at its maximum at once: a wave id at the 24-character bound wave-init.sh now enforces — interpolated TWICE, which is what made a 40-character id render 458 characters against the 400 bound — the longest enforce clause (enforce=warn, 55 characters), the longest phase code in hooks/phases.tsv as the last done phase (TDE-GREEN, 9), and the compaction advisory carrying the longest checkpoint filename pre-compact.sh can produce (an ISO-8601 second plus the -precompact-<n> collision suffix). Not stale, deliberately: under the clause order fixed in item 2 a stale wave drops the checkpoint clause behind (+1 more), so the longest render is this one. session-327d is the stale twin. `started_hours_before_now: 1` is what makes 'not stale' a property of this case rather than of the pin's distance from a literal in the fixture — with the literal, a pin of 2026-11-01 made this the STALE case and it went red asserting the branch it no longer took.",
+  "seed": {
+    "state": "state/full-max-banner.json",
+    "started_hours_before_now": 1,
+    "files": {
+      ".wave/checkpoints/2026-09-09T12:30:00Z-precompact-99.md": "# checkpoint\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "compact"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SESSION",
+    "reason_contains": [
+      "wave abcdefghij-klmnopqr.stuv active",
+      "[W:abcdefghij-klmnopqr.stuv P:<PHASE>",
+      "enforce=warn (violations will be reported, not blocked)",
+      "last phase done: TDE-GREEN",
+      "Invariant 7",
+      ".wave/checkpoints/2026-09-09T12:30:00Z-precompact-99.md",
+      "fresh terminal"
+    ],
+    "stdout_absent": [
+      ".wave/checkpoints/.wave/checkpoints/",
+      "(+1 more)"
+    ]
+  }
+}

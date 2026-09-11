@@ -1,0 +1,38 @@
+{
+  "ac": "AC-160",
+  "note": "BC done, bf-BC.md present, .wave/findings/BC.md present but with no ^FINDINGS: [0-9]+$ line: BF-BC is denied W-MARKER quoting the regex and the offending first line.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-bc.json",
+    "files": {
+      ".wave/findings/BC.md": "no count on this line\nFINDINGS: several\n",
+      ".wave/approvals/bf-BC.md": "Approved by the user on 2026-09-09.\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:BF-BC R:executor] fix the findings",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-MARKER",
+    "reason_template": "W-MARKER",
+    "reason_contains": [
+      "marker `^FINDINGS: [0-9]+$` not found",
+      "first line: \"no count on this line\""
+    ]
+  }
+}

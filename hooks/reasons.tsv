@@ -1,0 +1,36 @@
+# Wave hook enforcement rule reasons. Precedence (high→low): W-STATE, W-NESTED, W-FORK, W-TAG, W-MODE, W-ROLE, W-MODEL-MISSING, W-TIER, W-SCOPE, W-COND, W-ORDER, W-ARTIFACT, W-MARKER, W-DR-OPEN, W-VISUAL, W-BF-APPROVAL, W-ROUND, W-PASTE, W-BUDGET, W-EDIT, W-READ, W-BASH, W-COMMIT-DOC, W-COMMIT-TRAILER, W-LONG-RETURN, W-MODEL-UNKNOWN, W-DESC, W-PROMPT, W-TAINT, W-DOWNGRADE, W-RESOLVE-UNKNOWN, W-SESSION, W-REMINDER, W-SCORECARD
+rule_id	precedence	printf_template
+W-STATE	1	[W-STATE] %s; remedy: nothing was denied and nothing was recorded — fix what is named above and re-run; `scripts/wave-init.sh` rewrites a damaged .wave/state.json.
+W-NESTED	2	[W-NESTED] nested dispatch from agent %s; remedy: the orchestrator is the single dispatcher; return your result and let it dispatch the reviewer.
+W-FORK	3	[W-FORK] fork dispatch inherits orchestrator context and cannot be model-routed; remedy: dispatch a typed subagent with an explicit model instead.
+W-TAG	4	[W-TAG] dispatch tag rejected: %s; remedy: prefix the description (or the prompt's first line) with [W:%s P:<PHASE> R:<lead|executor|reviewer|scanner|writer>].
+W-MODE	5	[W-MODE] %s is %s-mode only; remedy: this wave is in %s mode; the five demo phases are: AC, DR, TDE-RED, TDE-GREEN, TEET.
+W-ROLE	6	[W-ROLE] role %s does not exist in %s; remedy: this phase has: %s; check `hooks/roles.tsv` for framework role mappings.
+W-MODEL-MISSING	7	[W-MODEL-MISSING] dispatch names no model; remedy: specify model: <haiku|sonnet|opus|fable> (minimum for %s/%s: %s).
+W-TIER	8	[W-TIER] model %s (tier %s) is below %s/%s minimum (%s); remedy: use a model with tier %s or higher.
+W-SCOPE	9	[W-SCOPE] cannot proceed without %s set; remedy: run `scripts/wave-set.sh %s true|false` to answer the scope question.
+W-COND	10	[W-COND] condition `%s` is false, so %s is skipped in this wave; remedy: %s.
+W-ORDER	11	[W-ORDER] predecessor(s) not done: %s; remedy: %s require(s) %s to complete first.
+W-ARTIFACT	12	[W-ARTIFACT] artifact %s is missing; remedy: %s must produce %s; if the phase ran, check whether it wrote the expected file.
+W-MARKER	13	[W-MARKER] marker `%s` not found in %s; remedy: the artifact must contain at least one line matching the marker regex.
+W-DR-OPEN	14	[W-DR-OPEN] design review has %s OPEN line(s) in .wave/dr.md against %s RESOLVED line(s) in .wave/approvals/dr-open.md; unanswered: %s; remedy: before TDE-RED, answer every OPEN: line by adding a matching RESOLVED: line to the approvals file.
+W-VISUAL	15	[W-VISUAL] visual approval required before %s; remedy: ui is true; create .wave/approvals/green-visual.md after reviewing .wave/screenshots/green-*.png.
+W-BF-APPROVAL	16	[W-BF-APPROVAL] bug-fix approval required; remedy: create .wave/approvals/bf-%s.md naming the strategy before re-running %s.
+W-ROUND	17	[W-ROUND] state.rounds["%s/%s"] == %s: two rounds of this phase and role have already completed in this wave; remedy: create .wave/approvals/rerun-%s-%s.md to allow a third, or surface the repeated failure to the user instead of retrying blindly.
+W-PASTE	18	[W-PASTE] prompt contains a %s-character block (the threshold is 4000) byte-identical to %s; remedy: the subagent can read .wave/ files itself; remove the pasted content.
+W-BUDGET	19	[W-BUDGET] %s exceeded budget (spent %d, limit %d, %sx); remedy: create .wave/approvals/budget-%s.md approving the overage, or refactor the phase.
+W-EDIT	20	[W-EDIT] source file %s is tracked by git and not under .wave/; remedy: this is orchestrator-only session mode; read-only analysis lives outside the project; code edits via subagent dispatch.
+W-READ	21	[W-READ] cannot read %s from orchestrator (inside the project, outside .wave/); remedy: use Grep/Glob to locate it, then read via a subagent that returns conclusions, not file contents.
+W-BASH	22	[W-BASH] %s is a build/test command not permitted here; remedy: dispatch a subagent to run tests/builds; the orchestrator drives the workflow, subagents do the work.
+W-COMMIT-DOC	23	[W-COMMIT-DOC] cannot commit planning document(s): %s; remedy: unstage them with `git restore --staged` — analysis, handoff and checkpoint docs belong outside the repo, in .wave/reports/ — or create .wave/approvals/commit-doc.md to allow it.
+W-COMMIT-TRAILER	24	[W-COMMIT-TRAILER] commit message carries an attribution trailer (%s); remedy: remove the Co-Authored-By, Generated with, or session-URL line and re-run the same commit; attribute via .wave/approvals/commit-doc.md instead.
+W-LONG-RETURN	25	[W-LONG-RETURN] return message exceeds 2000 characters (has %d); remedy: write the full report to `.wave/reports/%s-%s-%s.md` and return a summary.
+W-MODEL-UNKNOWN	26	[W-MODEL-UNKNOWN] model %s is unmapped to a known tier; remedy: mapping sees tokens: haiku, sonnet, opus, fable; the model may be valid or a new alias — allow it or update hooks/models.tsv.
+W-DESC	27	[W-DESC] description is %d characters (exceeds 120-char recommendation); remedy: keep descriptions short; use the prompt's first line for the full tag if needed.
+W-PROMPT	28	[W-PROMPT] prompt is %s characters, over the %s; remedy: lean context: move lengthy data to .wave/ files the subagent reads; it must not cross-pollute with orchestrator context.
+W-TAINT	29	[W-TAINT] agent used tier %s but dispatch required ≥%s (resolved %s); remedy: platform quota fallback or a fetch tool's built-in model; inspect transcript to confirm then proceed.
+W-DOWNGRADE	30	[W-DOWNGRADE] requested %s but resolved model is %s (tier downgraded); remedy: settings override may have downgraded the model; verify settings or explicitly name the higher tier.
+W-RESOLVE-UNKNOWN	31	[W-RESOLVE-UNKNOWN] the launch's %s could not be read, so no resolved tier was recorded (%s); remedy: read tool_response in the transcript to see what the launch returned; if the resolved model is a new alias, add it to hooks/models.tsv.
+W-SESSION	32	[W-SESSION] wave %s active, mode=%s, %s; last phase done: %s; tag: [W:%s P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]%s; remedy: informational only, no action required.
+W-REMINDER	33	[W-REMINDER] wave %s active, phase %s → %s. This session is the orchestrator: dispatch tagged Agents, read only .wave/ reports, no builds/tests/edits here; remedy: informational only, no action required.
+W-SCORECARD	34	[W-SCORECARD] wave %s complete; remedy: run %s to view the ledger scorecard.

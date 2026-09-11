@@ -1,0 +1,12 @@
+{
+  "script": "user-prompt.sh",
+  "ac": "AC-289",
+  "note": "no active wave; silent no-op (a second confirmation distinct from AC-11's own case)",
+  "stdin": {
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "hi again"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

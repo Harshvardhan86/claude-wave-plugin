@@ -1,0 +1,5 @@
+{
+  "script": "does-not-exist.sh",
+  "stdin": { "hook_event_name": "PreToolUse" },
+  "expect": { "harness_fails": true }
+}

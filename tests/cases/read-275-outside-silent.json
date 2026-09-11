@@ -1,0 +1,8 @@
+{
+  "script": "pre-read.sh",
+  "ac": "AC-275",
+  "note": "a file_path outside the project root is untouched",
+  "seed": { "state": "state/valid-full.json" },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": "/home/wave-plugin-outside-fixture-275/notes/analysis.md" } },
+  "expect": { "decision": "silent" }
+}

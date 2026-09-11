@@ -1,0 +1,12 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-1",
+  "note": "no .wave/ at all; silent no-op",
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

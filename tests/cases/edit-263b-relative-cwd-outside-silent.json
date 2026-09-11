@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-263",
+  "note": "the same relative file_path, but cwd is outside the project root entirely -> silent, never a deny",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": "/tmp/wave-plugin-outside-fixture-263", "tool_input": { "file_path": "app.ts" } },
+  "expect": { "decision": "silent" }
+}

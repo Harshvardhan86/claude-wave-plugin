@@ -1,0 +1,45 @@
+{
+  "ac": "AC-206",
+  "note": ".wave/ac.md present but 0 bytes: block(W-MARKER) — not W-ARTIFACT — and the reason states the file exists and is empty.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-ac-reviewer.json",
+    "files": {
+      ".wave/ac.md": ""
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "block",
+    "rule": "W-MARKER",
+    "reason_contains": [
+      ".wave/ac.md (the file exists and is 0 bytes)"
+    ],
+    "stdout_absent": [
+      "W-ARTIFACT"
+    ],
+    "state_assert": ".phases.AC.status != \"done\""
+  }
+}

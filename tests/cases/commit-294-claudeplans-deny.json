@@ -1,0 +1,29 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-294",
+  "note": "a staged .claude/plans/p.md denies W-COMMIT-DOC naming that path and its matched row (claude-plans)",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      ".claude/plans/p.md": "x\n"
+    },
+    "staged": [
+      ".claude/plans/p.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_contains": [
+      ".claude/plans/p.md",
+      "claude-plans"
+    ]
+  }
+}

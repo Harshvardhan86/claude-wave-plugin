@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-270",
+  "note": "pre-edit.sh is wired to Edit/Write/NotebookEdit/MultiEdit only; a Read reaching it is a silent no-op by construction",
+  "seed": { "state": "state/valid-full.json", "files": { "src/app.ts": "x\n" }, "staged": ["src/app.ts"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": { "file_path": "src/app.ts" } },
+  "expect": { "decision": "silent" }
+}

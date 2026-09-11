@@ -1,0 +1,43 @@
+{
+  "ac": "AC-74",
+  "note": "the same dispatch with TDE-GREEN done: allow. Negative control for W-COND - the identical dispatch denies W-COND once cr_enabled is false (cond-075*).",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-green-cr.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:CR R:reviewer] review the change",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-COND",
+    "stdout_absent": [
+      "W-SCOPE",
+      "W-COND",
+      "W-ORDER",
+      "W-ARTIFACT",
+      "W-MARKER",
+      "W-DR-OPEN",
+      "W-VISUAL",
+      "W-BF-APPROVAL",
+      "W-ROUND",
+      "W-PASTE",
+      "W-BUDGET",
+      "W-PROMPT"
+    ]
+  }
+}

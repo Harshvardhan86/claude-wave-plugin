@@ -1,0 +1,19 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-322",
+  "note": "AD done but .wave/.scorecard-printed already exists -> silent, printed once per wave (negative control for W-SCORECARD)",
+  "seed": {
+    "state": "state/full-all-done.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n",
+      ".wave/.scorecard-printed": ""
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop"
+  },
+  "expect": {
+    "decision": "silent",
+    "negative_control_for": "W-SCORECARD"
+  }
+}

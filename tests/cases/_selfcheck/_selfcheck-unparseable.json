@@ -1,0 +1,2 @@
+this file is not JSON at all — it is the planted positive control for
+the unparseable-case-file detector (AC-401). See tests/cases/README.md.

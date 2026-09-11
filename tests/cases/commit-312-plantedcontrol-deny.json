@@ -1,0 +1,28 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-312",
+  "note": "a planted .wave/__scan-probe.md control path is caught, proving the staged-path scan really ran",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      ".wave/__scan-probe.md": "control\n"
+    },
+    "staged": [
+      ".wave/__scan-probe.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_contains": [
+      ".wave/__scan-probe.md"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "ac": "AC-151",
+  "note": "the gate-151a file plus one line that does begin OPEN:: denied with count 1. The pair is the anchor assertion.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-dr-ui.json",
+    "files": {
+      ".wave/dr.md": "DR-VERIFIED\nREOPEN: old item from wave 0\n  OPEN: indented note, not an open item\nOPEN: which breakpoint owns the drawer?\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:TDE-RED R:executor] write the failing tests",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-DR-OPEN",
+    "reason_template": "W-DR-OPEN",
+    "reason_contains": [
+      "1 OPEN line(s) in .wave/dr.md against 0 RESOLVED line(s)",
+      "OPEN: which breakpoint owns the drawer?"
+    ]
+  }
+}

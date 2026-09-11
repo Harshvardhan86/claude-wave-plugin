@@ -1,0 +1,48 @@
+{
+  "ac": "AC-238",
+  "note": "every assistant line is claude-opus-5 with output tokens and the AC reviewer cell requires opus: done, ledger tier_ok:true and tier_verified:true, no W-TAINT anywhere. Also the negative control for W-TAINT.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-ac-reviewer.json",
+    "files": {
+      ".wave/ac.md": "AC-1 the ledger records the spend of every agent\nAC-2 and the tier that actually ran\n"
+    },
+    "transcripts": {
+      ".wave/tr/a1.jsonl": "transcripts/all-opus.jsonl"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": [],
+    "agent_transcript_path": ".wave/tr/a1.jsonl"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-TAINT",
+    "stdout_absent": [
+      "W-TAINT"
+    ],
+    "ledger_lines": 1,
+    "ledger_assert": ".tier_ok == true and .tier_verified == true and .turns == 3",
+    "state_assert": ".phases.AC.status == \"done\" and (.phases.AC.tainted // false) == false"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "script": "session-start.sh",
+  "ac": "AC-326",
+  "note": "enforce:warn is named, with the sentence that violations will be reported, not blocked",
+  "seed": {
+    "state": "state/full-ac-done-warn.json"
+  },
+  "stdin": {
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-SESSION",
+    "reason_contains": [
+      "enforce=warn",
+      "reported, not blocked"
+    ]
+  }
+}

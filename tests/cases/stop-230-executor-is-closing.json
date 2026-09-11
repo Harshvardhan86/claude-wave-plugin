@@ -1,0 +1,42 @@
+{
+  "ac": "AC-230",
+  "note": "BC defines neither reviewer nor lead, so its executor IS the closing role: a BC executor stopping with .wave/findings/BC.md absent blocks(W-ARTIFACT) naming the file.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-bc-executor.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "block",
+    "rule": "W-ARTIFACT",
+    "reason_template": "W-ARTIFACT",
+    "reason_contains": [
+      ".wave/findings/BC.md",
+      "BC"
+    ],
+    "ledger_lines": 1,
+    "state_assert": ".phases.BC.status == \"artifact-missing\""
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-301",
+  "note": "the bare phrase Co-Authored-By (no colon-Claude value) is not a trailer",
+  "seed": {
+    "state": "state/full-fresh.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m \"add Co-Authored-By handling to the trailer linter\""
+    }
+  },
+  "expect": {
+    "decision": "allow"
+  }
+}

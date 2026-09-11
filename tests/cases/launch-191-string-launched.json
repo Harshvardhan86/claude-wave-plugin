@@ -1,0 +1,31 @@
+{
+  "ac": "AC-191",
+  "note": "tool_response as a JSON-ENCODED STRING carrying the identical fields (the shape the probe log actually recorded): the record is identical to AC-190 — the tolerant reader tries the object path, then a fromjson decode.",
+  "script": "post-agent.sh",
+  "seed": {
+    "state": "state/full-all-done.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "duration_ms": 20,
+    "tool_input": {
+      "description": "[W:1 P:TDE-GREEN R:executor] implement AC-3..AC-7",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    },
+    "tool_response": "{\"isAsync\":true,\"status\":\"async_launched\",\"agentId\":\"a6a129f2ae0850db1\",\"description\":\"probe echo\",\"resolvedModel\":\"claude-sonnet-4-5-20250929\",\"prompt\":\"implement AC-3..AC-7\",\"outputFile\":\"/tmp/claude-1001/output.txt\"}"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "state_assert": ".active[\"a6a129f2ae0850db1\"] == {\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested_model\":\"sonnet\",\"resolved_model\":\"claude-sonnet-4-5-20250929\",\"tool_use_id\":\"toolu_01RXAwe6jcU5LBKHd9geD6sE\",\"status\":\"launched\"}"
+  }
+}

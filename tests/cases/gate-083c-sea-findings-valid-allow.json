@@ -1,0 +1,46 @@
+{
+  "ac": "AC-83",
+  "note": "a valid findings file (FINDINGS: 0, so BF-BC is skipped): the SEA dispatch is allowed. Negative control for W-ARTIFACT.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-bc.json",
+    "files": {
+      ".wave/findings/BC.md": "FINDINGS: 0\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:SEA R:executor] scan for silent errors",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-ARTIFACT",
+    "stdout_absent": [
+      "W-SCOPE",
+      "W-COND",
+      "W-ORDER",
+      "W-ARTIFACT",
+      "W-MARKER",
+      "W-DR-OPEN",
+      "W-VISUAL",
+      "W-BF-APPROVAL",
+      "W-ROUND",
+      "W-PASTE",
+      "W-BUDGET",
+      "W-PROMPT"
+    ]
+  }
+}

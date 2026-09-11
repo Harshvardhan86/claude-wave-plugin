@@ -1,0 +1,15 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-318",
+  "note": "empty data state: .wave/ holds only state.json; the checkpoint lists zero artifacts and still writes",
+  "seed": {
+    "state": "state/valid-full.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "auto"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

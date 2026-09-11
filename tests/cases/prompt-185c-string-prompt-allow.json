@@ -1,0 +1,33 @@
+{
+  "ac": "AC-185 (companion)",
+  "note": "the prompt-185a/b dispatch with tool_input.prompt sent as an ordinary short string: silent allow, no W-STATE. It isolates the type as the discriminator, so the two type warnings above cannot be passing for some other reason.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/valid-full.json"
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:AC R:lead] write the ACs",
+      "prompt": "Write the acceptance criteria into .wave/ac.md.",
+      "subagent_type": "general-purpose",
+      "model": "opus"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "stdout_absent": [
+      "W-STATE",
+      "W-PROMPT",
+      "W-PASTE"
+    ]
+  }
+}

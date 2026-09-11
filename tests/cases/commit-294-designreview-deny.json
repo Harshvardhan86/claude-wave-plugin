@@ -1,0 +1,29 @@
+{
+  "script": "pre-commit-guard.sh",
+  "ac": "AC-294",
+  "note": "a staged docs/wave3-design-review.md denies W-COMMIT-DOC naming that path and its matched row (wave-design-review)",
+  "seed": {
+    "state": "state/full-fresh.json",
+    "files": {
+      "docs/wave3-design-review.md": "x\n"
+    },
+    "staged": [
+      "docs/wave3-design-review.md"
+    ]
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expect": {
+    "decision": "deny",
+    "rule": "W-COMMIT-DOC",
+    "reason_contains": [
+      "docs/wave3-design-review.md",
+      "wave-design-review"
+    ]
+  }
+}

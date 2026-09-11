@@ -1,0 +1,8 @@
+{
+  "script": "pre-edit.sh",
+  "ac": "AC-267",
+  "note": "CHANGELOG.md is allowed via hooks/orchestrator-writable.tsv",
+  "seed": { "state": "state/valid-full.json", "files": { "CHANGELOG.md": "x\n" }, "staged": ["CHANGELOG.md"] },
+  "stdin": { "hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": { "file_path": "CHANGELOG.md" } },
+  "expect": { "decision": "silent" }
+}

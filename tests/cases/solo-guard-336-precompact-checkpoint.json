@@ -1,0 +1,15 @@
+{
+  "script": "pre-compact.sh",
+  "ac": "AC-336",
+  "note": "mode:solo still gets a checkpoint written exactly as AC-315 (the commit-guard-style cheap invariant stays on)",
+  "seed": {
+    "state": "state/solo.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreCompact",
+    "trigger": "auto"
+  },
+  "expect": {
+    "decision": "silent"
+  }
+}

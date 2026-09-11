@@ -1,0 +1,10 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "stdin": { "hook_event_name": "PreToolUse" },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "rule": "W-PLANT",
+    "harness_fails": true
+  }
+}

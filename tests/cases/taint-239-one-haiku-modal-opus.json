@@ -1,0 +1,47 @@
+{
+  "ac": "AC-239",
+  "note": "five opus lines and one haiku line: the check is the MODAL tier of assistant turns with output tokens, so the phase is done, tier_ok stays true and no W-TAINT fires — one lower-tier line is ordinary tool behaviour, not a downgrade.",
+  "script": "subagent-stop.sh",
+  "seed": {
+    "state": "state/stop-ac-reviewer.json",
+    "files": {
+      ".wave/ac.md": "AC-1 the ledger records the spend of every agent\nAC-2 and the tier that actually ran\n"
+    },
+    "transcripts": {
+      ".wave/tr/a1.jsonl": "transcripts/one-haiku.jsonl"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      }
+    ],
+    "session_crons": [],
+    "agent_transcript_path": ".wave/tr/a1.jsonl"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "stdout_absent": [
+      "W-TAINT"
+    ],
+    "ledger_lines": 1,
+    "ledger_assert": ".tier_ok == true and .tier_verified == true and .turns == 6",
+    "state_assert": ".phases.AC.status == \"done\" and (.phases.AC.tainted // false) == false"
+  }
+}

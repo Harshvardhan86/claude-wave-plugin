@@ -1,0 +1,16 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "last_assistant_message": "SELFCHECK_DENY_ME"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-FAKE",
+    "reason_template": "W-FAKE",
+    "ledger_lines": 1,
+    "state_assert": ".status == \"active\""
+  }
+}

@@ -1,0 +1,9 @@
+# Model name to tier mapping. Tiers: haiku=1, sonnet=2, opus=3, fable=4.
+# fable's rank above opus is this document's assumption, not a measured quality claim.
+token	rank
+haiku	1
+sonnet	2
+opus	3
+fable	4
+opusplan	unknown
+default	unknown

@@ -1,0 +1,40 @@
+{
+  "ac": "AC-75",
+  "note": "the same deny with data state FULL - every artifact for the done phases present, including a CR artifact. Still denied: the flag is the authority.",
+  "script": "pre-agent.sh",
+  "seed": {
+    "state": "state/p2-green.json",
+    "files": {
+      ".wave/ac.md": "AC-1 the first criterion\n",
+      ".wave/acb.md": "ACB-VERIFIED\n",
+      ".wave/red.md": "RED-VERIFIED failing=12\n",
+      ".wave/green.md": "GREEN-VERIFIED passing=12 failing=0\n",
+      ".wave/cr.md": "CR-VERIFIED\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Agent",
+    "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
+    "tool_input": {
+      "description": "[W:1 P:CR R:reviewer] review the change",
+      "prompt": "Do the thing.",
+      "subagent_type": "general-purpose",
+      "model": "sonnet"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-COND",
+    "reason_template": "W-COND",
+    "reason_contains": [
+      "condition `cr` is false"
+    ]
+  }
+}
