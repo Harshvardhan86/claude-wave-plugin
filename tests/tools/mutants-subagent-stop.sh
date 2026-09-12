@@ -15,7 +15,7 @@
 #
 # Twenty mutants: the eight properties the task brief names, the seven the
 # round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
-# a mutant now names its own target file), and the two Task 13 added with the
+# a mutant now names its own target file), and the two added with the
 # bounded transcript settle and the enforce=warn conversion.
 #   1. closingrole    the artifact check is applied to EVERY role's stop, not
 #                     only the closing role's

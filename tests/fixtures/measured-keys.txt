@@ -22,7 +22,7 @@
 # are intentionally absent here until they are actually probed, and any
 # fixture using them will correctly fail the sweep until then.
 #
-# Task 9 (2026-09-10) probed `Read`, `Edit`, `Write` and `NotebookEdit` from
+# A 2026-09-10 probe of `Read`, `Edit`, `Write` and `NotebookEdit` from
 # the main session (none of the two logs above ever fired PreToolUse on a
 # file-editing tool) and kept the raw output outside this repo:
 #   ~/WAVE_PLUGIN_ANALYSIS/probe3-edit-write-read.log
@@ -36,10 +36,10 @@
 # entry is forward-compatibility only), so it is exercised only via a
 # synthetic fixture using the `file_path` shape, same as `Edit`/`Write`.
 #
-# Task 10 (2026-09-10) adds `trigger` (PreCompact), `source` (SessionStart)
+# Since 0.2.0 the payload also carries `trigger` (PreCompact), `source` (SessionStart)
 # and top-level `prompt` (UserPromptSubmit). No probe log fired any of these
-# three events — the controller's task-10 brief explicitly directs using the
-# field names spec section 2 / section 8.6 / section 10 document instead of
+# three events — field names come from spec section 2 / section 8.6 / section 10
+# instead of
 # waiting on a fresh probe, since PreCompact/SessionStart/UserPromptSubmit
 # cannot be triggered as a side effect of a normal tool-use probe session.
 # Recorded here rather than silently added so a later probe can confirm or

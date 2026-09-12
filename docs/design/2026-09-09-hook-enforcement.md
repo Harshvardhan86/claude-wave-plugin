@@ -399,7 +399,7 @@ look like one, so the anchor cannot bridge across an unrelated command:
 `echo sudo make` stays silent (`sudo make` is text following `echo`, not a
 wrapper), as does `FOO=bar ls` and `sudo ls` (neither names a runner). A
 flag's own bare argument (the `5` in `nice -n 5`) is not skipped — a
-declared bound, not a Fix-round-1 requirement.
+declared bound.
 
 Everything else is allowed with no output at all (`git status`/`log`/`diff`,
 `ls`, `wc`, reading `.wave/`), so ordinary inspection produces no noise. A
@@ -407,9 +407,9 @@ Everything else is allowed with no output at all (`git status`/`log`/`diff`,
 declared bound rather than pretending the hook closes it. Neither is a
 runner name reached through a shell built-in indirection (`bash -c "npm
 test"`, a variable, or an alias) — the hook is a deliberate lexical filter
-over the literal command text, never a shell interpreter (Fix round 1
-ruling: "do not try to be shell-quote-aware; the declared lexical bound
-stands for `bash -c "…"`, variables and aliases").
+over the literal command text, never a shell interpreter (the W-BASH
+lexical bound stands for `bash -c "…"`, variables and aliases; W-POLL
+inspects `-c` strings separately, §8.9).
 
 **8.4 Nested dispatch.** An `Agent` call whose stdin carries `agent_id` is
 denied (`W-NESTED`): "the orchestrator is the single dispatcher; return your
@@ -477,9 +477,9 @@ with literal integer `n >= 1` and an optional seconds/minutes/hours/days suffix.
 A timeout elsewhere exempts nothing; `timeout 0` and `timeout $N` do not prove
 a bound. After `true` or `:`, require whitespace, `;`, `&`, `|` or end of string:
 `\bwhile[[:space:]]+(true|:)([[:space:];&|]|$)`, never a trailing `\b`.
-Exception: a `bash`, `sh`, `dash`, `ksh` or `zsh` `-c` string argument is
-inspected recursively as shell code through depth 3 after stripping other
-quoted spans, so `echo "while true"` passes.
+Exception: the `-c` argument of `bash`, `sh`, `dash`, `ksh` or `zsh` is
+inspected recursively to depth three after stripping other quoted spans, so
+`echo "while true"` passes.
 The timeout exemption exits only this check, never the remaining build/test gate.
 A bare literal sleep over 300 seconds is denied: convert `s`, `m`, `h` units,
 compare decimals on their integer part, deny `inf` and unsupported suffixes,
@@ -536,6 +536,8 @@ PreCompact is the explicit exception: its expected absent arrays are recorded
 unavailable without warning; only live watcher evidence or failure of its
 watcher scan warns. Remedy: inspect the checkpoint/scorecard and stop or wait
 out named resources before the next wave.
+`post-bash.sh` is the §8.8 background-task recorder; `pre-monitor.sh` is the
+§8.9 Monitor identity gate. Both are enforced, not reserved silent entry points.
 
 ## 9. Token ledger and budgets (point 4)
 
@@ -641,8 +643,8 @@ scripts/hooks/session-start.sh
 scripts/hooks/user-prompt.sh      §8.6
 scripts/hooks/pre-agent.sh        tag, mode, role, model, tier, scope, order, condition, artifacts, round, budget, prompt
 scripts/hooks/post-agent.sh       record agent id + resolvedModel
-scripts/hooks/post-bash.sh        §8.8 (background-task recorder)
-scripts/hooks/pre-monitor.sh      §8.9 (Monitor identity gate)
+scripts/hooks/post-bash.sh        §8.8 background-task recorder (enforced)
+scripts/hooks/pre-monitor.sh      §8.9 Monitor identity gate (enforced)
 scripts/hooks/subagent-stop.sh    artifact + marker, transcript tiers, ledger, mark done, lean return
 scripts/hooks/pre-edit.sh         §8.1
 scripts/hooks/pre-read.sh         §8.2
@@ -772,8 +774,8 @@ Changed (minimal):
   and §8.10's advisory inventory.
 - W-POLL is lexical, not a shell interpreter. Single- and double-quoted spans
   other than a `bash`/`sh`/`dash`/`ksh`/`zsh` `-c` string argument are stripped:
-  `echo "while true"` passes. Shell arguments are inspected recursively through
-  depth 3; deeper shell arguments are stripped. Heredoc bodies, variables and aliases are
+  `echo "while true"` passes. The `-c` argument of bash, sh, dash, ksh or zsh
+  is inspected recursively to depth three; deeper shell arguments are stripped. Heredoc bodies, variables and aliases are
   not interpreted as shell syntax: heredoc text may still produce lexical
   false positives, and `sleep $VAR` passes;
   `timeout 0` is not a wrapper, and `timeout $N` is not a recognized bound
@@ -874,8 +876,12 @@ v0.2.1 probe and contract audit (2026-09-11, client 2.1.268):
   events. Use stdin `agent_id`; it is present on subagent Bash and Monitor calls.
 - 2026-09-11: Preserve §4 lifetime and existing block precedence. Inventory at
   closing SubagentStop before `wv_close_if_terminal`, active Stop and PreCompact;
-  Stop timeout is 20 s. The new rule reasons and their goldens are reserved for
-  a later release alongside enforcement.
+  Stop timeout is 20 s.
+- 2026-09-12: §8.9 and §13 inspect the `-c` argument of bash, sh, dash, ksh or
+  zsh recursively to depth three (matching `pre-bash.sh`). `post-bash.sh` is the
+  §8.8 background-task recorder; `pre-monitor.sh` is the §8.9 Monitor identity
+  gate. Those entry points and their reason rows are enforced in 0.2.1, not
+  reserved silent stubs.
 
 ## 15. Decisions the user may want to revisit
 

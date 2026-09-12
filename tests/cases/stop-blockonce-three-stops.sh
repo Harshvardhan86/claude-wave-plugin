@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/stop-blockonce-three-stops.sh — fix round 1, item 1.
+# tests/cases/stop-blockonce-three-stops.sh — block-once is the active[].blocked record.
 #
 # THE MEASURED SEQUENCE. ~/WAVE_PLUGIN_ANALYSIS/probe2-worktree-stopblock.log
 # records three SubagentStop events for ONE agent (abe831e9837f3dcee):

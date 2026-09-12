@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/cases/lib-block-warn-ledger-ownership.sh — who owns the ledger line on
-# `wv_block`'s enforce=warn path (fix round 1, item 6).
+# `wv_block`'s enforce=warn path (one ledger line, not a second warn-shaped line).
 #
 # SubagentStop has no `additionalContext` channel, so `wv_block` under
 # enforce="warn" records the warning in state and on a ledger line instead. That

@@ -391,7 +391,7 @@ assert_single_rule_token() {
 
 assert_reason_matches_template() {
   # Structural check only (starts with "[<rule>] ", non-empty remedy tail).
-  # Byte-exact comparison against hooks/reasons.tsv is Task 13's job.
+  # Byte-exact comparison against hooks/reasons.tsv is reason-corpus.sh's job.
   local rule="$1"
   local reason
   reason="$(_wv_reason_text)"

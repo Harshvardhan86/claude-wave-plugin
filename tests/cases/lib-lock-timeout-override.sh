@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/cases/lib-lock-timeout-override.sh — the lock-timeout override may only
-# SHORTEN the wait, never lengthen it (fix round 1, item 2).
+# SHORTEN the wait, never lengthen it.
 #
 # WV_LOCK_TIMEOUT_OVERRIDE exists so a case can drive the lock-TIMEOUT path in a
 # second instead of the shipped ten. As first written it accepted any positive

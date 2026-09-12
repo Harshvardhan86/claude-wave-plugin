@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-tier-cells.sh — AC-344 (finding 4, fix round 3)
+# tests/cases/data-tier-cells.sh — AC-344
 #
 # data-all.sh's AC-344 check only counted 78 cells; it never compared a
 # single cell's VALUE against tests/golden/phases-tiers.tsv, so it could not

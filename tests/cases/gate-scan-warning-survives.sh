@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/gate-scan-warning-survives.sh — fix round 2, item 1.
+# tests/cases/gate-scan-warning-survives.sh — a gating scan that cannot count must warn.
 #
 # A GATING SCAN THAT DID NOT RUN MUST SAY SO. `wv_scan_count` warns W-STATE when
 # `command grep -c` gives it no count (an unreadable file, a wrapped searcher

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-artifacts-markers.sh — AC-345 (finding 4, fix round 3)
+# tests/cases/data-artifacts-markers.sh — AC-345
 #
 # Compares hooks/phases.tsv `artifact` and `marker` columns against the
 # spec section 6 hand-off table, cell by cell, for all 26 rows. Round 1/2's

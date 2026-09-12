@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/tools/mutants-lifecycle-hooks.sh [--keep]
 #
-# The mutation control for Task 10's five scripts (pre-commit-guard.sh,
+# The mutation control for the five lifecycle scripts (pre-commit-guard.sh,
 # pre-compact.sh, stop.sh, session-start.sh, user-prompt.sh) plus the wave-id
 # bound in scripts/wave-init.sh, which is the other half of session-start.sh's
 # character budget: proves the

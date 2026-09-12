@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/stop-warn-flush-on-block.sh — fix round 1, item 7.
+# tests/cases/stop-warn-flush-on-block.sh — a block still flushes queued warnings.
 #
 # A block is one JSON object on stdout, and SubagentStop has no
 # additionalContext channel to carry anything else — so `wv_block` used to

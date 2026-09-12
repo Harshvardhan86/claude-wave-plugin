@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tests/cases/init-364b-stdout-contract.sh — fix round 1, review finding 1.
+# tests/cases/init-364b-stdout-contract.sh — --if-terminal writes nothing to stdout.
 #
-# Task 8's subagent-stop.sh will call `wave-close.sh --if-terminal <PHASE>`
+# subagent-stop.sh calls `wave-close.sh --if-terminal <PHASE>`
 # from inside a hook whose stdout must carry exactly one JSON object (or
 # none from this call); a stray human-readable line would corrupt that
 # channel. Under --if-terminal, wave-close.sh must write NOTHING to stdout

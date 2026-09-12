@@ -1,5 +1,5 @@
 {
-  "ac": "AC-75 (fix round 1: the answered-false control)",
+  "ac": "AC-75 (the answered-false control)",
   "note": "the same dispatch with both flags answered FALSE: still W-COND, and the reason may still say the wave declares no design review, because now that IS what the state says. The pair 113a/116b is the whole finding: same rule, same phase, different deny, and the difference is answered-versus-unanswered.",
   "script": "pre-agent.sh",
   "seed": {

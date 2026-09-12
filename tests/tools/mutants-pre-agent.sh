@@ -82,7 +82,7 @@ git -C "$WV_TREE" init -q 2>/dev/null
 # TWO files can be mutated: this task's hook and the library it shares with every
 # other hook. That is not decoration. The `W-` neutralisation the `neutralise`
 # mutant targets was HOISTED out of pre-agent.sh into lib.sh's wv_rule_deny /
-# wv_rule_warn by the Task 9 review, and this driver kept pointing its patch at
+# wv_rule_warn, and this driver kept pointing its patch at
 # pre-agent.sh — where the anchor no longer existed. The patch therefore failed,
 # the mutant was reported NOT-APPLIED, and this driver has been exiting non-zero
 # ever since, unnoticed, because nothing ran every driver in one command until
@@ -597,7 +597,7 @@ wv_run_mutant tabcollapse  wv_body_tabcollapse  'tier-*' 'role-*' 'mode-*'
 wv_run_mutant fork         wv_body_fork         'fork-*'
 wv_run_mutant waveid       wv_body_waveid       'tag-02*'
 wv_run_mutant unknowndeny  wv_body_unknowndeny  'model-12*'
-# The neutralisation lives in lib.sh's wv_rule_deny / wv_rule_warn since the Task 9
+# The neutralisation lives in lib.sh's wv_rule_deny / wv_rule_warn since the
 # hoist, so the mutant is applied THERE. It used to be applied to pre-agent.sh,
 # where the anchor no longer existed, which reported it NOT-APPLIED on every run.
 WV_TARGET_OF[neutralise]="$WV_LIB_REL"
@@ -614,7 +614,7 @@ wv_run_mutant promptcap         wv_body_promptcap         'prompt-182*'
 # 'scope-1*', not 'scope-10*': the narrower glob never matched scope-110, this
 # rule's own negative control, so every run of this mutant produced coverage
 # artefacts alongside its real red. Widening it also exercises the interaction
-# with fix round 1 — for `ui` and `behaviour_change` the condition arm now denies
+# with the unanswered-flag rule — for `ui` and `behaviour_change` the condition arm now denies
 # the same W-SCOPE independently of this gate, so scope-109 (cr_enabled, which no
 # condition in TDE-RED's predecessor set consults) is what uniquely pins it.
 wv_run_mutant scoperemoved      wv_body_scoperemoved      'scope-1*'

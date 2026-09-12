@@ -1,5 +1,5 @@
 {
-  "ac": "AC-108 (fix round 1)",
+  "ac": "AC-108",
   "note": "ui false and behaviour_change \"unknown\": the reason names behaviour_change and the hyphenated CLI key, not the underscored state key.",
   "script": "pre-agent.sh",
   "seed": {

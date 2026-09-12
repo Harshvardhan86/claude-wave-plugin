@@ -2,7 +2,7 @@
 # tests/tools/mutants-orchestrator-rules.sh [--keep]
 #
 # The mutation control for scripts/hooks/pre-edit.sh, pre-read.sh and
-# pre-bash.sh (spec section 8.1-8.3, Task 9). Same construction as
+# pre-bash.sh (spec section 8.1-8.3). Same construction as
 # tests/tools/mutants-pre-agent.sh (read its header first) — a mutant is
 # applied to a COPY of the tree in a temp directory, never the working
 # tree, with logs outside the copied tree so the measurement cannot write
@@ -15,7 +15,7 @@
 # Eleven mutants, covering all three scripts and the shared library function
 # pre-edit.sh and pre-read.sh both call:
 #   1. the `.wave/` exemption becomes a string prefix instead of a directory one,
-#      in pre-edit.sh AND (added by Task 13) in pre-read.sh's own copy of it
+#      in pre-edit.sh AND in pre-read.sh's own copy of it
 #      directory prefix (pre-edit.sh)                    -> edit-265
 #   2. the main-session-only guard is removed             (pre-edit.sh)  -> edit-269
 #   3. the main-session-only guard is removed             (pre-read.sh)  -> read-276
@@ -28,7 +28,7 @@
 #   9. hooks/orchestrator-writable.tsv is never consulted  (pre-edit.sh)  -> edit-267a
 #  10. the shared path resolver stops resolving symlinks (`-s` instead of
 #      `-m`), so a symlink under .wave/ launders an edit   (lib.sh)       -> edit-271
-#  11. Fix round 1 (2026-09-10): the widened wrapper/env-assignment prefix
+#  11. The widened wrapper/env-assignment prefix (2026-09-10)
 #      group is reverted to the original bare anchor, so `sudo make` /
 #      `CI=1 npm test` / leading-whitespace `make` go back to silently
 #      allowed                                             (pre-bash.sh)  -> bash-fix1-*
@@ -239,7 +239,7 @@ s = s.replace(old, new)
 PY
 }
 
-# --- 11. the wrapper/env prefix group is removed (Fix round 1, 2026-09-10) --
+# --- 11. the wrapper/env prefix group is removed (2026-09-10) --
 # Reverts just the widened prefix (leading whitespace, env assignments,
 # sudo/time/nice/env wrappers) back to the original bare anchor, so a
 # controller-ruling case like `sudo make` or `CI=1 npm test` goes back to
@@ -247,7 +247,7 @@ PY
 wv_body_prefix_group_removed() { cat <<'PY'
 old = "WV_BASH_RUNNER_RE='(^|[;&|])[[:space:]]*((sudo|time|nice|env)([[:space:]]+-[^[:space:]]+)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(npx[[:space:]]+)?(jest|vitest|mocha|playwright|pytest|py\\.test|go test|cargo (test|build)|dotnet (test|build)|make|tsc|ng (build|test)|vite build|npm (test|run (build|test|e2e))|pnpm (test|build)|yarn (test|build))\\b'"
 new = "WV_BASH_RUNNER_RE='(^|[;&|][[:space:]]*)(npx[[:space:]]+)?(jest|vitest|mocha|playwright|pytest|py\\.test|go test|cargo (test|build)|dotnet (test|build)|make|tsc|ng (build|test)|vite build|npm (test|run (build|test|e2e))|pnpm (test|build)|yarn (test|build))\\b'"
-assert old in s, "anchor missing: the widened runner regex definition (Fix round 1)"
+assert old in s, "anchor missing: the widened runner regex definition"
 s = s.replace(old, new)
 PY
 }

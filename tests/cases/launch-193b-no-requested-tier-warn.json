@@ -1,6 +1,6 @@
 {
   "ac": "AC-193 (the unperformed half of the downgrade check)",
-  "note": "enforce=warn let a dispatch that named NO MODEL through (pre-agent.sh denies it with W-MODEL-MISSING under block), so post-agent.sh has no requested tier to compare the resolved model against and the downgrade check is UNPERFORMED, not passed. It says so with a W-STATE warning naming both models: silence here would read in the ledger exactly like a dispatch that was checked and found correct, which is the one thing this record must not do (progress ledger 111, Task 7 review). No W-DOWNGRADE, no deny, and the launch is still recorded.",
+  "note": "enforce=warn let a dispatch that named NO MODEL through (pre-agent.sh denies it with W-MODEL-MISSING under block), so post-agent.sh has no requested tier to compare the resolved model against and the downgrade check is UNPERFORMED, not passed. It says so with a W-STATE warning naming both models: silence here would read in the ledger exactly like a dispatch that was checked and found correct, which is the one thing this record must not do (a silent pass would look like a checked-and-correct launch). No W-DOWNGRADE, no deny, and the launch is still recorded.",
   "script": "post-agent.sh",
   "seed": {
     "state": "state/full-all-done-warn.json"

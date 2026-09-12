@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-findings-column.sh — AC-346 (finding 4, fix round 3)
+# tests/cases/data-findings-column.sh — AC-346
 #
 # BC, SEA, DS, BSEA, TEET, BTEET name their own code in the `findings`
 # column; every other row is `-`; and every `findings:<CODE>` condition

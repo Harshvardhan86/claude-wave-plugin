@@ -93,8 +93,8 @@ first_label=$(printf '%s' "$first_row" | awk -F'\t' '{print $2}')
 has_readme=$(command grep -c '^README.md$' hooks/orchestrator-writable.tsv || echo 0)
 [ "$has_readme" -gt 0 ] || fail "orchestrator-writable.tsv should contain README.md"
 
-# AC-353: reasons.tsv had 31 rules before Task 10 added W-SESSION,
-# W-REMINDER and W-SCORECARD (session-start.sh / user-prompt.sh / stop.sh).
+# AC-353: reasons.tsv gained W-SESSION, W-REMINDER and W-SCORECARD
+# with the session-start / user-prompt / stop hooks (now 37 rules).
 rule_count=$(command grep -v '^#' hooks/reasons.tsv | command grep -v '^rule_id' | wc -l)
 [ "$rule_count" = "37" ] || fail "reasons.tsv should have 37 rules, got $rule_count"
 

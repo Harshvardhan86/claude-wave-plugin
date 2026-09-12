@@ -8,7 +8,7 @@
 # failure the framework's own rule exists to prevent. So the library has to
 # carry `"unknown"` through as a first-class value — neither rejected as
 # unreadable state nor flattened to a boolean — and enforcement has to keep
-# working while it is set, because Task 6 denies a `TDE-RED` dispatch precisely
+# working while it is set, because W-SCOPE denies a `TDE-RED` dispatch precisely
 # ON that value.
 #
 # `tests/fixtures/state/valid-full.json` keeps the explicit-`false` shape; this

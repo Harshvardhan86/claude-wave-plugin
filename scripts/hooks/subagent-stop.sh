@@ -29,7 +29,7 @@
 #   -> transcript stats + modal tier    (W-TAINT warning at most; the expensive
 #                                        read, deliberately before the lock)
 #   -> take .wave/lock ONCE for the whole write phase, and inside it:
-#        drain the ledger spool  (so Task 6's budget gate sees a spooled line)
+#        drain the ledger spool  (so the W-BUDGET gate sees a spooled line)
 #        the stop record and the round counter
 #        artifact + marker, closing role, last one out  (W-ARTIFACT / W-MARKER)
 #        the phase record, then the ledger line
@@ -1000,7 +1000,7 @@ wv_main() {
     # Re-read after waiting: background launch writes may have won this lock.
     if ! wv_state_read; then wv_lock_release; return 0; fi
     # A line an earlier hook could not write reaches the ledger before this one
-    # reads it for the dedupe, and before Task 6's budget gate sums it.
+    # reads it for the dedupe, and before the W-BUDGET gate sums it.
     wv_ledger_drain_locked
   else
     wv_warn W-STATE "$(wv_lock_detail), so no phase was judged and no round was counted for agent $WV_STOP_AGENT; its ledger line is spooled instead"

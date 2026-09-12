@@ -99,8 +99,8 @@ present (a case does not need to assert every field).
   the rule's **negative control**.
 - **`expect.reason_template`** — asserts the rendered reason starts with
   `[<rule>] ` (Interfaces: every `reasons.tsv` template starts that way).
-  Byte-exact template comparison against `hooks/reasons.tsv` is Task 13's
-  job, not this harness's.
+  Byte-exact template comparison against `hooks/reasons.tsv` is
+  `tests/tools/reason-corpus.sh`'s job, not this harness's.
 - **`expect.reason_contains`** — a list of **literal** substrings the rendered
   reason (or, for a warn, the `additionalContext`) must contain. Literal, not
   glob or regex, because a reason quotes the offending dispatch and that text
@@ -151,8 +151,8 @@ covers `.sh` cases too.
 
 The id universe is the union of every `expect.rule` / `expect.negative_control_for`
 value declared anywhere under `tests/cases/`, plus every id in
-`hooks/reasons.tsv` when that file exists (it does not yet — Task 3 creates
-it; until then the file simply contributes nothing to the universe). For
+`hooks/reasons.tsv` when that file exists (it ships with the plugin; a
+missing file contributes nothing to the universe). For
 every id in that universe, at least one case must declare it via
 `expect.rule` (a positive case) **and** at least one case must declare it via
 `expect.negative_control_for` (a negative control on a neighbouring valid
@@ -165,15 +165,14 @@ input). `tests/run.sh` fails, naming the id, when either is missing
 placeholder used only by this task's own smoke test
 (`tests/fixtures/fake-hook.sh` only ever looks at `status`). The real,
 schema-complete state fixtures (`valid-full`, `invalid`, `schema2`, `no-mode`,
-`enforce-typo`, `no-enforce`, `closed`) are added in Task 2 once
-`scripts/hooks/lib.sh` defines the schema they exercise.
+`enforce-typo`, `no-enforce`, `closed`) exercise the schema
+`scripts/hooks/lib.sh` defines.
 
 `tests/fixtures/transcripts/example.jsonl` is one line in the shape measured
 in spec section 2 (`type":"assistant"`, `message.model`, `message.usage.{input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens}`),
-kept only to document that shape. It is not read by anything yet — Task 8
-adds the real scenario fixtures (`all-opus`, `one-haiku`, `all-haiku`,
-`zero-assistant`, `model-less`, a truncated final line, an over-cap file)
-that `wv_transcript_stats` is tested against.
+kept only to document that shape. Scenario fixtures (`all-opus`, `one-haiku`,
+`all-haiku`, `zero-assistant`, `model-less`, a truncated final line, an
+over-cap file) are what `wv_transcript_stats` is tested against.
 
 ## Self-check cases (`tests/cases/_selfcheck/`)
 
