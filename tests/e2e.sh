@@ -114,7 +114,7 @@ WV_E2E_ASSERTIONS=(
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
   "scenario-f (AC-385): /<plugin>:wave-start \"x\" run WITHOUT --dangerously-skip-permissions needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json"
-  "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, waits, then completes without orphans"
+  "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, then either waits with timeout 30 bash -c 'sleep 25' (AD done, no orphans) or stops while the task still runs (AD failed, bg_orphaned ids match); ledger phase AD / role executor"
 )
 
 wv_e2e_print_skip_banner() {
@@ -799,14 +799,16 @@ wv_e2e_scenario_f() {
   printf '  permission_denials: 0; %s/.wave/state.json produced (wave=%s)\n' "$d" "$wave_val"
 }
 
-# Scenario (g): one real background-task stop block, then clean completion.
+# Scenario (g): one real background-task stop block, then either a sanctioned
+# wait (AD done, no orphans) or the designed second-stop orphan (AD failed).
 wv_e2e_scenario_g() {
   local name="scenario-g-background-wait" d errfile sid transcript agent child count
+  local tid sidecar shape outcome ledger
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
   errfile="$d/.e2e-stderr.log"
-  local prompt='Use the Agent tool exactly once with subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] background wait probe", prompt="Use Bash exactly once with command sleep 20 and run_in_background true. Immediately return DONE without waiting or calling any other tool first. If a stop hook blocks that return, run sleep 25 in foreground using Bash, then return DONE. Do not start another background task, use Monitor, or repeat the hook message." Wait for this subagent to finish, then reply DONE. Do not perform other work.'
+  local prompt='Use the Agent tool exactly once with subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] background wait probe", prompt="Use Bash exactly once with command sleep 20 and run_in_background true. Immediately return DONE without waiting or calling any other tool first. If a stop hook blocks that return, run exactly timeout 30 bash -c '\''sleep 25'\'' once in the foreground using Bash, then stop. Do not start another background task, use Monitor, or repeat the hook message." Wait for this subagent to finish, then reply DONE. Do not perform other work.'
   wv_e2e_run_session "$d" "$prompt" 120 "$errfile"
   if [ -z "$WV_E2E_JSON" ]; then
     if wv_e2e_looks_like_auth_error "$(cat "$errfile" 2>/dev/null)"; then
@@ -824,13 +826,20 @@ wv_e2e_scenario_g() {
   [ -n "$sid" ] || { wv_sc_fail "$name" "missing session id"; return; }
   transcript="$(wv_e2e_find_transcript "$sid")"
   [ -n "$transcript" ] || { wv_sc_fail "$name" "no transcript for $sid"; return; }
-  if ! jq -e '(.bg_tasks | length) == 1 and
-      ([.bg_tasks[] | length] == [1]) and .phases.AD.status == "done" and
-      ((.bg_orphaned // {}) | length) == 0' "$d/.wave/state.json" >/dev/null 2>&1; then
-    wv_sc_fail "$name" "expected one recorded task, completed AD and no orphans"
+  if ! jq -e '(.bg_tasks | length) == 1 and ([.bg_tasks[] | length] == [1])' \
+      "$d/.wave/state.json" >/dev/null 2>&1; then
+    wv_sc_fail "$name" "expected exactly one agent with one recorded background task id"
     return
   fi
   agent="$(jq -r '.bg_tasks | keys[0]' "$d/.wave/state.json")"
+  tid="$(jq -r --arg agent "$agent" '.bg_tasks[$agent][0]' "$d/.wave/state.json")"
+  if ! jq -e --arg agent "$agent" --arg tid "$tid" '
+      (.phases.AD.status == "done" and ((.bg_orphaned // {}) | length) == 0)
+      or (.phases.AD.status == "failed" and .bg_orphaned[$agent].ids == [$tid])
+    ' "$d/.wave/state.json" >/dev/null 2>&1; then
+    wv_sc_fail "$name" "AD must be done with no orphans, or failed with bg_orphaned[$agent].ids == [$tid]"
+    return
+  fi
   if ! jq -e --arg agent "$agent" '.bg_blocked[$agent] == true' "$d/.wave/state.json" >/dev/null 2>&1; then
     wv_sc_fail "$name" "no durable background-wait latch for $agent"
     return
@@ -868,8 +877,27 @@ wv_e2e_scenario_g() {
     wv_sc_fail "$name" "expected one complete background-wait reason with remedy, found ${count:-unreadable} in $child"
     return
   fi
+  ledger="$d/.wave/ledger.jsonl"
+  if ! jq -s -e --arg agent "$agent" '
+      map(select(.agent == $agent))
+      | length == 1 and .[0].phase == "AD" and .[0].role == "executor"
+    ' "$ledger" >/dev/null 2>&1; then
+    wv_sc_fail "$name" "ledger line for $agent must carry phase AD and role executor, never unknown"
+    return
+  fi
+  sidecar="${transcript%.jsonl}/subagents/agent-${agent}.meta.json"
+  shape="absent"
+  if [ -f "$sidecar" ]; then
+    shape="$(jq -r '.requestShape // "absent"' "$sidecar")"
+  fi
+  if jq -e '.phases.AD.status == "done"' "$d/.wave/state.json" >/dev/null 2>&1; then
+    outcome="waited/clean"
+  else
+    outcome="orphaned"
+  fi
   wv_sc_pass "$name"
-  printf '  session: %s (%s)\n  stop-block feedback records: %s; AD done; no orphans\n' "$sid" "$child" "$count"
+  printf '  session: %s (%s)\n  stop-block feedback records: %s; outcome=%s requestShape=%s\n' \
+    "$sid" "$child" "$count" "$outcome" "$shape"
 }
 
 for wv_scenario in a b c d e f g; do
