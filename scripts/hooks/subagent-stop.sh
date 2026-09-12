@@ -859,6 +859,40 @@ wv_bg_stop_metadata() {
       end' 2>/dev/null
 }
 
+WV_STOP_RECOVERED=0
+# Copied byte-for-byte from post-agent.sh's WV_TAG_RE (which is itself a copy of
+# pre-agent.sh's grammar, for the reason stated in post-agent.sh's header).
+WV_STOP_TAG_RE='^\[W:([^] ]+) P:([A-Z0-9-]+) R:(lead|executor|reviewer|scanner|writer)\]'
+
+wv_recover_launch() {
+  # wv_recover_launch <agent transcript path> — recovers phase, role and the
+  # requested model when `state.active` holds no record for this agent YET.
+  #
+  # post-agent.sh is wired to PostToolUse(Agent) and is the only writer of
+  # state.active for a background dispatch. For a FOREGROUND Agent dispatch
+  # the client delivers PostToolUse only when the Task returns — after every
+  # SubagentStop of that agent — so the join would otherwise fall to
+  # "unknown" and no phase would be judged. The client writes
+  # <agent transcript>.meta.json beside the transcript at launch.
+  #
+  # Fails closed: no sidecar, no description, or a description with no tag
+  # leaves every WV_STOP_* default in place and the caller warns as today.
+  local path="${1:-}" meta desc model
+  WV_STOP_RECOVERED=0
+  [ -n "$path" ] || return 1
+  meta="${path%.jsonl}.meta.json"
+  [ -f "$meta" ] || return 1
+  desc="$(jq -r 'if (.description | type) == "string" then .description else "" end' "$meta" 2>/dev/null)"
+  [ -n "$desc" ] || return 1
+  [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1
+  WV_STOP_PHASE="${BASH_REMATCH[2]}"
+  WV_STOP_ROLE="${BASH_REMATCH[3]}"
+  model="$(jq -r 'if (.model | type) == "string" then .model else "" end' "$meta" 2>/dev/null)"
+  [ -n "$model" ] && WV_STOP_REQ="$model"
+  WV_STOP_RECOVERED=1
+  return 0
+}
+
 wv_main() {
   wv_parse_stdin || return 0
   # Wired to SubagentStop only. Any other event has not been measured by this
@@ -911,7 +945,11 @@ wv_main() {
         WV_STOP_PHASE="SOLO"
         ;;
       *)
-        wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT found no state.active record to join, so post-agent.sh did not run for its launch (or the dispatch predates this wave); its spend is ledgered under phase \"unknown\" and no phase was judged"
+        if wv_recover_launch "$transcript"; then
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT ran before post-agent.sh recorded its launch — a foreground Agent dispatch delivers PostToolUse only when the Task returns — so its phase ($WV_STOP_PHASE), role ($WV_STOP_ROLE) and requested model ($WV_STOP_REQ) were recovered from the dispatch tag in $(wv_rel "${transcript%.jsonl}.meta.json"); the resolved model could not be recovered and is ledgered as \"unknown\""
+        else
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT found no state.active record to join, so post-agent.sh did not run for its launch (or the dispatch predates this wave); its spend is ledgered under phase \"unknown\" and no phase was judged"
+        fi
         ;;
     esac
   fi
@@ -1104,12 +1142,19 @@ wv_main() {
   # Only for an agent there IS a launch record for: writing `active[<id>]` for an
   # agent nothing launched would invent the phantom entry post-agent.sh refuses to
   # invent (AC-199), and it would be a record of a phase and role nobody knows.
-  if [ "$have_lock" = "1" ] && [ "$WV_STOP_JOINED" = "1" ] && [ "$joined_status" != "stopped" ]; then
+  # A RECOVERED launch is not a phantom: the phase and role come from the client's
+  # own launch record on disk, so it writes the same stop record a joined one does
+  # (post-agent.sh, which runs after it in this ordering, merges rather than
+  # overwrites — see its wv_write_active).
+  if [ "$have_lock" = "1" ] \
+    && { [ "$WV_STOP_JOINED" = "1" ] || [ "$WV_STOP_RECOVERED" = "1" ]; } \
+    && [ "$joined_status" != "stopped" ]; then
     local id_lit ts_lit upd
     id_lit="$(wv_jq_str "$WV_STOP_AGENT")"
     ts_lit="$(wv_jq_str "$ts")"
-    upd="$(printf '.active[%s] = ((.active[%s] // {}) + {status: "stopped", stopped: %s})' \
-      "$id_lit" "$id_lit" "$ts_lit")"
+    upd="$(printf '.active[%s] = ((.active[%s] // {phase: %s, role: %s, requested_model: %s, resolved_model: "unknown"}) + {status: "stopped", stopped: %s})' \
+      "$id_lit" "$id_lit" "$(wv_jq_str "$WV_STOP_PHASE")" "$(wv_jq_str "$WV_STOP_ROLE")" \
+      "$(wv_jq_str "$WV_STOP_REQ")" "$ts_lit")"
     if [ "$WV_STOP_GATED" = "1" ]; then
       local key_lit phase_lit role_lit
       key_lit="$(wv_jq_str "$WV_STOP_PHASE/$WV_STOP_ROLE")"

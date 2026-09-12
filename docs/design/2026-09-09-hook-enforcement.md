@@ -147,7 +147,10 @@ intersection of recorded ids with running shell rows records their phase and
 ids in `bg_orphaned`; this record is retained across
 replays. Warn mode records orphan ids immediately without setting the latch.
 All writes use `wv_state_update` under the state lock. The maps live outside
-`active`, whose launch records can be replaced. The existing single per-agent
+`active`, whose launch records can be replaced. For a foreground Agent
+dispatch, `SubagentStop` may write `state.active[<id>]` first (recovered from
+the launch sidecar); `post-agent.sh` later merges into that row and must not
+reopen a `stopped` record. The existing single per-agent
 ledger line gains `"bg_orphaned":["<id>"]`, not a separate line or a new ledger
 syntax; `warn` remains an array of rendered reasons. There is no `leftovers`
 state key: the checkpoint is the inventory authority. Wave lifetime is unchanged.
@@ -785,6 +788,10 @@ Changed (minimal):
   on the integer part (`sleep 300.5` passes), not fractional seconds.
   `sleep -- 500` and shell options before `-c`, such as
   `bash --norc -c 'while true; do sleep 1; done'`, are outside the matcher.
+- The launch sidecar path `<agent_transcript_path%.jsonl>.meta.json` and its
+  `description` / `model` fields are a client convention verified on 2.1.268;
+  absence or an untagged description fails closed to phase `unknown` plus a
+  warning.
 - No leftover hook can kill, signal or reap a process. Its canonical cwd scan
   uses exact root equality; subdirectory and worktree cwd are spared and printed
   (at most 20 spared entries sorted by pid, plus `spared-count` and `… +N more`;
@@ -882,6 +889,11 @@ v0.2.1 probe and contract audit (2026-09-11, client 2.1.268):
   §8.8 background-task recorder; `pre-monitor.sh` is the §8.9 Monitor identity
   gate. Those entry points and their reason rows are enforced in 0.2.1, not
   reserved silent stubs.
+- 2026-09-12: a foreground Agent dispatch delivers PostToolUse only when the
+  Task returns, after every SubagentStop. `subagent-stop.sh` recovers
+  phase/role/requested model from the launch sidecar when `state.active` has
+  no row; `post-agent.sh` merges into an existing row and does not reopen
+  `status:"stopped"`. Absence of the sidecar fails closed to `"unknown"`.
 
 ## 15. Decisions the user may want to revisit
 

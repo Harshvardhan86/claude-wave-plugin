@@ -108,7 +108,7 @@ WV_BASE_SHA=""
 
 declare -A WV_PRISTINE_OF=()
 declare -A WV_SHA_OF=()
-for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh; do
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh scripts/hooks/post-agent.sh; do
   cp "$WV_TREE/$rel" "$WV_TMP/$(basename "$rel").pristine" || exit 1
   WV_PRISTINE_OF["$rel"]="$WV_TMP/$(basename "$rel").pristine"
   WV_SHA_OF["$rel"]="$(sha256sum < "$WV_TMP/$(basename "$rel").pristine" | cut -d' ' -f1)"
@@ -549,6 +549,23 @@ wv_run_mutant bgflagonlyorphan wv_body_bgflagonlyorphan "$H" 'bgwait-409*'
 WV_EXPECT[bgrecordanyagent]=bgwait-411-no-agentid-no-record
 wv_run_mutant bgrecordanyagent wv_body_bgrecordanyagent scripts/hooks/post-bash.sh 'bgwait-411*'
 
+wv_body_sidecartagdropped() { cat <<'PYBODY'
+old = '  [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1'
+assert old in s
+s = s.replace(old, '  return 1', 1)
+PYBODY
+}
+wv_body_activemergeremoved() { cat <<'PYBODY'
+old = '.active[%s] = ({phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s} + ((.active[%s] // {}) | with_entries(select(.key == "status" or .key == "stopped"))))'
+assert old in s
+s = s.replace(old, '.active[%s] = {phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s}', 1)
+PYBODY
+}
+WV_EXPECT[sidecartagdropped]=bgwait-434-foreground-unjoined
+WV_EXPECT[activemergeremoved]=bgwait-434-foreground-unjoined
+wv_run_mutant sidecartagdropped wv_body_sidecartagdropped "$H" 'bgwait-434*'
+wv_run_mutant activemergeremoved wv_body_activemergeremoved scripts/hooks/post-agent.sh 'bgwait-434*'
+
 # --- the table --------------------------------------------------------------
 
 printf '\n%-15s %-11s %-33s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'
@@ -562,7 +579,7 @@ done
 printf '%s\n' '-----------------------------------------------------------------------------------------'
 
 wv_restored=yes
-for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh; do
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh scripts/hooks/post-agent.sh; do
   if [ "$(sha256sum < "$WV_TREE/$rel" | cut -d' ' -f1)" != "${WV_SHA_OF[$rel]}" ]; then
     printf 'NOT RESTORED: %s\n' "$rel" >&2
     wv_restored=NO

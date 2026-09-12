@@ -203,12 +203,20 @@ wv_write_active() {
   # absent (AC-18): jq path assignment auto-vivifies missing intermediate
   # objects, so `.active[$id] = {...}` on a state with no `active` key at
   # all produces one rather than erroring.
+  #
+  # AND IT NEVER RE-OPENS A CLOSED RECORD. For a FOREGROUND Agent dispatch this
+  # hook runs AFTER the agent's SubagentStop (PostToolUse is delivered when the
+  # Task returns), so a plain assignment would overwrite `status:"stopped"` with
+  # `"launched"` and leave the wave holding a running agent that has already
+  # stopped. Any `status`/`stopped` already on the record therefore WINS; on the
+  # ordinary (background) ordering there is no record yet and nothing is kept, so
+  # this is a no-op for every previously measured shape.
   local id="$1" phase="$2" role="$3" reqm="$4" resm="$5" tuid="$6" status="$7"
   local filter
-  filter="$(printf '.active[%s] = {phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s}' \
+  filter="$(printf '.active[%s] = ({phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s} + ((.active[%s] // {}) | with_entries(select(.key == "status" or .key == "stopped"))))' \
     "$(wv_jq_str "$id")" "$(wv_jq_str "$phase")" "$(wv_jq_str "$role")" \
     "$(wv_jq_str "$reqm")" "$(wv_jq_str "$resm")" "$(wv_jq_str "$tuid")" \
-    "$(wv_jq_str "$status")")"
+    "$(wv_jq_str "$status")" "$(wv_jq_str "$id")")"
   wv_state_update "$filter"
 }
 
