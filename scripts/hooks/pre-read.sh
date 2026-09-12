@@ -11,7 +11,7 @@
 # are both silent no-ops — see pre-edit.sh's header, which this script
 # mirrors, and lib.sh's wv_resolve_input_path for the shared path logic.
 #
-# Measured (Task 9 probe, 2026-09-10; see tests/fixtures/measured-keys.txt):
+# Measured (live probe, 2026-09-10; see tests/fixtures/measured-keys.txt):
 # `Read` carries `tool_input.file_path`, always sent as an absolute path.
 
 set -u

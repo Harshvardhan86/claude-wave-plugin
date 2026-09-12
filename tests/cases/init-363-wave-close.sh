@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/cases/init-363-wave-close.sh — AC-363 (the wave-close.sh half; the
-# eleven-script silent-no-op half of this AC is exercised once those scripts
+# thirteen-script silent-no-op half of this AC is exercised once those scripts
 # exist, per tests/cases/README.md's per-script conventions in later tasks).
 #
 # wave-close.sh sets status:"closed" and ended in one write.

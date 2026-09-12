@@ -16,8 +16,7 @@
 # number of env-var assignments (`CI=1 npm test`), and any of the wrapper
 # commands `sudo`/`time`/`nice`/`env` (each optionally carrying its own
 # dash-flags, e.g. `sudo -E`) allowed in between — optionally through
-# `npx`, and ending at a word boundary. CONTROLLER RULING (Fix round 1,
-# 2026-09-10): the original anchor admitted none of that, so `sudo make`,
+# `npx`, and ending at a word boundary. Measured on 2026-09-10: the original anchor admitted none of that, so `sudo make`,
 # `CI=1 npm test` and ` make` (leading whitespace) were all silently
 # allowed; widened per the ruling to close that gap while keeping the
 # lexical bound intact — a wrapper/env token must itself look like one

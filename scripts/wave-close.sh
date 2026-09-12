@@ -6,7 +6,7 @@
 #   wave-close.sh --if-terminal <PHASE> close only if <PHASE> is the active
 #                                        mode's terminal phase (AC-364); a
 #                                        silent no-op otherwise, so a future
-#                                        subagent-stop.sh (Task 8) can call
+#                                        subagent-stop.sh can call
 #                                        this on every phase completion
 #                                        without judging terminality itself.
 #
@@ -20,7 +20,7 @@
 # is not consulted in solo mode at all), so --if-terminal is always a no-op
 # there.
 #
-# STDOUT CONTRACT for Task 8 (subagent-stop.sh): under --if-terminal, this
+# STDOUT CONTRACT for subagent-stop.sh: under --if-terminal, this
 # script writes NOTHING to stdout — on a match, a no-match, or an inactive
 # wave alike — only to stderr. subagent-stop.sh is a hook whose stdout must
 # carry exactly one JSON object (or none at all), so a plain human line

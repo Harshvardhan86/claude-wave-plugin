@@ -24,7 +24,7 @@ if run_all_thirteen closed; then
   printf 'RAN allscripts-013 closed scripts=13 decision=silent\n' >> "$log"
 else
   printf 'RAN allscripts-013 closed scripts=partial decision=silent\n' >> "$log"
-  printf 'ASSERT FAIL: closed leg: %s\n' "$WV_ELEVEN_FAILURES" >&2
+  printf 'ASSERT FAIL: closed leg: %s\n' "$WV_THIRTEEN_FAILURES" >&2
   rc=1
 fi
 
@@ -32,7 +32,7 @@ if run_all_thirteen active; then
   printf 'RAN allscripts-013 active scripts=13 decision=fires\n' >> "$log"
 else
   printf 'RAN allscripts-013 active scripts=partial decision=fires\n' >> "$log"
-  printf 'ASSERT FAIL: active leg: %s\n' "$WV_ELEVEN_FAILURES" >&2
+  printf 'ASSERT FAIL: active leg: %s\n' "$WV_THIRTEEN_FAILURES" >&2
   rc=1
 fi
 

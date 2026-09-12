@@ -15,7 +15,7 @@
 # subagent (stdin carries `agent_id`) are both silent no-ops: subagents
 # implement, and only the main session is gated.
 #
-# Measured (Task 9 probe against a live 2.1.266 session, 2026-09-10; see
+# Measured (Live probe against a live 2.1.266 session, 2026-09-10; see
 # tests/fixtures/measured-keys.txt): Edit/Write carry `tool_input.file_path`,
 # always sent as an absolute path — but `NotebookEdit` carries
 # `tool_input.notebook_path` instead, NOT `file_path`. The plan brief's

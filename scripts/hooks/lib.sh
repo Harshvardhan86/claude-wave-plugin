@@ -1095,7 +1095,7 @@ wv_block() {
 }
 
 # ---------------------------------------------------------------------------
-# 10. The emit choke point, hoisted from pre-agent.sh (Task 9): every one of
+# 10. The emit choke point, hoisted from pre-agent.sh: every one of
 #     pre-agent.sh, pre-edit.sh, pre-read.sh and pre-bash.sh now calls a
 #     rule through here rather than through wv_deny / wv_warn directly, so
 #     there is exactly one place that neutralises `W-` inside a caller's
@@ -1142,7 +1142,7 @@ wv_rule_warn() {
 }
 
 # ---------------------------------------------------------------------------
-# 11. Phase-order and checkpoint helpers (Task 10), shared by
+# 11. Phase-order and checkpoint helpers, shared by
 #     session-start.sh, user-prompt.sh and pre-compact.sh.
 #
 # These are a MINIMAL, READ-ONLY, ADVISORY-ONLY port of pre-agent.sh's
@@ -1154,7 +1154,7 @@ wv_rule_warn() {
 # separate W-ARTIFACT / W-MARKER / W-SCOPE deny: nothing here ever denies
 # anything, so there is no reason to distinguish "skip" from "cannot tell".
 #
-# Task 10 does NOT source pre-agent.sh for this — sourcing it would run its
+# The checkpoint helpers do NOT source pre-agent.sh for this — sourcing it would run its
 # entire PreToolUse(Agent) rule chain against whatever event is live and then
 # `exit 0` before this file's caller ran another line, the same reason
 # subagent-stop.sh gives for not sourcing it either. hooks/phases.tsv is read

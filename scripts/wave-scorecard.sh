@@ -34,7 +34,7 @@
 #     gate can never quietly disagree.
 #   - "Rework count" is rounds - 1 for that phase/role (state.json's
 #     rounds["<phase>/<role>"], read verbatim from lib.sh's own key shape):
-#     round 1 is the first attempt, not yet a rework: a phase/role that ran
+#     the first round is the initial attempt, not yet a rework: a phase/role that ran
 #     once shows rework 0, one that had to run twice shows rework 1.
 set -u
 

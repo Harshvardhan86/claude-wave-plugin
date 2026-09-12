@@ -628,11 +628,11 @@ _wv_thirteen_stdin() {
   jq -c '.stdin' "$WV_TESTS_DIR/cases/$fixture"
 }
 
-WV_ELEVEN_FAILURES=""
+WV_THIRTEEN_FAILURES=""
 
 run_all_thirteen() {
   # run_all_thirteen <scenario> -> 0 if all thirteen scripts behaved as the
-  # scenario requires, 1 otherwise (WV_ELEVEN_FAILURES then names which and
+  # scenario requires, 1 otherwise (WV_THIRTEEN_FAILURES then names which and
   # why). Every script gets its own fresh mkproj() so one script's state
   # write can never leak into the next script's run. <scenario>:
   #
@@ -651,7 +651,7 @@ run_all_thirteen() {
   #   nonjson-stdin      active state+seed, "not json at all" stdin -> silent
   #                      (AC-31).
   local scenario="$1"
-  WV_ELEVEN_FAILURES=""
+  WV_THIRTEEN_FAILURES=""
   local script n=0
 
   for script in $(_wv_thirteen_scripts); do
@@ -691,7 +691,7 @@ run_all_thirteen() {
         stdin="not json at all"
         ;;
       *)
-        WV_ELEVEN_FAILURES="unknown scenario: $scenario"
+        WV_THIRTEEN_FAILURES="unknown scenario: $scenario"
         return 1
         ;;
     esac
@@ -721,7 +721,7 @@ run_all_thirteen() {
         if [ -z "$out" ] && [ -z "$err" ] && jq -e ' .bg_tasks.a1 == ["b2emx28v6"]' "$proj/.wave/state.json" >/dev/null 2>&1; then fired=1; fi
       fi
       if [ "$rc" != "0" ] || [ "$fired" != "1" ]; then
-        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script(active-did-not-fire: exit=$rc stdout='$out' stderr='$err')"
+        WV_THIRTEEN_FAILURES="$WV_THIRTEEN_FAILURES $script(active-did-not-fire: exit=$rc stdout='$out' stderr='$err')"
       fi
     elif [ "$scenario" = "empty-stdin" ] || [ "$scenario" = "nonjson-stdin" ]; then
       # Global Constraint 4 ("jq absent -> fail open ... The same applies to
@@ -743,23 +743,23 @@ run_all_thirteen() {
         allowed='wave-plugin: hook stdin was not a JSON object; nothing was measured, allowing.'
       fi
       if [ "$rc" != "0" ] || [ -n "$out" ]; then
-        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-not-silent: exit=$rc stdout='$out')"
+        WV_THIRTEEN_FAILURES="$WV_THIRTEEN_FAILURES $script($scenario-not-silent: exit=$rc stdout='$out')"
       elif [ -n "$err" ] && [ "$err" != "$allowed" ]; then
-        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-unexpected-stderr: want empty or '$allowed', got '$err')"
+        WV_THIRTEEN_FAILURES="$WV_THIRTEEN_FAILURES $script($scenario-unexpected-stderr: want empty or '$allowed', got '$err')"
       fi
       # Also: no partial state write. A $proj/.wave/state.json newer than
       # the one seed_state wrote, or any stray tmp file under .wave/, is a
       # partial write this scenario must never produce.
       if find "$proj/.wave" -maxdepth 1 -name '.state-*' -o -name '*.tmp' 2>/dev/null | command grep -q .; then
-        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-partial-write: a temp state file was left under .wave/)"
+        WV_THIRTEEN_FAILURES="$WV_THIRTEEN_FAILURES $script($scenario-partial-write: a temp state file was left under .wave/)"
       fi
     else
       if [ "$rc" != "0" ] || [ -n "$out" ] || [ -n "$err" ]; then
-        WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES $script($scenario-not-silent: exit=$rc stdout='$out' stderr='$err')"
+        WV_THIRTEEN_FAILURES="$WV_THIRTEEN_FAILURES $script($scenario-not-silent: exit=$rc stdout='$out' stderr='$err')"
       fi
     fi
   done
 
-  [ "$n" -eq 13 ] || WV_ELEVEN_FAILURES="$WV_ELEVEN_FAILURES incomplete-sweep:ran=$n"
-  [ -z "$WV_ELEVEN_FAILURES" ]
+  [ "$n" -eq 13 ] || WV_THIRTEEN_FAILURES="$WV_THIRTEEN_FAILURES incomplete-sweep:ran=$n"
+  [ -z "$WV_THIRTEEN_FAILURES" ]
 }

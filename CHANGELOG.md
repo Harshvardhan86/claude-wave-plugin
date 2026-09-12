@@ -12,11 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **W-BGWAIT:** a full/demo subagent returning with recorded background Bash work
   still running is blocked once; a later latched stop records orphans and fails
   the phase. Wait with a bounded foreground command or stop the task before returning.
-- **W-POLL:** full/demo Bash denies unbounded polling loops and bare sleeps over
-  300 seconds; subagents cannot use Monitor. Bound the wait with a positive
+- **W-POLL:** full/demo Bash denies lexical `while true` / `while :` loops and
+  `until` loops with sleep unless an anchored positive literal timeout wraps
+  them, plus bare sleeps over 300 seconds after unit conversion; subagents cannot use Monitor. Bound the wait with a positive
   timeout, shorten the sleep, or leave monitoring to the main session.
-- **W-LEFTOVER:** wave completion warns about remaining tasks, crons and watcher
-  processes; checkpoints and scorecards include the inventory and spared pids.
+- **W-LEFTOVER:** wave completion warns at most once per wave about remaining tasks,
+  crons and watcher processes; later Stops refresh inventory without repeating
+  the warning; checkpoints and scorecards include the inventory and spared pids.
   PreCompact also inventories, warning only on watcher evidence or scan failure.
   Inspect the inventory and finish or stop named work; hooks never kill processes.
 

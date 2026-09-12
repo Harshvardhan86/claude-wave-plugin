@@ -2,7 +2,8 @@
 # tests/cases/docs-376-readme-changelog.sh — AC-376.
 # Verify README.md and CHANGELOG.md:
 # - README carries a hooks section and 0.2.1 badge
-# - CHANGELOG has a 0.2.0 entry listing hooks layer, three modes, data files
+# - CHANGELOG has the current 0.2.1 rule contracts and preserves the historical
+#   0.2.0 entry listing the hooks layer, three modes and data files
 set -u
 
 name="${WV_CASE_NAME:-$(basename "$0" .sh)}"

@@ -22,7 +22,7 @@ if run_all_thirteen nonjson-stdin; then
   printf 'RAN allscripts-031 nonjson-stdin scripts=13 decision=silent\n' >> "$log"
 else
   printf 'RAN allscripts-031 nonjson-stdin scripts=partial decision=silent\n' >> "$log"
-  printf 'ASSERT FAIL: %s\n' "$WV_ELEVEN_FAILURES" >&2
+  printf 'ASSERT FAIL: %s\n' "$WV_THIRTEEN_FAILURES" >&2
   rc=1
 fi
 

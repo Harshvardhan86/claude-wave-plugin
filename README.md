@@ -207,8 +207,8 @@ Pass a report path and return a summary under 2,000 characters.
 v0.2.1 adds these enforced contracts:
 
 - **W-BGWAIT:** full/demo subagents must finish background Bash tasks; block once, then fail only after a prior background-wait latch; warn mode records orphans immediately.
-- **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and leave Monitor to the main session.
-- **W-LEFTOVER:** closing SubagentStop, still-active completion Stop and PreCompact inventory remaining work into checkpoint/scorecard; warn once per eligible firing, print spared pids, never kill, and preserve wave lifetime (solo included).
+- **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and gate Monitor by identity only — a subagent's Monitor call is denied, its command is never inspected, and the main session may Monitor.
+- **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
 `/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is

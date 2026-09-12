@@ -113,8 +113,8 @@ WV_E2E_ASSERTIONS=(
   "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
-  "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, waits, then completes without orphans"
   "scenario-f (AC-385): /<plugin>:wave-start \"x\" run WITHOUT --dangerously-skip-permissions needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json"
+  "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, waits, then completes without orphans"
 )
 
 wv_e2e_print_skip_banner() {
@@ -849,6 +849,23 @@ wv_e2e_scenario_g() {
     select(any(.. | strings; contains("[W-BGWAIT]")))] | length' "$child" 2>/dev/null)"
   if [ "$count" != 1 ]; then
     wv_sc_fail "$name" "expected exactly one W-BGWAIT feedback record, found ${count:-unreadable} in $child"
+    return
+  fi
+  local template prefix remedy
+  template="$(awk -F '\t' '$1 == "W-BGWAIT" {print $3}' "$WV_REPO_ROOT/hooks/reasons.tsv")"
+  prefix="${template%%'%s'*}"
+  remedy="${template#*'%s'}"
+  if [ -z "$prefix" ] || [ "$prefix" = "$template" ] || [[ "$remedy" != '; remedy:'* ]]; then
+    wv_sc_fail "$name" "could not read the background-wait reason prefix and remedy"
+    return
+  fi
+  # Require both literal template segments in the same feedback string. A tag
+  # alone, a changed leading phrase or a missing remedy cannot pass this proof.
+  count="$(jq -s --arg prefix "$prefix" --arg remedy "$remedy" '
+    [.[] | select(.type == "user" or .type == "system") |
+      select(any(.. | strings; contains($prefix) and contains($remedy)))] | length' "$child" 2>/dev/null)"
+  if [ "$count" != 1 ]; then
+    wv_sc_fail "$name" "expected one complete background-wait reason with remedy, found ${count:-unreadable} in $child"
     return
   fi
   wv_sc_pass "$name"

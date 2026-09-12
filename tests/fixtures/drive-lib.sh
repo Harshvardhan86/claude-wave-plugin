@@ -5,7 +5,7 @@
 # plugin, and nothing in scripts/ knows it exists. It is the `script` field of
 # every tests/cases/lib-*.{json,sh} case: it sources the library, runs the one
 # library operation named by WV_DRIVE, and exits 0 — which is how the library
-# is exercised before the eleven hook scripts that use it exist.
+# is exercised before the thirteen hook scripts that use it exist.
 #
 # Everything here is deliberately outside scripts/: an env-var-driven `jq`
 # filter is fine in a fixture and would not be fine in production code that

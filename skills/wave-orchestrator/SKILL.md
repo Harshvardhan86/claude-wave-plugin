@@ -220,12 +220,13 @@ approved exceptions into the checkpoint text when a committable record is needed
 **v0.2.1 adds these enforced contracts:**
 
 - **W-BGWAIT:** full/demo subagents finish background Bash tasks before returning; one block creates a durable latch, only a later latched stop can fail for orphans, and warn mode records immediately.
-- **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and leave Monitor to the main session.
-- **W-LEFTOVER:** closing SubagentStop, still-active completion Stop and PreCompact write checkpoint/scorecard inventories, warn once per eligible firing and print spared pids without killing; wave lifetime stays unchanged and solo receives the inventory too.
+- **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and gate Monitor by identity only — a subagent's Monitor call is denied, its command is never inspected, and the main session may Monitor.
+- **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
 **Declared bounds.** A `Bash` source write is not gated by the edit rule. The
-build/test filter does not interpret `bash -c`, variables or aliases, or skip
-bare wrapper-flag arguments such as the `5` in `nice -n 5`. Hooks do fire inside
+W-BASH build/test filter does not interpret `bash -c`, variables or aliases, or skip
+bare wrapper-flag arguments such as the `5` in `nice -n 5`. W-POLL still inspects
+`-c` strings as described above. Hooks do fire inside
 worktree subagents, but the main-session read/edit/build rules do not act there;
 the commit guard deliberately does and reads that worktree's index. Nested
 Agent dispatch remains separately denied in full/demo mode.

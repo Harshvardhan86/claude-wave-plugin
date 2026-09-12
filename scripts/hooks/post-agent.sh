@@ -8,12 +8,12 @@
 # shape is a real launch. This script's only job is to remember it —
 # `phase`, `role`, `requested_model`, `resolved_model`, `tool_use_id` and a
 # `launched|downgraded` status — under `state.active[<agentId>]`, so that
-# `subagent-stop.sh` (Task 8) can join on it at `SubagentStop` and increment
+# `subagent-stop.sh` can join on it at `SubagentStop` and increment
 # `state.rounds`. This script never writes `state.rounds` itself (AC-201) and
 # never denies: `PostToolUse` has no deny channel at all (spec section 2), so
 # every rule below is a `wv_warn`, never a `wv_deny`.
 #
-# Interfaces this file provides (task 7 brief):
+# Interfaces this file provides:
 #   wv_tool_response_field <name>  — the tolerant three-step read of
 #     tool_response, whether the client sent it as a JSON object, a
 #     JSON-encoded string, or a string truncated mid-object.
@@ -237,7 +237,7 @@ wv_write_pending() {
 # single free-text slot made the sentence wrong for two of them: it said
 # "resolved model %s could not be mapped to a tier" when the actual finding was
 # that the launch had no status field, or no agentId, and the resolved model was
-# never in question (Task 13, reason corpus; carried from the Task 7 review).
+# never in question (verified by the reason corpus).
 # Each helper below returns only the FACT; the field name is passed beside it.
 
 wv_ru_detail_status() {

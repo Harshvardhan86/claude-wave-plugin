@@ -281,7 +281,7 @@ wv_tag_arg() {
   # the diagnosis. The template used to have a single placeholder, in the wave
   # slot of the illustrated tag, so the diagnosis had to be smuggled into the
   # wave id as `1 (R:coder is not one of the five roles)` — which reads as though
-  # the wave were called that. It has its own slot now (Task 13, reason corpus);
+  # the wave were called that. It has its own slot now (verified by the reason corpus);
   # the second argument is the wave id, and it is passed at the call site.
   if [ -n "$WV_TAG_DETAIL" ]; then
     printf '%s' "$WV_TAG_DETAIL"
@@ -1250,7 +1250,7 @@ wv_paste_gate() {
 }
 
 # ---------------------------------------------------------------------------
-# 6. The emit choke point — hoisted into lib.sh (Task 9), which pre-edit.sh,
+# 6. The emit choke point — hoisted into lib.sh, which pre-edit.sh,
 #    pre-read.sh and pre-bash.sh now share with this file. See lib.sh
 #    section 10 for wv_rule_deny / wv_rule_warn.
 # ---------------------------------------------------------------------------
