@@ -1,4 +1,4 @@
-# Hook enforcement layer — design (v0.2.0)
+# Hook enforcement layer — design (v0.2.1)
 
 Status: approved for implementation 2026-09-09; revised the same day after design
 review. Scope: add a hooks layer that enforces what v0.1.0 only described in
@@ -532,6 +532,8 @@ and refresh inventory before Stop's printed-marker or empty-ledger returns;
 Stop can fire twice with `stop_hook_active:false` in one async session.
 PreCompact writes the inventory but warns to stderr only on its own live watcher
 evidence or a failed watcher scan, not merely because its payload lacks arrays.
+A close that emits W-LEFTOVER prints that warning instead of the W-SCORECARD
+pointer; the leftover warning itself names `wave-scorecard.sh`.
 At close, no leftovers AND all sources measured means W-LEFTOVER stays silent
 (the existing clean Stop scorecard pointer remains); a failed or unavailable
 source is itself a warning condition. Unreadable cwd is not a failed source.
@@ -804,7 +806,9 @@ Changed (minimal):
   `readlink -f` and is counted unreadable, not spared. Closing inventory also
   runs when the terminal role's verdict is `failed` or `artifact-missing`.
   Stop replaces `.wave/checkpoints/leftovers-stop.md` in place; at most one
-  leftover warning per wave. Reason fields are capped at 24 characters by an
+  leftover warning per wave. A leftover close prints W-LEFTOVER instead of the
+  W-SCORECARD pointer, which the leftover warning itself carries. Reason fields
+  are capped at 24 characters by an
   inline jq `brief` (five ids), not `wv_list_cap 5 60`, so the 260-character
   template stays under the 400-character ceiling.
 - W-BGWAIT follows W-LONG-RETURN in reason precedence. A stop already consumed

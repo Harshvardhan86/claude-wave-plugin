@@ -108,7 +108,7 @@ wv_e2e_fail() {
 
 WV_E2E_ASSERTIONS=(
   "load-proof: hooks/hooks.json loads with no 'Duplicate hooks'/'Hook load failed', and this plugin's per-plugin load lines plus the aggregate registered-hook count appear in --debug-file"
-  "scenario-a (AC-380): an UNTAGGED Agent dispatch during an active wave (mode full, ui/behaviour_change/cr_enabled all false, enforce block) is denied, the transcript's tool_result carries the [W-TAG] reason, and no subagent transcript directory is created for it"
+  "scenario-a (AC-380): an UNTAGGED Agent dispatch during an active wave (mode full, ui/behaviour_change/cr_enabled all false, enforce block) is denied; the FIRST Agent tool call in the main transcript was denied and its denial text carries [W-TAG]; if a subagent transcript exists, its sidecar description matches the dispatch-tag grammar (a retry with a valid tag is allowed and reported as retried-with-tag)"
   "scenario-b (AC-381): [W:1 P:AC R:lead] dispatched with model \"haiku\" is denied, the transcript's tool_result carries the [W-TIER] reason naming \"opus\""
   "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
@@ -378,7 +378,10 @@ wv_e2e_session_id() {
 
 wv_e2e_scenario_a() {
   local name="scenario-a-untagged-denied"
-  local d sid transcript match errfile
+  local d sid transcript match errfile first denial sessdir child meta desc outcome
+  # Byte-identical to post-agent.sh / subagent-stop.sh WV_TAG_RE: a retry is
+  # allowed only when the sidecar description starts with this grammar.
+  local tag_re='^\[W:([^] ]+) P:([A-Z0-9-]+) R:(lead|executor|reviewer|scanner|writer)\]'
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
@@ -402,22 +405,57 @@ wv_e2e_scenario_a() {
   transcript="$(wv_e2e_find_transcript "$sid")"
   [ -n "$transcript" ] || { wv_sc_fail "$name" "no transcript found for session $sid"; return; }
 
-  match="$(command grep -o '\[W-TAG\][^"\\]*' "$transcript" 2>/dev/null | head -n1)"
-  if [ -z "$match" ]; then
-    wv_sc_fail "$name" "transcript $transcript carries no [W-TAG] tool_result text"
-    return
-  fi
+  first="$(jq -s -r '
+    [ .[]
+      | (.message.content // empty)
+      | select(type == "array")
+      | .[]
+      | select(.type == "tool_use" and .name == "Agent")
+      | .id
+    ] | .[0] // empty' "$transcript" 2>/dev/null)"
+  [ -n "$first" ] || { wv_sc_fail "$name" "no Agent tool_use in $transcript"; return; }
 
-  local sessdir="${transcript%.jsonl}"
-  if [ -d "$sessdir/subagents" ] && [ -n "$(ls -A "$sessdir/subagents" 2>/dev/null)" ]; then
-    wv_sc_fail "$name" "a subagent transcript exists at $sessdir/subagents despite the untagged dispatch being denied"
-    return
-  fi
+  denial="$(jq -s -r --arg id "$first" '
+    [ .[]
+      | (.message.content // empty)
+      | select(type == "array")
+      | .[]
+      | select(.type == "tool_result" and .tool_use_id == $id)
+      | .. | strings
+    ] | join("\n")' "$transcript" 2>/dev/null)"
+  case "$denial" in
+    *'[W-TAG]'*) : ;;
+    *)
+      wv_sc_fail "$name" "first Agent call ($first) was not denied with [W-TAG]: $denial"
+      return
+      ;;
+  esac
+  match="$(printf '%s\n' "$denial" | command grep -o '\[W-TAG\][^"\\]*' | head -n1)"
+
+  sessdir="${transcript%.jsonl}"
+  outcome="denied-only"
+  shopt -s nullglob
+  for child in "$sessdir/subagents/"agent-*.jsonl; do
+    meta="${child%.jsonl}.meta.json"
+    if [ ! -f "$meta" ]; then
+      wv_sc_fail "$name" "subagent transcript $child has no sidecar $meta"
+      shopt -u nullglob
+      return
+    fi
+    desc="$(jq -r 'if (.description | type) == "string" then .description else "" end' "$meta" 2>/dev/null)"
+    if ! [[ "$desc" =~ $tag_re ]]; then
+      wv_sc_fail "$name" "sidecar $meta description is not a dispatch tag: $desc"
+      shopt -u nullglob
+      return
+    fi
+    outcome="retried-with-tag"
+  done
+  shopt -u nullglob
 
   wv_sc_pass "$name"
   printf '  prompt: %s\n' "$prompt"
   printf '  session: %s (%s)\n' "$sid" "$transcript"
-  printf '  matched transcript line: %s\n' "$match"
+  printf '  matched transcript line: %s\n  outcome=%s\n' "$match" "$outcome"
 }
 
 # ---------------------------------------------------------------------------

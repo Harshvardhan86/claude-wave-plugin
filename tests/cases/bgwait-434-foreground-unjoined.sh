@@ -170,4 +170,45 @@ case "$wstate" in
     ;;
 esac
 
+# M-3: a 200-character model alias must still render under the ceiling.
+# The stored requested_model stays the full alias; only the W-STATE interpolation
+# is capped (first 40 unicode scalars plus an ellipsis).
+WV_PROJECT="$(mkproj)"
+stfile="$WV_TESTS_DIR/fixtures/state/bgwait-ad-unjoined.json"
+long_model="$(printf 'x%.0s' {1..200})"
+long_meta="$(printf '%s' "$meta" | jq -c --arg m "$long_model" '.model = $m')"
+sidecar_dir="$WV_RUN_TMP/claude-accounts/proharsh/projects/-tmp-wave-plugin-e2e-scenario-I2b/49194d68-d614-4504-8f34-520d3adeb949/subagents"
+mkdir -p "$sidecar_dir"
+printf '%s' "$long_meta" > "$sidecar_dir/agent-a1.meta.json"
+cp "$WV_TESTS_DIR/fixtures/transcripts/all-haiku.jsonl" "$sidecar_dir/agent-a1.jsonl" || exit 1
+trpath="$sidecar_dir/agent-a1.jsonl"
+mk 'del(.seed.files[".wave/tr/agent-a1.meta.json"])'
+jq --arg tr "$trpath" '.stdin.agent_transcript_path = $tr' "$c" > "$c.i2b" && mv "$c.i2b" "$c"
+run_hook subagent-stop.sh "$c" || fail 'hook run failed'
+assert_block W-BGWAIT || rc=1
+if ! jq -e --arg m "$long_model" '.active.a1.requested_model == $m' \
+    "$WV_PROJECT/.wave/state.json" >/dev/null 2>&1; then
+  fail "M-3: requested_model must stay the full 200-character alias in state"
+fi
+wstate="$(wstate_line)"
+[ -n "$wstate" ] || { fail "M-3: no W-STATE line on stderr"; wstate=""; }
+wlen="$(jq -n --arg t "$wstate" '$t | length')"
+case "$wlen" in
+  ''|*[!0-9]*) fail "M-3: could not measure W-STATE length (got '$wlen')" ;;
+  *)
+    [ "$wlen" -le "$cap" ] || \
+      fail "M-3: recovered W-STATE is $wlen characters, over the $cap bound: $wstate"
+    ;;
+esac
+brief40="$(printf '%s' "$long_model" | head -c 40)"
+case "$wstate" in
+  *"$brief40…"*) : ;;
+  *) fail "M-3: recovered W-STATE must cap the model at 40 characters plus an ellipsis: $wstate" ;;
+esac
+case "$wstate" in
+  *"${brief40}x"*)
+    fail "M-3: recovered W-STATE interpolated more than 40 model characters: $wstate"
+    ;;
+esac
+
 exit $rc

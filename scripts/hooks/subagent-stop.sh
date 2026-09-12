@@ -963,7 +963,10 @@ wv_main() {
         ;;
       *)
         if wv_recover_launch "$transcript"; then
-          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $WV_STOP_REQ from the launch sidecar beside the agent transcript; the resolved model is ledgered as \"unknown\""
+          local req_brief
+          req_brief="$(jq -n --arg m "$WV_STOP_REQ" \
+            'if ($m | length) > 40 then $m[0:40] + "…" else $m end')"
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $req_brief from the launch sidecar beside the agent transcript; the resolved model is ledgered as \"unknown\""
         elif [ "$WV_ENFORCE" = "warn" ] && wv_sidecar_wave_mismatch "$transcript"; then
           # Mirror post-agent.sh: under enforce:warn a tag for another wave is
           # still spent, so it is recorded as untagged / unknown (AC-200),

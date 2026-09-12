@@ -1414,33 +1414,44 @@ wv_lo_proc_scan() {
     total=$((total + 1))
   done
   if [ "$total" -eq 0 ]; then WV_LO_STATUS=ok; return 0; fi
-  while IFS= read -r -d '' resolved; do
-    if [[ "$resolved" =~ ^/proc/\.wave-leftover-([0-9]+)$ ]]; then
-      pid="${BASH_REMATCH[1]}"
-      markers=$((markers + 1))
-      cwd="$pending"; pending=""
-      # A `(deleted)` cwd fails `readlink -f`, leaving pending empty: skip
-      # and count unreadable, never spared or matched.
-      [ -n "$cwd" ] || continue
-      measured=$((measured + 1))
-      if [ "$cwd" = "$root" ]; then
-        cmd=""
-        if [ -r "/proc/$pid/cmdline" ]; then
-          while IFS= read -r -d '' arg; do
-            [ -z "$cmd" ] || cmd+=" "
-            cmd+="$arg"
-            [ "${#cmd}" -lt 60 ] || break
-          done < "/proc/$pid/cmdline" 2>/dev/null
+  # One readlink argv of every pid on a large host can hit E2BIG and
+  # collapse to unavailable=/proc. Keep (cwd, marker) pairs together and
+  # pass them in bounded chunks; 500 pids is well under ARG_MAX.
+  local chunk_pids=500 i=0 n="${#links[@]}" take
+  local -a chunk=()
+  while [ "$i" -lt "$n" ]; do
+    take=$((chunk_pids * 2))
+    chunk=("${links[@]:i:take}")
+    i=$((i + take))
+    pending=""
+    while IFS= read -r -d '' resolved; do
+      if [[ "$resolved" =~ ^/proc/\.wave-leftover-([0-9]+)$ ]]; then
+        pid="${BASH_REMATCH[1]}"
+        markers=$((markers + 1))
+        cwd="$pending"; pending=""
+        # A `(deleted)` cwd fails `readlink -f`, leaving pending empty: skip
+        # and count unreadable, never spared or matched.
+        [ -n "$cwd" ] || continue
+        measured=$((measured + 1))
+        if [ "$cwd" = "$root" ]; then
+          cmd=""
+          if [ -r "/proc/$pid/cmdline" ]; then
+            while IFS= read -r -d '' arg; do
+              [ -z "$cmd" ] || cmd+=" "
+              cmd+="$arg"
+              [ "${#cmd}" -lt 60 ] || break
+            done < "/proc/$pid/cmdline" 2>/dev/null
+          fi
+          cmd="${cmd:0:60}"
+          matched+=("$pid" "$cwd" "${cmd:-unavailable}")
+        else
+          spared+=("$pid" "$cwd")
         fi
-        cmd="${cmd:0:60}"
-        matched+=("$pid" "$cwd" "${cmd:-unavailable}")
       else
-        spared+=("$pid" "$cwd")
+        pending="$resolved"
       fi
-    else
-      pending="$resolved"
-    fi
-  done < <(readlink -f -z -- "${links[@]}" 2>/dev/null)
+    done < <(readlink -f -z -- "${chunk[@]}" 2>/dev/null)
+  done
   WV_LO_UNREADABLE=$((total - measured))
   WV_LO_STATUS=ok
   if [ "$markers" -eq 0 ]; then WV_LO_STATUS=unavailable

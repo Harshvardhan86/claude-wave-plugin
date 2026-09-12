@@ -96,6 +96,7 @@ wv_register_target scripts/hooks/pre-commit-guard.sh
 wv_register_target scripts/hooks/lib.sh
 wv_register_target scripts/hooks/pre-compact.sh
 wv_register_target scripts/hooks/stop.sh
+wv_register_target scripts/hooks/subagent-stop.sh
 wv_register_target scripts/hooks/user-prompt.sh
 wv_register_target scripts/hooks/session-start.sh
 # Not a hook, but the wave id's bound lives here and the banner's character budget
@@ -371,6 +372,12 @@ assert old in s
 s = s.replace(old, '    if true', 1)
 PYM
 }
+wv_body_leftoverstopwarn() { cat <<'PYM'
+old = '          if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"'
+assert old in s
+s = s.replace(old, '          if true', 1)
+PYM
+}
 wv_body_leftoverkills() { cat <<'PYM'
 old = 'if [ "$cwd" = "$root" ]; then'
 assert old in s
@@ -414,6 +421,7 @@ PYM
 WV_EXPECT[leftoverprefixcwd]=leftover-426-proc-exact-root
 WV_EXPECT[leftovercronsdropped]=leftover-428-absent-vs-empty
 WV_EXPECT[leftoverwarnremoved]=leftover-423-terminal-warn
+WV_EXPECT[leftoverstopwarn]=leftover-431-closing-subagent
 WV_EXPECT[leftoverkills]=leftover-426-proc-exact-root
 WV_EXPECT[leftoverscanclean]=leftover-427-scan-unavailable
 WV_EXPECT[leftoverprecompactsection]=leftover-429-precompact-and-solo
@@ -422,6 +430,7 @@ WV_EXPECT[leftovermarkerfirst]=leftover-430-closed-and-double-stop
 wv_run_mutant leftoverprefixcwd scripts/hooks/lib.sh wv_body_leftoverprefixcwd 'leftover-426*'
 wv_run_mutant leftovercronsdropped scripts/hooks/lib.sh wv_body_leftovercronsdropped 'leftover-428*'
 wv_run_mutant leftoverwarnremoved scripts/hooks/stop.sh wv_body_leftoverwarnremoved 'leftover-423*'
+wv_run_mutant leftoverstopwarn scripts/hooks/subagent-stop.sh wv_body_leftoverstopwarn 'leftover-431*'
 wv_run_mutant leftoverkills scripts/hooks/lib.sh wv_body_leftoverkills 'leftover-426*'
 wv_run_mutant leftoverscanclean scripts/hooks/lib.sh wv_body_leftoverscanclean 'leftover-427*'
 wv_run_mutant leftoverprecompactsection scripts/hooks/pre-compact.sh wv_body_leftoverprecompactsection 'leftover-429*'

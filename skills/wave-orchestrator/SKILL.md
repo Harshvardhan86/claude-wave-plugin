@@ -221,7 +221,7 @@ approved exceptions into the checkpoint text when a committable record is needed
 
 - **W-BGWAIT:** full/demo subagents finish background Bash tasks before returning; one block creates a durable latch, only a later latched stop can fail for orphans, and warn mode records immediately.
 - **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and gate Monitor by identity only — a subagent's Monitor call is denied, its command is never inspected, and the main session may Monitor.
-- **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
+- **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; a leftover close prints W-LEFTOVER instead of the W-SCORECARD pointer, which the leftover warning itself carries; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
 **Declared bounds.** A `Bash` source write is not gated by the edit rule. The
 W-BASH build/test filter does not interpret `bash -c`, variables or aliases, or skip

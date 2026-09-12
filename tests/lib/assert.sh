@@ -543,7 +543,8 @@ _wv_thirteen_scripts() {
 _wv_thirteen_active_state() {
   # The seed.state fixture each script's positive case (cited below) uses.
   case "$1" in
-    post-bash.sh|pre-monitor.sh) printf 'state/valid-full.json' ;;
+    post-bash.sh)       printf 'state/bgwait-ac-reviewer.json' ;;
+    pre-monitor.sh)     printf 'state/valid-full.json' ;;
     pre-agent.sh)       printf 'state/full-all-done-cr.json' ;;
     post-agent.sh)      printf 'state/full-all-done.json' ;;
     subagent-stop.sh)   printf 'state/stop-ac-reviewer.json' ;;
@@ -609,8 +610,14 @@ _wv_thirteen_stdin() {
   # never a whole shared library).
   local script="$1" fixture=""
   case "$script" in
-    # Background recording follows bgwait-410; monitoring follows poll-419.
-    post-bash.sh) printf '%s' '{"hook_event_name":"PostToolUse","tool_name":"Bash","agent_id":"a1","tool_input":{"run_in_background":true},"tool_response":{"backgroundTaskId":"b2emx28v6"}}'; return 0 ;;
+    # bgwait-410 is a .sh driver; its green recording stdin is the
+    # bgwait-411 JSON fixture plus agent_id=a1 (410's first make_case).
+    # jq '.stdin' cannot read a .sh, so the JSON sibling is the source.
+    post-bash.sh)
+      jq -c '.stdin | .agent_id = "a1"' \
+        "$WV_TESTS_DIR/cases/bgwait-411-no-agentid-no-record.json"
+      return 0
+      ;;
     pre-monitor.sh) fixture="poll-419-monitor-subagent-deny.json" ;;
     pre-agent.sh)       fixture="role-137b-cr-executor-deny.json" ;;
     post-agent.sh)      fixture="launch-193-downgrade-warn.json" ;;
