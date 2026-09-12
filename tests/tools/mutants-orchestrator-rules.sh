@@ -329,6 +329,43 @@ wv_run_mutant polltimeoutremoved scripts/hooks/pre-bash.sh wv_body_poll_timeout_
 wv_run_mutant pollsleepoffbyone scripts/hooks/pre-bash.sh wv_body_poll_sleep_boundary 'poll-418*'
 wv_run_mutant pollmonitoragentid scripts/hooks/pre-monitor.sh wv_body_poll_monitor_identity 'poll-420*'
 
+# Additional independent boundaries: prefix anchoring, sleep quote stripping,
+# subagent enforcement and returning only from the poll checker.
+wv_body_poll_timeout_unanchored() { cat <<'PYM'
+old = "WV_POLL_TIMEOUT_RE='^"
+assert old in s, "anchor missing: timeout regex"
+s = s.replace(old, "WV_POLL_TIMEOUT_RE='", 1)
+PYM
+}
+wv_body_poll_sleep_quotes_removed() { cat <<'PYM'
+a = s.index('wv_poll_sleep_seconds() {')
+old = 'stripped="$(wv_poll_strip_quotes "$cmd")"'
+assert old in s[a:], "anchor missing: sleep quote stripping"
+s = s[:a] + s[a:].replace(old, 'stripped="$cmd"', 1)
+PYM
+}
+wv_body_poll_early_agent_return() { cat <<'PYM'
+a = s.index('wv_main() {')
+old = '  wv_project_root || return 0'
+assert old in s[a:], "anchor missing: main root guard"
+s = s[:a] + s[a:].replace(old, '  [ -z "$WV_AGENT_ID" ] || return 0\n' + old, 1)
+PYM
+}
+wv_body_poll_exempt_returns_main() { cat <<'PYM'
+old = '  if wv_poll_check "$cmd" >/dev/null; then'
+assert old in s, "anchor missing: poll call"
+s = s.replace(old, '  if wv_poll_timeout_wraps "$cmd"; then return 0; fi\n' + old, 1)
+PYM
+}
+WV_EXPECT[polltimeoutunanchored]=poll-417-lexical-bounds
+WV_EXPECT[pollsleepquotesremoved]=poll-418-sleep-boundary
+WV_EXPECT[pollearlyagentreturn]=poll-418-sleep-boundary
+WV_EXPECT[pollexemptreturnsmain]=poll-421-precedence-vs-bash
+wv_run_mutant polltimeoutunanchored scripts/hooks/pre-bash.sh wv_body_poll_timeout_unanchored 'poll-417*'
+wv_run_mutant pollsleepquotesremoved scripts/hooks/pre-bash.sh wv_body_poll_sleep_quotes_removed 'poll-418*'
+wv_run_mutant pollearlyagentreturn scripts/hooks/pre-bash.sh wv_body_poll_early_agent_return 'poll-418*'
+wv_run_mutant pollexemptreturnsmain scripts/hooks/pre-bash.sh wv_body_poll_exempt_returns_main 'poll-421*'
+
 # --- the table --------------------------------------------------------------
 
 printf '\n%-24s %-11s %-40s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'

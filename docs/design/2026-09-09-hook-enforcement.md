@@ -472,13 +472,14 @@ the task, then return; do not use Monitor from the subagent.
 main-session-only build/test exemption. Strip single- and double-quoted spans,
 then deny `while true`, `while :`, or `until … ; do` with sleep in its body
 unless the offending command has an anchored prefix timeout wrapper:
-`(^|[;&|])\s*timeout(\s+-<flag>)*\s+<n>`, with literal integer `n >= 1`.
+`^\s*timeout(\s+-<flag>)*\s+<n>[smhd]?`, at the start of the whole command,
+with literal integer `n >= 1` and an optional seconds/minutes/hours/days suffix.
 A timeout elsewhere exempts nothing; `timeout 0` and `timeout $N` do not prove
 a bound. After `true` or `:`, require whitespace, `;`, `&`, `|` or end of string:
 `\bwhile[[:space:]]+(true|:)([[:space:];&|]|$)`, never a trailing `\b`.
-Exception: a `bash -c` or `sh -c` string argument is inspected as shell code
-for one level after stripping its own quoted spans; every other quoted span
-is stripped, so `echo "while true"` passes.
+Exception: a `bash`, `sh`, `dash`, `ksh` or `zsh` `-c` string argument is
+inspected recursively as shell code through depth 3 after stripping other
+quoted spans, so `echo "while true"` passes.
 The timeout exemption exits only this check, never the remaining build/test gate.
 A bare literal sleep over 300 seconds is denied: convert `s`, `m`, `h` units,
 compare decimals on their integer part, deny `inf` and unsupported suffixes,
@@ -632,8 +633,8 @@ scripts/hooks/session-start.sh
 scripts/hooks/user-prompt.sh      §8.6
 scripts/hooks/pre-agent.sh        tag, mode, role, model, tier, scope, order, condition, artifacts, round, budget, prompt
 scripts/hooks/post-agent.sh       record agent id + resolvedModel
-scripts/hooks/post-bash.sh        §8.8 (reserved silent entry point)
-scripts/hooks/pre-monitor.sh      §8.9 (reserved silent entry point)
+scripts/hooks/post-bash.sh        §8.8 (background-task recorder)
+scripts/hooks/pre-monitor.sh      §8.9 (Monitor identity gate)
 scripts/hooks/subagent-stop.sh    artifact + marker, transcript tiers, ledger, mark done, lean return
 scripts/hooks/pre-edit.sh         §8.1
 scripts/hooks/pre-read.sh         §8.2
@@ -762,9 +763,9 @@ Changed (minimal):
 - Enforcing anything in `solo` mode beyond §7's explicit-model rule, §9, §10
   and §8.10's advisory inventory.
 - W-POLL is lexical, not a shell interpreter. Single- and double-quoted spans
-  other than a `bash -c`/`sh -c` string argument are stripped and not inspected:
-  `echo "while true"` passes. That argument is inspected for one level after
-  stripping its own quoted spans. Heredoc bodies, variables and aliases are
+  other than a `bash`/`sh`/`dash`/`ksh`/`zsh` `-c` string argument are stripped:
+  `echo "while true"` passes. Shell arguments are inspected recursively through
+  depth 3; deeper shell arguments are stripped. Heredoc bodies, variables and aliases are
   not interpreted as shell syntax: heredoc text may still produce lexical
   false positives, and `sleep $VAR` passes;
   `timeout 0` is not a wrapper, and `timeout $N` is not a recognized bound
@@ -772,6 +773,8 @@ Changed (minimal):
   stripping. `while [ ! -f x ]; do sleep 1; done`, `for`, `watch`, `tail -f`,
   `inotifywait` and `yes |` are outside the loop matcher. Decimal sleeps compare
   on the integer part (`sleep 300.5` passes), not fractional seconds.
+  `sleep -- 500` and shell options before `-c`, such as
+  `bash --norc -c 'while true; do sleep 1; done'`, are outside the matcher.
 - No leftover hook can kill, signal or reap a process. Its canonical cwd scan
   uses exact root equality; subdirectory and worktree cwd are spared and printed.
 - W-BGWAIT follows W-LONG-RETURN in reason precedence. A stop already consumed

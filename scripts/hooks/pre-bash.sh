@@ -34,7 +34,8 @@
 # runner-shaped text following an unrelated command, not a wrapper) stays
 # silent too. This is a DECLARED BOUND, not shell-quote parsing: the
 # controller ruling reaffirms it explicitly — "do not try to be
-# shell-quote-aware; the declared lexical bound stands for `bash -c
+# shell-quote-aware for W-BASH; W-POLL separately inspects shell code.
+# The W-BASH lexical bound stands for `bash -c
 # "…"`, variables and aliases." §13 of the design doc separately records
 # that a `Bash` WRITE (`sed -i src/x.ts`) is out of scope for this hook —
 # only the four edit tools of pre-edit.sh cover that.
@@ -54,10 +55,9 @@ WV_BASH_RUNNER_RE='(^|[;&|])[[:space:]]*((sudo|time|nice|env)([[:space:]]+-[^[:s
 # after `:` (that would miss `while :;`).
 WV_POLL_LOOP_RE='(^|[^[:alnum:]_])while[[:space:]]+(true|:)([[:space:];&|]|$)'
 
-# D-11 token shape. wv_poll_timeout_wraps additionally requires the match
-# to be a prefix of the command so a trailing `timeout 1 true` cannot
-# exempt a leading unbounded loop.
-WV_POLL_TIMEOUT_RE='(^|[;&|])[[:space:]]*timeout([[:space:]]+-[^[:space:]]+)*[[:space:]]+[1-9][0-9]*([^[:alnum:]_]|$)'
+# D-11: the wrapper starts at position zero, allowing leading whitespace.
+# A trailing timeout never exempts an earlier loop; units s/m/h/d are bounded.
+WV_POLL_TIMEOUT_RE='^[[:space:]]*timeout([[:space:]]+-[^[:space:]]+)*[[:space:]]+[1-9][0-9]*[smhd]?([^[:alnum:]_]|$)'
 
 # D-12: literal duration after a sleep token. $VAR is not a literal.
 WV_POLL_SLEEP_RE='(^|[^[:alnum:]_])sleep[[:space:]]+(infinity|inf|[0-9]+(\.[0-9]+)?[[:alpha:]]*)([^[:alnum:]_]|$)'
@@ -70,14 +70,14 @@ WV_POLL_UNTIL_RE='(^|[^[:alnum:]_])until[[:space:]].*[[:space:];]do[[:space:];].
 # True when $1 ends with a shell interpreter plus a -c flag (and space).
 wv_poll__shell_c_prefix() {
   local s="${1-}"
-  [[ $s =~ (^|[^[:alnum:]_])(bash|sh)[[:space:]]+(-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+)+$ ]]
+  [[ $s =~ (^|[^[:alnum:]_])(bash|sh|dash|ksh|zsh)[[:space:]]+(-[a-zA-Z]*c[a-zA-Z]*[[:space:]]+)+$ ]]
 }
 
 # wv_poll_strip_quotes <cmd>
 # Remove double- and single-quoted spans (D-13). Escaped quotes inside
 # double quotes are not terminators. A quoted span that is the argument
-# to bash/sh -c is unquoted instead of dropped for one level of shell code;
-# quoted spans inside that code are stripped without another shell exception.
+# to bash/sh/dash/ksh/zsh -c is inspected recursively through depth 3.
+# Other quoted spans, and shell arguments deeper than that bound, are stripped.
 wv_poll_strip_quotes() {
   local cmd="${1-}" depth="${2:-0}"
   local i=0 n=${#cmd} out="" c q keep inner
@@ -85,7 +85,7 @@ wv_poll_strip_quotes() {
     c="${cmd:i:1}"
     if [ "$c" = "'" ] || [ "$c" = '"' ]; then
       keep=0
-      if [ "$depth" -eq 0 ] && wv_poll__shell_c_prefix "$out"; then
+      if [ "$depth" -lt 3 ] && wv_poll__shell_c_prefix "$out"; then
         keep=1
       fi
       q="$c"
@@ -109,7 +109,7 @@ wv_poll_strip_quotes() {
         i=$((i + 1))
       done
       if [ "$keep" -eq 1 ]; then
-        out+="$(wv_poll_strip_quotes "$inner" 1)"
+        out+="$(wv_poll_strip_quotes "$inner" "$((depth + 1))")"
       fi
       continue
     fi
@@ -133,12 +133,7 @@ wv_poll_strip_quotes() {
 # duration is present (D-11). timeout 0 and timeout $N are not wrappers.
 wv_poll_timeout_wraps() {
   local cmd="${1-}"
-  [[ $cmd =~ $WV_POLL_TIMEOUT_RE ]] || return 1
-  local m="${BASH_REMATCH[0]}"
-  case "$cmd" in
-    "$m"*) return 0 ;;
-  esac
-  return 1
+  [[ $cmd =~ $WV_POLL_TIMEOUT_RE ]]
 }
 
 # Convert one sleep duration token to integer seconds.

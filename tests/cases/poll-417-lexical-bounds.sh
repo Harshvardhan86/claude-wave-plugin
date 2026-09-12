@@ -10,8 +10,12 @@ n=0
 c="$WV_RUN_TMP/$name.json"
 WV_PROJECT="$(mkproj)"
 seed_state state/valid-full.json
+# Load matcher definitions only; the hook entry point is still driven below.
+source <(sed -n '/^WV_POLL_LOOP_RE=/,/^wv_bash_matched_runner()/p' "$WV_REPO_ROOT/scripts/hooks/pre-bash.sh" | sed '$d')
 wv_poll_test_one() {
-  local id="$1" expected="$2" cmd="$3"
+  local id="$1" expected="$2" cmd="$3" got
+  got="$(wv_poll_check "$cmd")"
+  [ "$got" = "$expected" ] || { printf 'ASSERT FAIL: vector %s detail: expected %s, got %s\n' "$id" "$expected" "$got" >&2; rc=1; }
   jq -nc --arg cmd "$cmd" '{stdin:{hook_event_name:"PreToolUse",tool_name:"Bash",agent_id:"a1",tool_input:{command:$cmd}}}' > "$c" || exit 1
   run_hook pre-bash.sh "$c" || rc=1
   if [ -n "$expected" ]; then
@@ -60,12 +64,30 @@ vectors=(
   pipe-colon 'loop' 'while :|cat'
   sh-code 'loop' "sh -c 'while true; do sleep 1; done'"
   inner-quote '' "bash -c 'echo \"while true\"'"
-  one-level '' "bash -c 'sh -c \"while true; do sleep 1; done\"'"
-  other-shell '' "dash -c 'while true; do sleep 1; done'"
+  nested-code 'loop' "bash -c 'sh -c \"while true; do sleep 1; done\"'"
+  other-shell 'loop' "dash -c 'while true; do sleep 1; done'"
+  timeout-seconds '' "timeout 600s bash -c 'while true; do sleep 1; done'"
+  timeout-minutes '' "timeout 10m bash -c 'while true; do sleep 1; done'"
+  timeout-hours '' "timeout 1h bash -c 'while true; do sleep 1; done'"
+  timeout-days '' "timeout 1d bash -c 'while true; do sleep 1; done'"
+  timeout-zero-seconds 'loop' "timeout 0s bash -c 'while true; do sleep 1; done'"
+  timeout-zero-minutes 'loop' "timeout 0m bash -c 'while true; do sleep 1; done'"
+  timeout-later 'loop' "cd /x && timeout 600 bash -c 'while true; do sleep 1; done'"
+  shell-flags-bound '' "bash --norc -c 'while true; do sleep 1; done'"
 )
 for ((i=0; i<${#vectors[@]}; i+=3)); do
   wv_poll_test_one "${vectors[i]}" "${vectors[i+1]}" "${vectors[i+2]}"
 done
 
-[ "$n" -eq 37 ] || rc=1
+# Build valid nested double-quoted shell arguments to pin both sides of depth 3.
+nested='sleep 400'
+for depth in 1 2 3 4; do
+  escaped="${nested//\\/\\\\}"
+  escaped="${escaped//\"/\\\"}"
+  nested="bash -c \"$escaped\""
+  expected='sleep:400'
+  [ "$depth" -lt 4 ] || expected=''
+  wv_poll_test_one "depth-$depth" "$expected" "$nested"
+done
+[ "$n" -eq 49 ] || rc=1
 exit $rc
