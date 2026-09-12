@@ -366,9 +366,9 @@ s = s.replace(old, 'crons:[]', 1)
 PYM
 }
 wv_body_leftoverwarnremoved() { cat <<'PYM'
-old = '    wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"'
+old = '    if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"'
 assert old in s
-s = s.replace(old, '    :', 1)
+s = s.replace(old, '    if true', 1)
 PYM
 }
 wv_body_leftoverkills() { cat <<'PYM'
