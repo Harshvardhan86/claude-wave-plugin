@@ -66,9 +66,22 @@ wv_main() {
     if [ -f "$WV_WAVE_DIR/.leftover-warned" ]; then
       return 0
     fi
-    mkdir -p "$WV_WAVE_DIR" 2>/dev/null
-    : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
-    wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+    # EMIT FIRST, MARK SECOND. The marker silences every later Stop and
+    # SubagentStop in the wave, so writing it before the warning is queued
+    # would trade one failed emit for a wave that is permanently silent about
+    # leftovers nobody was ever told about. A failed emit leaves the wave
+    # unmarked and the next eligible Stop retries.
+    #
+    # `then` IS ON ITS OWN LINE DELIBERATELY. tests/tools/reason-corpus.sh's
+    # arity gate reads an emitter call site as everything from the emitter's
+    # name to the end of the line, so a trailing `; then` is counted as a
+    # second argument to a one-specifier template and reported as a doubled
+    # reason. Collapsing these two lines re-trips that gate.
+    if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+    then
+      mkdir -p "$WV_WAVE_DIR" 2>/dev/null
+      : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
+    fi
     return 0
   fi
 

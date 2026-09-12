@@ -1428,10 +1428,20 @@ wv_main() {
       if [ "$WV_STOP_PHASE" = "$(wv_lo_terminal_phase "$WV_MODE")" ]; then
         wv_lo_collect "$WV_STOP_AGENT"
         wv_lo_write_checkpoint
+        # EMIT FIRST, MARK SECOND — the marker silences every later Stop and
+        # SubagentStop in the wave, so it is written only once the warning has
+        # actually been queued. A failed emit leaves the wave unmarked and the
+        # next terminal fire retries (tests/cases/leftover-433-warn-before-mark.sh).
         if [ "$WV_LO_WARN" = "1" ] && [ ! -f "$WV_WAVE_DIR/.leftover-warned" ]; then
-          mkdir -p "$WV_WAVE_DIR" 2>/dev/null
-          : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
-          wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+          # `then` is on its own line deliberately: reason-corpus.sh's arity
+          # gate reads a call site to the end of its line, so a trailing
+          # `; then` counts as a second argument to this one-specifier
+          # template. Collapsing these two lines re-trips that gate.
+          if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+          then
+            mkdir -p "$WV_WAVE_DIR" 2>/dev/null
+            : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
+          fi
         fi
       fi
       ;;
