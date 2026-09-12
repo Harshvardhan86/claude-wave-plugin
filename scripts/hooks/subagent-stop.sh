@@ -875,8 +875,10 @@ wv_recover_launch() {
   # "unknown" and no phase would be judged. The client writes
   # <agent transcript>.meta.json beside the transcript at launch.
   #
-  # Fails closed: no sidecar, no description, or a description with no tag
-  # leaves every WV_STOP_* default in place and the caller warns as today.
+  # Fails closed: no sidecar, no description, a description with no tag, or a
+  # tag whose wave field is not this wave leaves every WV_STOP_* default in
+  # place and the caller warns as today. Reads `.description` only (the
+  # sidecar has no prompt field).
   local path="${1:-}" meta desc model
   WV_STOP_RECOVERED=0
   [ -n "$path" ] || return 1
@@ -885,12 +887,27 @@ wv_recover_launch() {
   desc="$(jq -r 'if (.description | type) == "string" then .description else "" end' "$meta" 2>/dev/null)"
   [ -n "$desc" ] || return 1
   [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1
+  [ "${BASH_REMATCH[1]}" = "$WV_WAVE" ] || return 1
   WV_STOP_PHASE="${BASH_REMATCH[2]}"
   WV_STOP_ROLE="${BASH_REMATCH[3]}"
   model="$(jq -r 'if (.model | type) == "string" then .model else "" end' "$meta" 2>/dev/null)"
   [ -n "$model" ] && WV_STOP_REQ="$model"
   WV_STOP_RECOVERED=1
   return 0
+}
+
+wv_sidecar_wave_mismatch() {
+  # True when the launch sidecar carries a well-formed tag for a DIFFERENT
+  # wave. post-agent.sh's warn path still records that dispatch (AC-200) as
+  # phase untagged / role unknown; the block path refuses it.
+  local path="${1:-}" meta desc
+  [ -n "$path" ] || return 1
+  meta="${path%.jsonl}.meta.json"
+  [ -f "$meta" ] || return 1
+  desc="$(jq -r 'if (.description | type) == "string" then .description else "" end' "$meta" 2>/dev/null)"
+  [ -n "$desc" ] || return 1
+  [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1
+  [ "${BASH_REMATCH[1]}" != "$WV_WAVE" ]
 }
 
 wv_main() {
@@ -946,7 +963,15 @@ wv_main() {
         ;;
       *)
         if wv_recover_launch "$transcript"; then
-          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT ran before post-agent.sh recorded its launch — a foreground Agent dispatch delivers PostToolUse only when the Task returns — so its phase ($WV_STOP_PHASE), role ($WV_STOP_ROLE) and requested model ($WV_STOP_REQ) were recovered from the dispatch tag in $(wv_rel "${transcript%.jsonl}.meta.json"); the resolved model could not be recovered and is ledgered as \"unknown\""
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $WV_STOP_REQ from the launch sidecar beside the agent transcript; the resolved model is ledgered as \"unknown\""
+        elif [ "$WV_ENFORCE" = "warn" ] && wv_sidecar_wave_mismatch "$transcript"; then
+          # Mirror post-agent.sh: under enforce:warn a tag for another wave is
+          # still spent, so it is recorded as untagged / unknown (AC-200),
+          # never the stale tag's phase.
+          WV_STOP_PHASE="untagged"
+          WV_STOP_ROLE="unknown"
+          WV_STOP_RECOVERED=1
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered a dispatch tag for another wave; under enforce=warn it is ledgered as phase untagged"
         else
           wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT found no state.active record to join, so post-agent.sh did not run for its launch (or the dispatch predates this wave); its spend is ledgered under phase \"unknown\" and no phase was judged"
         fi

@@ -561,10 +561,38 @@ assert old in s
 s = s.replace(old, '.active[%s] = {phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s}', 1)
 PYBODY
 }
+wv_body_waveidignored() { cat <<'PYBODY'
+old = '  [ "${BASH_REMATCH[1]}" = "$WV_WAVE" ] || return 1'
+assert old in s
+s = s.replace(old, '  true', 1)
+PYBODY
+}
+wv_body_recoveredguard() { cat <<'PYBODY'
+old = '    && { [ "$WV_STOP_JOINED" = "1" ] || [ "$WV_STOP_RECOVERED" = "1" ]; } \\'
+assert old in s
+s = s.replace(old, '    && [ "$WV_STOP_JOINED" = "1" ] \\', 1)
+PYBODY
+}
+wv_body_recoveredseed() { cat <<'PYBODY'
+old = '''    upd="$(printf '.active[%s] = ((.active[%s] // {phase: %s, role: %s, requested_model: %s, resolved_model: "unknown"}) + {status: "stopped", stopped: %s})' \\
+      "$id_lit" "$id_lit" "$(wv_jq_str "$WV_STOP_PHASE")" "$(wv_jq_str "$WV_STOP_ROLE")" \\
+      "$(wv_jq_str "$WV_STOP_REQ")" "$ts_lit")"'''
+new = '''    upd="$(printf '.active[%s] = ((.active[%s] // {}) + {status: "stopped", stopped: %s})' \\
+      "$id_lit" "$id_lit" "$ts_lit")"'''
+assert old in s
+s = s.replace(old, new, 1)
+PYBODY
+}
 WV_EXPECT[sidecartagdropped]=bgwait-434-foreground-unjoined
 WV_EXPECT[activemergeremoved]=bgwait-434-foreground-unjoined
+WV_EXPECT[waveidignored]=bgwait-434-foreground-unjoined
+WV_EXPECT[recoveredguard]=bgwait-434-foreground-unjoined
+WV_EXPECT[recoveredseed]=bgwait-434-foreground-unjoined
 wv_run_mutant sidecartagdropped wv_body_sidecartagdropped "$H" 'bgwait-434*'
 wv_run_mutant activemergeremoved wv_body_activemergeremoved scripts/hooks/post-agent.sh 'bgwait-434*'
+wv_run_mutant waveidignored wv_body_waveidignored "$H" 'bgwait-434*'
+wv_run_mutant recoveredguard wv_body_recoveredguard "$H" 'bgwait-434*'
+wv_run_mutant recoveredseed wv_body_recoveredseed "$H" 'bgwait-434*'
 
 # --- the table --------------------------------------------------------------
 

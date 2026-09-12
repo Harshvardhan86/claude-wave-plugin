@@ -790,8 +790,11 @@ Changed (minimal):
   `bash --norc -c 'while true; do sleep 1; done'`, are outside the matcher.
 - The launch sidecar path `<agent_transcript_path%.jsonl>.meta.json` and its
   `description` / `model` fields are a client convention verified on 2.1.268;
-  absence or an untagged description fails closed to phase `unknown` plus a
-  warning.
+  absence, an untagged description, or a tag whose wave field is not the
+  current wave fails closed to phase `unknown` plus a warning. Recovery reads
+  `description` only (not the prompt's first line); 2.1.268's sidecar has no
+  prompt field. Under `enforce:warn` a wave mismatch is ledgered as phase
+  `untagged`, matching `post-agent.sh`.
 - No leftover hook can kill, signal or reap a process. Its canonical cwd scan
   uses exact root equality; subdirectory and worktree cwd are spared and printed
   (at most 20 spared entries sorted by pid, plus `spared-count` and `… +N more`;
