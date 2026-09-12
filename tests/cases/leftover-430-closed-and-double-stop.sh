@@ -11,16 +11,27 @@ WV_PROJECT="$(mkproj)"
 lo_case '.'
 lo_run stop.sh
 assert_warn W-LEFTOVER || rc=1
-before="$WV_LAST_STDOUT"
 lo_checkpoint
+first_cp="$lo_cp"
 printf '\nSTALE SECTION\n' >> "$lo_cp"
 lo_case 'del(.seed)'
 lo_run stop.sh
-assert_warn W-LEFTOVER || rc=1
-[ "$before" = "$WV_LAST_STDOUT" ] || fail 'double Stop warning changed'
+case "$WV_LAST_STDOUT" in
+  *W-LEFTOVER*) fail 'leftover warning repeated on second Stop' ;;
+esac
 lo_checkpoint
-command grep -q 'STALE SECTION' "$lo_cp" && fail 'checkpoint was not refreshed'
+[ "$lo_cp" = "$first_cp" ] || fail 'second Stop wrote a new leftovers checkpoint file'
+command grep -q 'STALE SECTION' "$lo_cp" && fail 'checkpoint leftovers section was not replaced in place'
 [ "$(command grep -c '^## Leftovers$' "$lo_cp")" = 1 ] || fail 'duplicate checkpoint section'
+
+# .scorecard-printed must not skip inventory (leftovermarkerfirst killer).
+WV_PROJECT="$(mkproj)"
+lo_case '.seed.files[".wave/.scorecard-printed"] = ""'
+lo_run stop.sh
+assert_warn W-LEFTOVER || rc=1
+lo_checkpoint
+lo_contains b2
+
 for variant in closed no-wave; do
   WV_PROJECT="$(mkproj)"
   if [ "$variant" = closed ]; then

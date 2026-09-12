@@ -32,4 +32,18 @@ for variant in leftover self-only; do
   fi
 done
 
+# Terminal role with a missing artifact still inventories (ruling 3c).
+WV_PROJECT="$(mkproj)"
+st="$WV_RUN_TMP/$name-fail-state.json"
+teet_active="$(stop_active TEET reviewer sonnet)"
+stop_state "$st" ".mode = \"demo\" | .ui = true | .behaviour_change = true | .phases = {AC:{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"},DR:{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"},\"TDE-RED\":{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"},\"TDE-GREEN\":{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"}} | .active = {a1: $teet_active}" || exit 1
+stop_case "$lo_c" ".seed.state = \"$st\" | .stdin.background_tasks += [{id:\"lo-shell\",type:\"shell\",status:\"running\"}] | .stdin.session_crons = [{id:\"lo-cron\"}]" || exit 1
+lo_run subagent-stop.sh
+assert_block W-ARTIFACT || rc=1
+assert_stderr_contains W-LEFTOVER || rc=1
+lo_checkpoint
+lo_contains lo-shell
+lo_contains lo-cron
+assert_state '.status == "active"' || rc=1
+
 exit $rc

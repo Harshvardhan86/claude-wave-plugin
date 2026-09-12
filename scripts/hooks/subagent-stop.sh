@@ -1420,6 +1420,23 @@ wv_main() {
     wv_lock_release
   fi
 
+  # Inventory leftover resources at the terminal role's close, including
+  # failed and artifact-missing verdicts. Warning is informational; the
+  # phase outcome and the block below are unchanged. The flock is released.
+  case "$status_new" in
+    done|failed|artifact-missing)
+      if [ "$WV_STOP_PHASE" = "$(wv_lo_terminal_phase "$WV_MODE")" ]; then
+        wv_lo_collect "$WV_STOP_AGENT"
+        wv_lo_write_checkpoint
+        if [ "$WV_LO_WARN" = "1" ] && [ ! -f "$WV_WAVE_DIR/.leftover-warned" ]; then
+          mkdir -p "$WV_WAVE_DIR" 2>/dev/null
+          : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
+          wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+        fi
+      fi
+      ;;
+  esac
+
   # ---- the one block, and the terminal close ----------------------------
   #
   # Both are last, so every record above is already on disk whichever way this
@@ -1447,14 +1464,6 @@ wv_main() {
   fi
 
   if [ "$status_new" = "done" ]; then
-    # The flock is released above. Inventory the terminal hand-off before close.
-    if [ "$WV_STOP_PHASE" = "$(wv_lo_terminal_phase "$WV_MODE")" ]; then
-      wv_lo_collect "$WV_STOP_AGENT"
-      wv_lo_write_checkpoint
-      if [ "$WV_LO_WARN" = "1" ]; then
-        wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
-      fi
-    fi
     wv_close_if_terminal "$WV_STOP_PHASE"
   fi
   return 0

@@ -13,8 +13,12 @@
   },
   "expect": {
     "exit": 0,
-    "decision": "allow",
+    "decision": "warn",
+    "rule": "W-SCORECARD",
     "negative_control_for": "W-LEFTOVER",
+    "reason_contains": [
+      "W-SCORECARD"
+    ],
     "stdout_absent": [
       "W-LEFTOVER"
     ]

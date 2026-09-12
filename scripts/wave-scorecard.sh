@@ -264,7 +264,7 @@ if [ -n "$lo_section" ]; then
 fi
 orphans="$(jq -Rrn '[inputs | fromjson? | select(type=="object") | select((.bg_orphaned // [] | length)>0) | (.agent+": "+(.bg_orphaned|join(", ")))] | join("; ")' < "$ledger" 2>/dev/null)"
 if [ -n "$orphans" ]; then
-  wv_sc_append "- Orphaned background tasks: $orphans"
+  wv_sc_append "- Orphaned background tasks (ledger \`bg_orphaned\`): $orphans"
 fi
 
 mkdir -p "$(dirname "$out_path")" 2>/dev/null

@@ -3,9 +3,11 @@
 #
 # Eligible Stop events refresh the leftover inventory before the scorecard
 # marker or empty-ledger returns. Outstanding or unmeasured resources produce
-# one W-LEFTOVER warning on each firing. A clean inventory keeps the existing
-# once-per-wave W-SCORECARD pointer. Solo eligibility still requires a ledger.
-# This hook never closes the wave, blocks a stop, or signals a process.
+# at most one W-LEFTOVER warning per wave (later Stops refresh the inventory
+# in leftovers-stop.md but must not repeat the warning). A clean inventory
+# keeps the existing once-per-wave W-SCORECARD pointer. Solo eligibility
+# still requires a ledger. This hook never closes the wave, blocks a stop,
+# or signals a process.
 
 set -u
 
@@ -61,6 +63,11 @@ wv_main() {
   wv_lo_collect
   wv_lo_write_checkpoint
   if [ "$WV_LO_WARN" = "1" ]; then
+    if [ -f "$WV_WAVE_DIR/.leftover-warned" ]; then
+      return 0
+    fi
+    mkdir -p "$WV_WAVE_DIR" 2>/dev/null
+    : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
     wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
     return 0
   fi

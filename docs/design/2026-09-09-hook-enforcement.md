@@ -495,12 +495,15 @@ wait and main-session monitoring. Remedy: bound loops, keep bare sleeps at or
 under 300 seconds, and leave Monitor to the main session.
 
 **8.10 Leftovers (`W-LEFTOVER`).** Inventory at the closing `SubagentStop`,
-immediately before `wv_close_if_terminal`; at `Stop` while state is still active
+immediately before `wv_close_if_terminal` (and also when that terminal role's
+verdict is `failed` or `artifact-missing`; the warning is informational and the
+phase outcome is unchanged); at `Stop` while state is still active
 and the mode's terminal phase is done; and at every active-wave `PreCompact`.
 Solo has no terminal phase: its Stop eligibility uses the existing active-wave,
-nonempty-ledger gate, not a new per-turn completion signal. Later eligible
-Stops refresh inventory and repeat a leftover warning if resources remain;
-the clean W-SCORECARD pointer still uses `.scorecard-printed`. Solo also uses PreCompact. Do not move or defer wave closure.
+nonempty-ledger gate, not a new per-turn completion signal. Later Stops may
+refresh inventory but must not repeat the warning; the clean W-SCORECARD
+pointer still uses `.scorecard-printed`. Solo also uses PreCompact. Do not
+move or defer wave closure.
 At SubagentStop use that stdin's `background_tasks` and `session_crons`, excluding
 the stopping agent's own subagent row. Stop also carries both arrays; PreCompact
 carries neither and records them unavailable, never as measured-empty arrays.
@@ -509,12 +512,18 @@ Scan `/proc/<pid>/cwd` outside the state lock, comparing `readlink -f` with the
 project root from `realpath "$WV_ROOT"` for exact equality. Exclude the hook pid
 and ancestors.
 Print spared pids whose resolved cwd differs, including worktree cwd; skip and
-count unreadable cwd entries. Put the inventory, source availability, observed
+count unreadable cwd entries as `unreadable=N`. Unreadable entries never change
+the leftover verdict. Put the inventory, source availability, observed
 event/time, spared pids and unreadable count in the checkpoint's `## Leftovers`
-section and the scorecard. Use distinct `*-stop.md` and `*-precompact.md` files.
-No `/proc` is unavailable, not clean; `[]` is measured empty. **The hook never
-kills, signals or reaps anything.** Default warning preserves visibility without
-blocking completion. At close emit at most one leftover warning per firing, before closure;
+section and the scorecard. Stop writes `.wave/checkpoints/leftovers-stop.md`
+and replaces the `## Leftovers` section in place on each fire, never a new
+file per Stop. PreCompact still uses distinct timestamped `*-precompact.md`
+files. Spared pids are capped at 20 entries sorted by pid, plus a
+`spared-count` and `… +N more`; prefer cwd under the project root in those 20.
+No `/proc`, or a scan that could not read any cwd, is unavailable, not clean;
+`[]` is measured empty. **The hook never kills, signals or reaps anything.**
+Default warning preserves visibility without blocking completion. At close emit
+at most one leftover warning per wave, before closure, via `.wave/.leftover-warned`;
 W-LEFTOVER outranks the scorecard pointer and includes it. Re-evaluate terminality
 and refresh inventory before Stop's printed-marker or empty-ledger returns;
 Stop can fire twice with `stop_hook_active:false` in one async session.
@@ -522,10 +531,11 @@ PreCompact writes the inventory but warns to stderr only on its own live watcher
 evidence or a failed watcher scan, not merely because its payload lacks arrays.
 At close, no leftovers AND all sources measured means W-LEFTOVER stays silent
 (the existing clean Stop scorecard pointer remains); a failed or unavailable
-source is itself a warning condition. PreCompact is the explicit
-exception: its expected absent arrays are recorded unavailable without warning;
-only live watcher evidence or failure of its watcher scan warns. Remedy: inspect
-the checkpoint/scorecard and stop or wait out named resources before the next wave.
+source is itself a warning condition. Unreadable cwd is not a failed source.
+PreCompact is the explicit exception: its expected absent arrays are recorded
+unavailable without warning; only live watcher evidence or failure of its
+watcher scan warns. Remedy: inspect the checkpoint/scorecard and stop or wait
+out named resources before the next wave.
 
 ## 9. Token ledger and budgets (point 4)
 
@@ -774,7 +784,17 @@ Changed (minimal):
   `sleep -- 500` and shell options before `-c`, such as
   `bash --norc -c 'while true; do sleep 1; done'`, are outside the matcher.
 - No leftover hook can kill, signal or reap a process. Its canonical cwd scan
-  uses exact root equality; subdirectory and worktree cwd are spared and printed.
+  uses exact root equality; subdirectory and worktree cwd are spared and printed
+  (at most 20 spared entries sorted by pid, plus `spared-count` and `… +N more`;
+  prefer cwd under the project root). Unreadable cwd is counted as `unreadable=N`
+  and never changes the leftover verdict; `unavailable=/proc` only when `/proc`
+  is absent or nothing at all was readable. A `(deleted)` cwd fails
+  `readlink -f` and is counted unreadable, not spared. Closing inventory also
+  runs when the terminal role's verdict is `failed` or `artifact-missing`.
+  Stop replaces `.wave/checkpoints/leftovers-stop.md` in place; at most one
+  leftover warning per wave. Reason fields are capped at 24 characters by an
+  inline jq `brief` (five ids), not `wv_list_cap 5 60`, so the 260-character
+  template stays under the 400-character ceiling.
 - W-BGWAIT follows W-LONG-RETURN in reason precedence. A stop already consumed
   by W-ARTIFACT, W-MARKER or W-LONG-RETURN never gets a W-BGWAIT block. Without
   the durable BGWAIT latch the following active-stop flag does not orphan or

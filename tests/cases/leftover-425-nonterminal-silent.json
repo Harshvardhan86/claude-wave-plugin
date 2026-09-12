@@ -14,9 +14,10 @@
   "expect": {
     "exit": 0,
     "decision": "silent",
-    "negative_control_for": "W-LEFTOVER",
+    "negative_control_for": "W-SCORECARD",
     "stdout_absent": [
-      "W-LEFTOVER"
+      "W-LEFTOVER",
+      "W-SCORECARD"
     ]
   }
 }

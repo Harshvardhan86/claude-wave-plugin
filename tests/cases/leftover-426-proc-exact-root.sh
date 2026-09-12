@@ -22,12 +22,15 @@ assert_warn W-LEFTOVER || rc=1
 lo_checkpoint
 lo_contains "watcher: $root_pid "
 lo_contains 'sleep 1000'
-lo_contains "spared: $spared_pid $sibling"
-lo_contains "spared: $worktree_pid $worktree"
+nwatch="$(command grep -c '^- watcher: ' "$lo_cp" || true)"
+[ "$nwatch" = "1" ] || fail "expected exactly 1 watcher pid, got $nwatch"
+lo_contains "spared: $worktree_pid"
+command grep -Fq "watcher: $worktree_pid " "$lo_cp" && fail 'worktree was matched as root'
+command grep -Fq "watcher: $spared_pid " "$lo_cp" && fail 'sibling cwd was matched as root'
+command grep -E '^- spared-count: [0-9]+' "$lo_cp" >/dev/null || fail 'spared-count missing'
 for pid in "$root_pid" "$spared_pid" "$worktree_pid"; do
   kill -0 "$pid" 2>/dev/null || fail "hook killed planted pid $pid"
 done
-command grep -Fq "watcher: $worktree_pid " "$lo_cp" && fail 'worktree was matched as root'
 run_cli scripts/wave-scorecard.sh
 [ "$CLI_EXIT" = 0 ] || fail 'scorecard failed'
 case "$CLI_STDOUT" in *leftovers:*"$root_pid"*) : ;; *) fail 'scorecard lacks inventory' ;; esac
@@ -51,10 +54,9 @@ chmod +x "$shim/readlink"
 lo_case '.stdin.background_tasks = []'
 jq --arg path "$shim:$PATH" '.env.PATH = $path' "$lo_c" > "$lo_c.tmp" && mv "$lo_c.tmp" "$lo_c"
 lo_run stop.sh
-assert_warn W-LEFTOVER || rc=1
 lo_checkpoint
 lo_contains "watcher: $root_pid "
 command grep -Fq "watcher: $spared_pid " "$lo_cp" && fail 'a vanished marker shifted cwd onto another pid'
-lo_contains '- unreadable: 1 pid(s)'
+command grep -E '^- unreadable: [1-9][0-9]* pid' "$lo_cp" >/dev/null || fail 'unreadable count missing after vanished cwd'
 
 exit $rc

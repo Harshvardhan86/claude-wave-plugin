@@ -147,7 +147,7 @@ wv_main() {
   wv_state_read || return 0
 
   wv_lo_collect
-  if [ "$WV_LO_MATCHED" != "[]" ] || [ "$WV_LO_STATUS" != "ok" ]; then
+  if [ "$WV_LO_MATCHED" != "[]" ] || [ "$WV_LO_STATUS" = "unavailable" ]; then
     wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
   fi
 

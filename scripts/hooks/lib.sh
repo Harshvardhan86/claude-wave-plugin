@@ -1375,6 +1375,7 @@ WV_LO_WARN=0
 
 wv_lo_terminal_phase() {
   local mode="$1" code modes rest last=""
+  [ -f "$WV_PHASES_TSV" ] || return 0
   while IFS=$'\t' read -r code modes rest; do
     case "$code" in ''|'#'*|code) continue ;; esac
     case ",$modes," in *",$mode,"*) last="$code" ;; esac
@@ -1418,6 +1419,8 @@ wv_lo_proc_scan() {
       pid="${BASH_REMATCH[1]}"
       markers=$((markers + 1))
       cwd="$pending"; pending=""
+      # A `(deleted)` cwd fails `readlink -f`, leaving pending empty: skip
+      # and count unreadable, never spared or matched.
       [ -n "$cwd" ] || continue
       measured=$((measured + 1))
       if [ "$cwd" = "$root" ]; then
@@ -1441,6 +1444,7 @@ wv_lo_proc_scan() {
   WV_LO_UNREADABLE=$((total - measured))
   WV_LO_STATUS=ok
   if [ "$markers" -eq 0 ]; then WV_LO_STATUS=unavailable
+  elif [ "$measured" -eq 0 ]; then WV_LO_STATUS=unavailable
   elif [ "$WV_LO_UNREADABLE" -gt 0 ]; then WV_LO_STATUS=partial; fi
   if ! WV_LO_MATCHED="$(jq -nc --args '$ARGS.positional | . as $a | [range(0; length; 3) | {pid:$a[.],cwd:$a[.+1],command:$a[.+2]}]' "${matched[@]}")"; then WV_LO_MATCHED='[]'; WV_LO_STATUS=unavailable; fi
   if ! WV_LO_SPARED="$(jq -nc --args '$ARGS.positional | . as $a | [range(0; length; 2) | {pid:$a[.],cwd:$a[.+1]}]' "${spared[@]}")"; then WV_LO_SPARED='[]'; WV_LO_STATUS=unavailable; fi
@@ -1464,7 +1468,7 @@ wv_lo_collect() {
          watchers:$watchers, spared:$spared, unreadable:$unreadable, scan:$scan, event:$event, observed:$observed,
          unavailable:([if ($input.background_tasks|type)!="array" or any($tasks[]; named|not) then "background_tasks" else empty end,
                        if ($input.session_crons|type)!="array" or any($crons[]; named|not) then "session_crons" else empty end,
-                       if $scan!="ok" then "/proc" else empty end])}')"
+                       if $scan=="unavailable" then "/proc" else empty end])}')"
   if [ -z "$WV_LO_INVENTORY" ]; then
     WV_LO_INVENTORY="$(jq -nc --arg event "$WV_EVENT" --arg observed "$observed" '{tasks:[],crons:[],watchers:[],spared:[],unreadable:0,scan:"unavailable",unavailable:["inventory"],event:$event,observed:$observed}')"
     WV_LO_STATUS=unavailable
@@ -1478,22 +1482,29 @@ wv_lo_collect() {
 
 wv_lo_render_section() {
   printf '\n## Leftovers\n\n'
-  printf '%s' "$WV_LO_INVENTORY" | jq -r '
+  printf '%s' "$WV_LO_INVENTORY" | jq -r --arg root "$WV_ROOT" '
     def text: tostring | gsub("\n"; "\\n") | gsub("\r"; "\\r");
     def ids: map(if type=="string" then . else .id end);
     def listed: if length==0 then "none" else map(text)|join(",") end;
-    "- leftovers: tasks="+(.tasks|ids|listed)+"; crons="+(.crons|ids|listed)+"; watchers="+(.watchers|map(.pid)|listed)+"; unavailable="+(.unavailable|listed),
+    def under: ((.cwd|tostring) | startswith($root + "/"));
+    def bypid: sort_by((.pid | tonumber)? // 0);
+    (.spared // []) as $all
+    | (($all | map(select(under)) | bypid) + ($all | map(select(under|not)) | bypid)) as $ordered
+    | ($ordered[0:20]) as $pick
+    | ($pick | bypid) as $shown
+    | "- leftovers: tasks="+(.tasks|ids|listed)+"; crons="+(.crons|ids|listed)+"; watchers="+(.watchers|map(.pid)|listed)+"; unavailable="+(.unavailable|listed),
     ("- observed: "+.observed+" ("+.event+")"),
     (.watchers[] | "- watcher: "+.pid+" "+(.cwd|text)+" command="+(.command|text)),
-    (.spared[] | "- spared: "+.pid+" "+(.cwd|text)),
+    ("- spared-count: "+($all|length|tostring)),
+    ($shown[] | "- spared: "+.pid+" "+(.cwd|text)),
+    (if ($all|length) > 20 then ("… +"+((($all|length)-20)|tostring)+" more") else empty end),
     ("- unreadable: "+(.unreadable|tostring)+" pid(s)"),
     "- note: this hook never kills; nothing was signalled"'
 }
 
 wv_lo_write_checkpoint() {
-  local dir="$WV_WAVE_DIR/checkpoints" file tmp observed
-  observed="$(printf '%s' "$WV_LO_INVENTORY" | jq -r '.observed')"
-  file="$dir/$observed-stop.md"
+  local dir="$WV_WAVE_DIR/checkpoints" file tmp
+  file="$dir/leftovers-stop.md"
   if ! mkdir -p "$dir" 2>/dev/null; then
     wv_warn W-STATE 'could not create the leftovers checkpoint directory; no inventory was saved'
     return 1

@@ -389,18 +389,44 @@ assert old in s
 s = s.replace(old, '', 1)
 PYM
 }
+wv_body_leftoverselfexcluded() { cat <<'PYM'
+old = '''  pid="$BASHPID"
+  while [[ "$pid" =~ ^[1-9][0-9]*$ ]] && [ -z "${excluded[$pid]:-}" ]; do
+    excluded[$pid]=1
+    [ -r "/proc/$pid/stat" ] || break
+    statline="$(<"/proc/$pid/stat")"
+    tail="${statline##*) }"
+    read -r state parent tail <<< "$tail"
+    pid="$parent"
+  done
+  excluded[$$]=1
+'''
+assert old in s
+s = s.replace(old, '', 1)
+PYM
+}
+wv_body_leftovermarkerfirst() { cat <<'PYM'
+old = '  wv_lo_collect\n  wv_lo_write_checkpoint\n'
+assert old in s
+s = s.replace(old, '  [ -f "$WV_WAVE_DIR/.scorecard-printed" ] && return 0\n  wv_lo_collect\n  wv_lo_write_checkpoint\n', 1)
+PYM
+}
 WV_EXPECT[leftoverprefixcwd]=leftover-426-proc-exact-root
 WV_EXPECT[leftovercronsdropped]=leftover-428-absent-vs-empty
 WV_EXPECT[leftoverwarnremoved]=leftover-423-terminal-warn
 WV_EXPECT[leftoverkills]=leftover-426-proc-exact-root
 WV_EXPECT[leftoverscanclean]=leftover-427-scan-unavailable
 WV_EXPECT[leftoverprecompactsection]=leftover-429-precompact-and-solo
+WV_EXPECT[leftoverselfexcluded]=leftover-426-proc-exact-root
+WV_EXPECT[leftovermarkerfirst]=leftover-430-closed-and-double-stop
 wv_run_mutant leftoverprefixcwd scripts/hooks/lib.sh wv_body_leftoverprefixcwd 'leftover-426*'
 wv_run_mutant leftovercronsdropped scripts/hooks/lib.sh wv_body_leftovercronsdropped 'leftover-428*'
 wv_run_mutant leftoverwarnremoved scripts/hooks/stop.sh wv_body_leftoverwarnremoved 'leftover-423*'
 wv_run_mutant leftoverkills scripts/hooks/lib.sh wv_body_leftoverkills 'leftover-426*'
 wv_run_mutant leftoverscanclean scripts/hooks/lib.sh wv_body_leftoverscanclean 'leftover-427*'
 wv_run_mutant leftoverprecompactsection scripts/hooks/pre-compact.sh wv_body_leftoverprecompactsection 'leftover-429*'
+wv_run_mutant leftoverselfexcluded scripts/hooks/lib.sh wv_body_leftoverselfexcluded 'leftover-426*'
+wv_run_mutant leftovermarkerfirst scripts/hooks/stop.sh wv_body_leftovermarkerfirst 'leftover-430*'
 
 # --- the table --------------------------------------------------------------
 
