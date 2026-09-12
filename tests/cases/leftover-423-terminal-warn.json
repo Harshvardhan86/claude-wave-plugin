@@ -1,7 +1,5 @@
 {
   "script": "stop.sh",
-  "ac": "AC-321",
-  "note": "AD done + no scorecard-printed marker yet -> prints the scorecard pointer and writes the marker",
   "seed": {
     "state": "state/full-all-done.json",
     "files": {
@@ -10,14 +8,26 @@
   },
   "stdin": {
     "hook_event_name": "Stop",
-    "background_tasks": [],
+    "background_tasks": [
+      {
+        "id": "b2",
+        "type": "shell",
+        "status": "running"
+      }
+    ],
     "session_crons": []
   },
   "expect": {
+    "exit": 0,
     "decision": "warn",
-    "rule": "W-SCORECARD",
+    "rule": "W-LEFTOVER",
+    "reason_template": "W-LEFTOVER",
     "reason_contains": [
-      "wave-scorecard.sh"
+      "b2",
+      "remedy:"
+    ],
+    "stdout_absent": [
+      "W-SCORECARD"
     ]
   }
 }

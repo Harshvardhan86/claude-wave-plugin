@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
 # scripts/hooks/stop.sh — the Stop hook (spec section 9's scorecard pointer).
 #
-# `Stop` fires at the end of EVERY assistant turn in the main session, so
-# this must stay silent on every turn except the one where the active mode's
-# terminal phase (`AD` full, `TEET` demo; solo has none — see below) has
-# just become `done` AND the ledger actually has something to score. Once it
-# prints, it writes `.wave/.scorecard-printed` and never prints again for
-# this wave (AC-322).
-#
-# This script never renders the scorecard itself — `scripts/wave-scorecard.sh`
-# is Task 11's — it only names the command, so the path is correct on day one
-# even though that script does not exist until Task 11 ships.
-#
-# Never blocks the stop: this event's own additionalContext channel
-# (lib.sh's wv_warn_channel_is_stdout includes Stop) is only ever used here
-# for an informational pointer, never a deny.
+# Eligible Stop events refresh the leftover inventory before the scorecard
+# marker or empty-ledger returns. Outstanding or unmeasured resources produce
+# one W-LEFTOVER warning on each firing. A clean inventory keeps the existing
+# once-per-wave W-SCORECARD pointer. Solo eligibility still requires a ledger.
+# This hook never closes the wave, blocks a stop, or signals a process.
 
 set -u
 
@@ -49,10 +40,7 @@ wv_main() {
   wv_project_root || return 0
   wv_state_read || return 0
 
-  [ -f "$WV_WAVE_DIR/.scorecard-printed" ] && return 0
-
   local ledger="$WV_WAVE_DIR/ledger.jsonl"
-  [ -s "$ledger" ] || return 0   # AC-323: nothing to score, stay silent
 
   local settled=0
   case "$WV_MODE" in
@@ -65,11 +53,21 @@ wv_main() {
     *)
       # Solo mode never runs phases.tsv's pipeline and so has no terminal
       # phase (AC-324): a non-empty ledger IS the signal to print, once.
-      settled=1
+      [ -s "$ledger" ] && settled=1
       ;;
   esac
   [ "$settled" = "1" ] || return 0
 
+  wv_lo_collect
+  wv_lo_write_checkpoint
+  if [ "$WV_LO_WARN" = "1" ]; then
+    wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+    return 0
+  fi
+
+  [ -f "$WV_WAVE_DIR/.scorecard-printed" ] && return 0
+
+  [ -s "$ledger" ] || return 0   # Nothing to score; the inventory still landed.
   mkdir -p "$WV_WAVE_DIR" 2>/dev/null
   : > "$WV_WAVE_DIR/.scorecard-printed" 2>/dev/null
 

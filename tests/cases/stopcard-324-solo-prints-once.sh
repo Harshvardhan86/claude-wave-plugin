@@ -19,7 +19,7 @@ seed_state state/solo.json
 printf '{"agent":"a1","phase":"AC","role":"lead","output":50}\n' > "$WV_PROJECT/.wave/ledger.jsonl"
 
 run_stop() {
-  STOP_OUT="$(cd "$WV_PROJECT" && printf '%s' '{"hook_event_name":"Stop"}' | \
+  STOP_OUT="$(cd "$WV_PROJECT" && printf '%s' '{"hook_event_name":"Stop","background_tasks":[],"session_crons":[]}' | \
     bash "$WV_REPO_ROOT/scripts/hooks/stop.sh")"
   STOP_EXIT=$?
 }

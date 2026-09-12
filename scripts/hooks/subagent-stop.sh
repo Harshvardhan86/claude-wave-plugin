@@ -1447,6 +1447,14 @@ wv_main() {
   fi
 
   if [ "$status_new" = "done" ]; then
+    # The flock is released above. Inventory the terminal hand-off before close.
+    if [ "$WV_STOP_PHASE" = "$(wv_lo_terminal_phase "$WV_MODE")" ]; then
+      wv_lo_collect "$WV_STOP_AGENT"
+      wv_lo_write_checkpoint
+      if [ "$WV_LO_WARN" = "1" ]; then
+        wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+      fi
+    fi
     wv_close_if_terminal "$WV_STOP_PHASE"
   fi
   return 0

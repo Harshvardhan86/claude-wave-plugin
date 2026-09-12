@@ -1,7 +1,5 @@
 {
   "script": "stop.sh",
-  "ac": "AC-321",
-  "note": "AD done + no scorecard-printed marker yet -> prints the scorecard pointer and writes the marker",
   "seed": {
     "state": "state/full-all-done.json",
     "files": {
@@ -14,10 +12,11 @@
     "session_crons": []
   },
   "expect": {
-    "decision": "warn",
-    "rule": "W-SCORECARD",
-    "reason_contains": [
-      "wave-scorecard.sh"
+    "exit": 0,
+    "decision": "allow",
+    "negative_control_for": "W-LEFTOVER",
+    "stdout_absent": [
+      "W-LEFTOVER"
     ]
   }
 }

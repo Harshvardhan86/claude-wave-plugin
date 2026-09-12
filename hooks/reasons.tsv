@@ -1,4 +1,4 @@
-# Wave hook enforcement rule reasons. Precedence (high→low): W-STATE, W-NESTED, W-FORK, W-TAG, W-MODE, W-ROLE, W-MODEL-MISSING, W-TIER, W-SCOPE, W-COND, W-ORDER, W-ARTIFACT, W-MARKER, W-DR-OPEN, W-VISUAL, W-BF-APPROVAL, W-ROUND, W-PASTE, W-BUDGET, W-EDIT, W-READ, W-BASH, W-POLL, W-COMMIT-DOC, W-COMMIT-TRAILER, W-LONG-RETURN, W-BGWAIT, W-MODEL-UNKNOWN, W-DESC, W-PROMPT, W-TAINT, W-DOWNGRADE, W-RESOLVE-UNKNOWN, W-SESSION, W-REMINDER, W-SCORECARD
+# Wave hook enforcement rule reasons. Precedence (high→low): W-STATE, W-NESTED, W-FORK, W-TAG, W-MODE, W-ROLE, W-MODEL-MISSING, W-TIER, W-SCOPE, W-COND, W-ORDER, W-ARTIFACT, W-MARKER, W-DR-OPEN, W-VISUAL, W-BF-APPROVAL, W-ROUND, W-PASTE, W-BUDGET, W-EDIT, W-READ, W-BASH, W-POLL, W-COMMIT-DOC, W-COMMIT-TRAILER, W-LONG-RETURN, W-BGWAIT, W-MODEL-UNKNOWN, W-DESC, W-PROMPT, W-TAINT, W-DOWNGRADE, W-RESOLVE-UNKNOWN, W-SESSION, W-REMINDER, W-LEFTOVER, W-SCORECARD
 rule_id	precedence	printf_template
 W-STATE	1	[W-STATE] %s; remedy: nothing was denied and nothing was recorded — fix what is named above and re-run; `scripts/wave-init.sh` rewrites a damaged .wave/state.json.
 W-NESTED	2	[W-NESTED] nested dispatch from agent %s; remedy: the orchestrator is the single dispatcher; return your result and let it dispatch the reviewer.
@@ -35,4 +35,5 @@ W-DOWNGRADE	32	[W-DOWNGRADE] requested %s but resolved model is %s (tier downgra
 W-RESOLVE-UNKNOWN	33	[W-RESOLVE-UNKNOWN] the launch's %s could not be read, so no resolved tier was recorded (%s); remedy: read tool_response in the transcript to see what the launch returned; if the resolved model is a new alias, add it to hooks/models.tsv.
 W-SESSION	34	[W-SESSION] wave %s active, mode=%s, %s; last phase done: %s; tag: [W:%s P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]%s; remedy: informational only, no action required.
 W-REMINDER	35	[W-REMINDER] wave %s active, phase %s → %s. This session is the orchestrator: dispatch tagged Agents, read only .wave/ reports, no builds/tests/edits here; remedy: informational only, no action required.
-W-SCORECARD	36	[W-SCORECARD] wave %s complete; remedy: run %s to view the ledger scorecard.
+W-LEFTOVER	36	[W-LEFTOVER] leftovers at wave close: %s; remedy: stop or wait out each named task, cron and pid before the next wave — this hook never kills and nothing was signalled; `scripts/wave-scorecard.sh` and the newest file under .wave/checkpoints/ list them in full.
+W-SCORECARD	37	[W-SCORECARD] wave %s complete; remedy: run %s to view the ledger scorecard.

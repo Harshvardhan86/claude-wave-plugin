@@ -75,10 +75,13 @@ wave_dir="$WV_ROOT/.wave"
 ledger="$wave_dir/ledger.jsonl"
 state_file="$wave_dir/state.json"
 
-if [ ! -s "$ledger" ]; then
+lo_section="$(wv_lo_latest_section "$wave_dir")"
+if [ ! -s "$ledger" ] && [ -z "$lo_section" ]; then
   printf 'wave-scorecard.sh: no ledger at %s; nothing has been dispatched yet.\n' "$ledger"
   exit 0
 fi
+
+[ -s "$ledger" ] || ledger=/dev/null
 
 [ -n "$out_path" ] || out_path="$wave_dir/scorecard.md"
 
@@ -254,6 +257,15 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Write + print.
 # ---------------------------------------------------------------------------
+
+if [ -n "$lo_section" ]; then
+  wv_sc_append ""
+  wv_sc_append "$lo_section"
+fi
+orphans="$(jq -Rrn '[inputs | fromjson? | select(type=="object") | select((.bg_orphaned // [] | length)>0) | (.agent+": "+(.bg_orphaned|join(", ")))] | join("; ")' < "$ledger" 2>/dev/null)"
+if [ -n "$orphans" ]; then
+  wv_sc_append "- Orphaned background tasks: $orphans"
+fi
 
 mkdir -p "$(dirname "$out_path")" 2>/dev/null
 if ! printf '%s' "$wv_sc_out" > "$out_path" 2>/dev/null; then

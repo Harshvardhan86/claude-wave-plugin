@@ -63,4 +63,5 @@ precedence	rule_id	band
 33	W-RESOLVE-UNKNOWN	advisory
 34	W-SESSION	advisory
 35	W-REMINDER	advisory
-36	W-SCORECARD	advisory
+36	W-LEFTOVER	advisory
+37	W-SCORECARD	advisory

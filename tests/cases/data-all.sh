@@ -96,6 +96,6 @@ has_readme=$(command grep -c '^README.md$' hooks/orchestrator-writable.tsv || ec
 # AC-353: reasons.tsv had 31 rules before Task 10 added W-SESSION,
 # W-REMINDER and W-SCORECARD (session-start.sh / user-prompt.sh / stop.sh).
 rule_count=$(command grep -v '^#' hooks/reasons.tsv | command grep -v '^rule_id' | wc -l)
-[ "$rule_count" = "36" ] || fail "reasons.tsv should have 36 rules, got $rule_count"
+[ "$rule_count" = "37" ] || fail "reasons.tsv should have 37 rules, got $rule_count"
 
 exit $rc
