@@ -108,7 +108,7 @@ WV_BASE_SHA=""
 
 declare -A WV_PRISTINE_OF=()
 declare -A WV_SHA_OF=()
-for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh; do
   cp "$WV_TREE/$rel" "$WV_TMP/$(basename "$rel").pristine" || exit 1
   WV_PRISTINE_OF["$rel"]="$WV_TMP/$(basename "$rel").pristine"
   WV_SHA_OF["$rel"]="$(sha256sum < "$WV_TMP/$(basename "$rel").pristine" | cut -d' ' -f1)"
@@ -469,6 +469,13 @@ s = s.replace(old, '[ "$stop_active" = "true" ]')
 PYBODY
 }
 
+wv_body_bgrecordanyagent() { cat <<'PYBODY'
+old = '  [ -n "$WV_AGENT_ID" ] || return 0\n'
+assert old in s
+s = s.replace(old, '', 1)
+PYBODY
+}
+
 H="$WV_HOOK_REL"
 L="$WV_LIB_REL"
 
@@ -529,6 +536,9 @@ wv_run_mutant bglatchremoved wv_body_bglatchremoved "$H" 'bgwait-408*'
 wv_run_mutant bgorphanledgeromitted wv_body_bgorphanledgeromitted "$H" 'bgwait-408*'
 wv_run_mutant bgflagonlyorphan wv_body_bgflagonlyorphan "$H" 'bgwait-409*'
 
+WV_EXPECT[bgrecordanyagent]=bgwait-411-no-agentid-no-record
+wv_run_mutant bgrecordanyagent wv_body_bgrecordanyagent scripts/hooks/post-bash.sh 'bgwait-411*'
+
 # --- the table --------------------------------------------------------------
 
 printf '\n%-15s %-11s %-33s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'
@@ -542,7 +552,7 @@ done
 printf '%s\n' '-----------------------------------------------------------------------------------------'
 
 wv_restored=yes
-for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh; do
   if [ "$(sha256sum < "$WV_TREE/$rel" | cut -d' ' -f1)" != "${WV_SHA_OF[$rel]}" ]; then
     printf 'NOT RESTORED: %s\n' "$rel" >&2
     wv_restored=NO

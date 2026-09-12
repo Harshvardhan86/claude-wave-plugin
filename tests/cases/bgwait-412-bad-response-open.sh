@@ -6,16 +6,10 @@ log="${WV_CASE_LOG:-$WV_RUN_TMP/logs/$name.log}"
 rc=0
 fail() { printf 'ASSERT FAIL: %s\n' "$*" >&2; rc=1; }
 c="$WV_RUN_TMP/$name.json"
-base="$WV_TESTS_DIR/cases/bgwait-405-running-block.json"
-printf 'RAN subagent-stop.sh %s decision=multi\n' "$name" >> "$log"
-make_case() {
-  jq --rawfile state "$WV_TESTS_DIR/fixtures/state/bgwait-ac-reviewer.json" \
-    '.seed.files[".wave/state.json"] //= $state | del(.seed.state)' "$base" > "$c.base" || exit 1
-  jq "$1" "$c.base" > "$c" || exit 1
-}
-run_stop() { run_hook subagent-stop.sh "$c" || fail "hook run failed"; }
-
 base="$WV_TESTS_DIR/cases/bgwait-411-no-agentid-no-record.json"
+printf 'RAN post-bash.sh %s decision=multi\n' "$name" >> "$log"
+source "$WV_TESTS_DIR/fixtures/bgwait-case.sh"
+
 for response in '"text"' '{"taskId":"x"}' '{}' '{"backgroundTaskId":17}' '{"backgroundTaskId":""}' 'null'; do
   WV_PROJECT="$(mkproj)"
   make_case ".stdin.agent_id = \"a1\" | .stdin.tool_response = $response"

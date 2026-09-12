@@ -8,12 +8,7 @@ fail() { printf 'ASSERT FAIL: %s\n' "$*" >&2; rc=1; }
 c="$WV_RUN_TMP/$name.json"
 base="$WV_TESTS_DIR/cases/bgwait-405-running-block.json"
 printf 'RAN subagent-stop.sh %s decision=multi\n' "$name" >> "$log"
-make_case() {
-  jq --rawfile state "$WV_TESTS_DIR/fixtures/state/bgwait-ac-reviewer.json" \
-    '.seed.files[".wave/state.json"] //= $state | del(.seed.state)' "$base" > "$c.base" || exit 1
-  jq "$1" "$c.base" > "$c" || exit 1
-}
-run_stop() { run_hook subagent-stop.sh "$c" || fail "hook run failed"; }
+source "$WV_TESTS_DIR/fixtures/bgwait-case.sh"
 
 for flag in true false long; do
   WV_PROJECT="$(mkproj)"
@@ -37,5 +32,17 @@ for flag in true false long; do
   assert_ledger_lines 1 || rc=1
   [ "$before" = "$(cat "$WV_PROJECT/.wave/state.json")" ] || fail 'replay changed state'
 done
+
+# A persisted wait latch is not an orphan if the task finishes before retry.
+WV_PROJECT="$(mkproj)"
+make_case '.'
+run_stop
+assert_block W-BGWAIT || rc=1
+make_case 'del(.seed) | .stdin.stop_hook_active = true | .stdin.background_tasks |= map(select(.type == "subagent"))'
+run_stop
+assert_allow || rc=1
+assert_state '.phases.AC.status == "done" and .bg_orphaned == null' || rc=1
+assert_ledger_lines 1 || rc=1
+assert_ledger_line '.bg_orphaned == null' || rc=1
 
 exit $rc

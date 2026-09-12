@@ -786,7 +786,7 @@ wv_stop_warn() {
   shift
   local -a args=()
   local arg
-  for arg in "$@"; do args+=("$(wv_neutralise "$arg")"); done
+  for arg in "$@"; do args+=("${arg//W-/W_}"); done
   WV_STOP_WARN+=("$(wv_render "$rule" "${args[@]:-}")")
   return 0
 }
@@ -801,7 +801,7 @@ wv_stop_block() {
   fi
   local -a args=()
   local arg
-  for arg in "$@"; do args+=("$(wv_neutralise "$arg")"); done
+  for arg in "$@"; do args+=("${arg//W-/W_}"); done
   wv_block "$rule" "${args[@]}"
 }
 
@@ -839,6 +839,23 @@ wv_bg_running() {
           | select(.status == "running" and .type == "shell")
           | .id | select(type == "string") | select(. as $task | $ids | index($task))] | unique
         end
+      end' 2>/dev/null
+}
+
+wv_bg_stop_metadata() {
+  # Missing maps are optional; corrupt maps or per-agent values are unmeasured.
+  jq -cne --argjson state "$WV_STATE" --arg id "$WV_STOP_AGENT" '
+    ($state.bg_blocked | if . == null then {} else . end) as $blocked
+    | ($state.bg_orphaned | if . == null then {} else . end) as $orphaned
+    | if ($blocked | type) != "object" or ($orphaned | type) != "object"
+      then error("invalid background stop maps") else
+        ($blocked[$id] // false) as $latch
+        | ($orphaned[$id] | if . == null then {ids: []} else . end) as $row
+        | if ($latch | type) != "boolean" or ($row | type) != "object"
+          then error("invalid background stop record")
+          elif ($row.ids | type) != "array" then error("invalid orphan ids")
+          elif any($row.ids[]; type != "string") then error("invalid orphan id")
+          else {latched: $latch, orphans: $row.ids} end
       end' 2>/dev/null
 }
 
@@ -1125,8 +1142,14 @@ wv_main() {
           wv_warn W-STATE 'background task state could not be measured; no background verdict was recorded'
           bg_running="[]"
         fi
-        bg_latched="$(printf '%s' "$WV_STATE" | jq -r --arg id "$WV_STOP_AGENT" '.bg_blocked[$id] == true' 2>/dev/null)"
-        bg_orphans="$(printf '%s' "$WV_STATE" | jq -ce --arg id "$WV_STOP_AGENT" '(.bg_orphaned[$id].ids // []) | select(type == "array")' 2>/dev/null)" || bg_orphans="[]"
+        local bg_metadata
+        if bg_metadata="$(wv_bg_stop_metadata)"; then
+          bg_latched="$(printf '%s' "$bg_metadata" | jq -r '.latched')"
+          bg_orphans="$(printf '%s' "$bg_metadata" | jq -c '.orphans')"
+        else
+          wv_warn W-STATE 'background latch or orphan state could not be measured; no background verdict was recorded'
+          bg_running="[]"
+        fi
         ;;
     esac
   fi
@@ -1222,17 +1245,24 @@ wv_main() {
   # Background waiting is below artifact and long-return precedence. Only a
   # durable prior latch arms failure; the payload flag merely disarms a block.
   if [ "$bg_running" != "[]" ] && [ "$WV_STOP_SEEN" = "0" ]; then
-    local -a bg_ids=()
-    mapfile -t bg_ids < <(printf '%s' "$bg_running" | jq -r '.[]')
-    bg_detail="$(wv_list_cap 5 120 ', ' "${bg_ids[@]}")"
+    # Join JSON strings without splitting embedded newlines. The sentinel
+    # preserves a trailing newline through command substitution; wv_block
+    # JSON-escapes the rendered reason with jq --arg at the emission site.
+    bg_detail="$(printf '%s' "$bg_running" | jq -r '
+      . as $ids | (.[0:5] | join(", "))
+      | if ($ids | length) > 5 then . + ", …" else . end
+      | if length > 120 then .[0:119] + "…" else . end
+      | . + "\u001f"')"
+    bg_detail="${bg_detail%$'\x1f'}"
     if [ "$WV_ENFORCE" = "warn" ] || [ "$bg_latched" = "true" ]; then
       local bg_filter
       bg_filter=".bg_orphaned[$(wv_jq_str "$WV_STOP_AGENT")] = {phase: $(wv_jq_str "$WV_STOP_PHASE"), ids: $bg_running}"
       if wv_state_update "$bg_filter"; then
         bg_orphans="$bg_running"
-        if [ "$WV_ENFORCE" = "warn" ]; then
-          wv_stop_warn W-BGWAIT "$bg_detail"
-        fi
+      fi
+      # Warning delivery is independent of whether the orphan write succeeds.
+      if [ "$WV_ENFORCE" = "warn" ]; then
+        wv_stop_warn W-BGWAIT "$bg_detail"
       fi
     elif [ -z "$emit_rule" ] && [ "$stop_active" = "false" ]; then
       # Never emit without a persisted latch, including on a failed write.
@@ -1250,7 +1280,7 @@ wv_main() {
 
   local warnjson="[]" warns_new=0
   if [ "${#WV_STOP_WARN[@]}" -gt 0 ]; then
-    warnjson="$(printf '%s\n' "${WV_STOP_WARN[@]}" | jq -Rsc 'split("\n") | map(select(. != ""))')"
+    warnjson="$(jq -nc --args '$ARGS.positional' "${WV_STOP_WARN[@]}")"
     # How many of them are not ALREADY on the phase's record. A replayed stop
     # renders the same warning text again, and appending it again is how
     # `phases[X].warned` grew 1 -> 2 -> 3 across three identical stops and made

@@ -22,6 +22,7 @@ wv_main() {
   [ -n "$WV_AGENT_ID" ] || return 0
   wv_project_root || return 0
   wv_state_read || return 0
+  [ "$WV_STATUS" = "active" ] || return 0
   case "$WV_MODE" in full|demo) ;; *) return 0 ;; esac
   [ "$(wv_json '.tool_input.run_in_background == true')" = "true" ] || return 0
   local id agent_lit task_lit
