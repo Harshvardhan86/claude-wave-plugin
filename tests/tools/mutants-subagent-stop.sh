@@ -304,15 +304,25 @@ PY
 }
 
 # --- 8. the terminal-phase close is never called --------------------------
+# Re-anchored on the post-inventory call site: leftover collection now runs
+# before case "$emit_rule", so the close is the bare done-block below.
 wv_body_terminalskip() { cat <<'PY'
-old = '''  if [ "$status_new" = "done" ]; then
+old = '''  if [ -n "$verdict_rule" ]; then
+    return 0
+  fi
+
+  if [ "$status_new" = "done" ]; then
     wv_close_if_terminal "$WV_STOP_PHASE"
   fi'''
-new = '''  if [ "$status_new" = "done" ] && false; then
+new = '''  if [ -n "$verdict_rule" ]; then
+    return 0
+  fi
+
+  if [ "$status_new" = "done" ] && false; then
     wv_close_if_terminal "$WV_STOP_PHASE"
   fi'''
 assert old in s, "anchor missing: the terminal close"
-s = s.replace(old, new)
+s = s.replace(old, new, 1)
 PY
 }
 
