@@ -14,7 +14,7 @@
 # no partial state write"): the operative claim this case enforces is no
 # CRASH trace and no partial write, not literally zero bytes on stderr,
 # which would contradict a binding Global Constraint every one of these
-# thirteen scripts already correctly satisfies. See run_all_eleven's own
+# thirteen scripts already correctly satisfies. See run_all_thirteen's own
 # comment in tests/lib/assert.sh for the exact allow-listed line.
 set -u
 
@@ -26,7 +26,7 @@ log="${WV_CASE_LOG:-$WV_RUN_TMP/logs/$name.log}"
 mkdir -p "$(dirname "$log")"
 
 rc=0
-if run_all_eleven empty-stdin; then
+if run_all_thirteen empty-stdin; then
   printf 'RAN allscripts-030 empty-stdin scripts=13 decision=silent\n' >> "$log"
 else
   printf 'RAN allscripts-030 empty-stdin scripts=partial decision=silent\n' >> "$log"

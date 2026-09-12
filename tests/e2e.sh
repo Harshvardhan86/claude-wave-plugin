@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # tests/e2e.sh — the real headless load proof (spec section 12, AC-378/379)
-# PLUS (Task 12) six real headless-session scenarios that prove the hooks
+# PLUS seven real headless-session scenarios that prove the hooks
 # actually fire and decide inside the real `claude` harness, not only when
 # fed by tests/run.sh's fixture-driven cases.
 #
-# AC coverage note (the task-12 brief's seven "End to end" scenarios,
+# AC coverage note (the original seven "End to end" scenarios,
 # AC-380..387): AC-380/381/382/383/385 are each a dedicated scenario below
 # (a/b/c/e/f). AC-386 ("a real trailer-bearing commit refused") is a plain
 # `git commit -F file` against the installed `.git/hooks/commit-msg` — no
@@ -14,11 +14,15 @@
 # deny channel probe for `enforce:"warn"`) is NOT covered by a live session
 # in this file: proving it live means letting an untagged dispatch actually
 # proceed to a real subagent (the same cost profile as scenario c/e), which
-# would not fit this file's own ≤10-minute total budget alongside the six
-# scenarios below — flagged as a concern in the task-12 report rather than
+# adds another paid session beyond the original scenarios
+# below — retained as a separate live-validation concern rather than
 # silently dropped.
 #
-# Usage: tests/e2e.sh [--keep]
+# Usage: tests/e2e.sh [--keep] [--scenario=a|b|c|d|e|f|g|load|all]
+#   --scenario=g runs only the background-wait proof (one parent and one
+#                subagent, both haiku, bounded at 120 seconds). Default: all.
+#   All runs have a combined timeout ceiling of 13 minutes, plus setup.
+#   Each selected scenario is a paid session; no retries are performed.
 #   --keep   do not delete the scratch git projects / debug log this run
 #            creates; print their paths instead, for post-mortem debugging.
 #
@@ -31,12 +35,7 @@
 # would catch a regression: it runs real headless `claude` sessions with
 # this repo loaded as a --plugin-dir and inspects both the client's
 # --debug-file log (the load proof) and the session transcripts under the
-# account's `projects/` directory (the five scenarios).
-#
-# Task 11 shipped the load-proof section only (deliverable b of the
-# task-11 brief); this task (12) appends the rest: real dispatch/edit
-# scenarios that prove pre-agent.sh, post-agent.sh, subagent-stop.sh and
-# pre-edit.sh actually fire and decide in a live session.
+# account's `projects/` directory (the scenarios).
 #
 # Skips itself LOUDLY with exit 3 — never a silent pass — in two cases:
 #   1. `claude` is not on PATH.
@@ -86,11 +85,13 @@ set -u
 WV_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 WV_KEEP=0
+WV_E2E_SCENARIO=all
 for wv_arg in "$@"; do
   case "$wv_arg" in
     --keep) WV_KEEP=1 ;;
+    --scenario=all|--scenario=load|--scenario=[a-g]) WV_E2E_SCENARIO="${wv_arg#*=}" ;;
     *)
-      printf 'tests/e2e.sh: unknown argument: %s (only --keep is accepted)\n' "$wv_arg" >&2
+      printf 'tests/e2e.sh: unknown argument: %s (use --keep or --scenario=a|b|c|d|e|f|g|load|all)\n' "$wv_arg" >&2
       exit 1
       ;;
   esac
@@ -112,6 +113,7 @@ WV_E2E_ASSERTIONS=(
   "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
+  "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, waits, then completes without orphans"
   "scenario-f (AC-385): /<plugin>:wave-start \"x\" run WITHOUT --dangerously-skip-permissions needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json"
 )
 
@@ -122,6 +124,12 @@ wv_e2e_print_skip_banner() {
   printf 'tests/e2e.sh: the following assertions were NOT run:\n' >&2
   local a
   for a in "${WV_E2E_ASSERTIONS[@]}"; do
+    if [ "$WV_E2E_SCENARIO" != all ]; then
+      case "$a" in
+        "scenario-$WV_E2E_SCENARIO"*|"$WV_E2E_SCENARIO-proof"*) : ;;
+        *) continue ;;
+      esac
+    fi
     printf '  - %s\n' "$a" >&2
   done
 }
@@ -173,11 +181,12 @@ git -C "$proj" init -q
 
 # --- the load proof itself --------------------------------------------
 
+rc=0
+if [ "$WV_E2E_SCENARIO" = all ] || [ "$WV_E2E_SCENARIO" = load ]; then
+
 out="$(cd "$proj" && timeout 120 claude --debug-file "$log" --plugin-dir "$WV_REPO_ROOT" \
   -p 'reply with the single word OK' --model haiku 2>&1)"
 run_rc=$?
-
-rc=0
 
 if [ "$run_rc" != "0" ]; then
   if wv_e2e_looks_like_auth_error "$out"; then
@@ -239,8 +248,10 @@ else
   printf '  (log kept at: %s — trap will still remove it on exit; rerun with a copy if needed)\n' "$log" >&2
 fi
 
+fi
+
 # ===========================================================================
-# Task 12: the five real dispatch/edit scenarios. Each drives its own
+# The seven real dispatch/edit/background-wait scenarios. Each drives its own
 # headless `claude -p` session, with this repo as a --plugin-dir, against a
 # FRESH scratch git project under mktemp (never the load-proof's own $proj),
 # and asserts against BOTH the session's --output-format json result AND the
@@ -477,7 +488,7 @@ wv_e2e_scenario_b() {
 # specific signature: tier_ok null with tier_verified false and turns 0, which is
 # SubagentStop arriving before the client had flushed the stopping agent's own
 # transcript (measured at roughly one live run in five while this file was written).
-# Task 13 fixed that in the hook — scripts/hooks/subagent-stop.sh now waits, bounded
+# The hook fixes that — scripts/hooks/subagent-stop.sh now waits, bounded
 # at 12 x 200 ms, for the transcript to hold a complete assistant line and to stop
 # growing before reading it, and marks the ledger line transcript_incomplete if it
 # cannot confirm — and tests/cases/stop-181-transcript-settle.sh drives that exact
@@ -553,7 +564,7 @@ wv_e2e_scenario_c_attempt() {
   if [ "$tier_ok" != "true" ]; then
     # The signature that used to be retried, now recognised only so the failure
     # names it: turns 0 with tier_verified false means subagent-stop.sh read the
-    # agent's transcript before the client had flushed it. Task 13's bounded settle
+    # agent's transcript before the client had flushed it. The bounded settle
     # is what stops that, and if this ever appears again it means the settle capped
     # out — in which case the ledger line will ALSO carry transcript_incomplete:true,
     # which is the discriminator between "the settle failed" and "the agent really
@@ -788,12 +799,67 @@ wv_e2e_scenario_f() {
   printf '  permission_denials: 0; %s/.wave/state.json produced (wave=%s)\n' "$d" "$wave_val"
 }
 
-wv_e2e_scenario_a
-wv_e2e_scenario_b
-wv_e2e_scenario_c
-wv_e2e_scenario_d
-wv_e2e_scenario_e
-wv_e2e_scenario_f
+# Scenario (g): one real background-task stop block, then clean completion.
+wv_e2e_scenario_g() {
+  local name="scenario-g-background-wait" d errfile sid transcript agent child count
+  d="$(wv_e2e_new_scratch)"
+  WV_E2E_SCRATCH_DIRS+=("$d")
+  wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
+  errfile="$d/.e2e-stderr.log"
+  local prompt='Use the Agent tool exactly once with subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] background wait probe", prompt="Use Bash exactly once with command sleep 20 and run_in_background true. Immediately return DONE without waiting or calling any other tool first. If a stop hook blocks that return, run sleep 25 in foreground using Bash, then return DONE. Do not start another background task, use Monitor, or repeat the hook message." Wait for this subagent to finish, then reply DONE. Do not perform other work.'
+  wv_e2e_run_session "$d" "$prompt" 120 "$errfile"
+  if [ -z "$WV_E2E_JSON" ]; then
+    if wv_e2e_looks_like_auth_error "$(cat "$errfile" 2>/dev/null)"; then
+      wv_e2e_print_skip_banner "non-interactive auth refused during $name: $(cat "$errfile" 2>/dev/null)"
+      exit 3
+    fi
+    wv_sc_fail "$name" "empty output (rc=$WV_E2E_RC); stderr: $(cat "$errfile" 2>/dev/null)"
+    return
+  fi
+  if [ "$WV_E2E_RC" != 0 ] || ! printf '%s' "$WV_E2E_JSON" | jq -e '.is_error == false and .subtype == "success"' >/dev/null 2>&1; then
+    wv_sc_fail "$name" "session did not complete successfully (rc=$WV_E2E_RC): $WV_E2E_JSON"
+    return
+  fi
+  sid="$(wv_e2e_session_id)"
+  [ -n "$sid" ] || { wv_sc_fail "$name" "missing session id"; return; }
+  transcript="$(wv_e2e_find_transcript "$sid")"
+  [ -n "$transcript" ] || { wv_sc_fail "$name" "no transcript for $sid"; return; }
+  if ! jq -e '(.bg_tasks | length) == 1 and
+      ([.bg_tasks[] | length] == [1]) and .phases.AD.status == "done" and
+      ((.bg_orphaned // {}) | length) == 0' "$d/.wave/state.json" >/dev/null 2>&1; then
+    wv_sc_fail "$name" "expected one recorded task, completed AD and no orphans"
+    return
+  fi
+  agent="$(jq -r '.bg_tasks | keys[0]' "$d/.wave/state.json")"
+  if ! jq -e --arg agent "$agent" '.bg_blocked[$agent] == true' "$d/.wave/state.json" >/dev/null 2>&1; then
+    wv_sc_fail "$name" "no durable background-wait latch for $agent"
+    return
+  fi
+  child="${transcript%.jsonl}/subagents/agent-$agent.jsonl"
+  count="$(jq -s '[.[] | .message.content? | select(type == "array") | .[] |
+    select(.type == "tool_use" and .name == "Bash" and
+      .input.command == "sleep 20" and .input.run_in_background == true)] | length' "$child" 2>/dev/null)"
+  if [ "$count" != 1 ]; then
+    wv_sc_fail "$name" "expected exactly one background sleep 20 call, found ${count:-unreadable} in $child"
+    return
+  fi
+  # Count feedback records, not assistant paraphrases or prompt text. The prompt
+  # contains no rule token. A durable latch alone cannot prove message delivery.
+  count="$(jq -s '[.[] | select(.type == "user" or .type == "system") |
+    select(any(.. | strings; contains("[W-BGWAIT]")))] | length' "$child" 2>/dev/null)"
+  if [ "$count" != 1 ]; then
+    wv_sc_fail "$name" "expected exactly one W-BGWAIT feedback record, found ${count:-unreadable} in $child"
+    return
+  fi
+  wv_sc_pass "$name"
+  printf '  session: %s (%s)\n  stop-block feedback records: %s; AD done; no orphans\n' "$sid" "$child" "$count"
+}
+
+for wv_scenario in a b c d e f g; do
+  if [ "$WV_E2E_SCENARIO" = all ] || [ "$WV_E2E_SCENARIO" = "$wv_scenario" ]; then
+    "wv_e2e_scenario_$wv_scenario"
+  fi
+done
 
 printf 'tests/e2e.sh: scenarios total=%d passed=%d failed=%d\n' \
   "$((WV_SC_PASS + WV_SC_FAIL))" "$WV_SC_PASS" "$WV_SC_FAIL"

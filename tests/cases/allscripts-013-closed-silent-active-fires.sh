@@ -20,7 +20,7 @@ mkdir -p "$(dirname "$log")"
 
 rc=0
 
-if run_all_eleven closed; then
+if run_all_thirteen closed; then
   printf 'RAN allscripts-013 closed scripts=13 decision=silent\n' >> "$log"
 else
   printf 'RAN allscripts-013 closed scripts=partial decision=silent\n' >> "$log"
@@ -28,7 +28,7 @@ else
   rc=1
 fi
 
-if run_all_eleven active; then
+if run_all_thirteen active; then
   printf 'RAN allscripts-013 active scripts=13 decision=fires\n' >> "$log"
 else
   printf 'RAN allscripts-013 active scripts=partial decision=fires\n' >> "$log"

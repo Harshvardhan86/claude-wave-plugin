@@ -524,23 +524,23 @@ assert_ledger_prefix() {
 # Every wired script must be a total no-op (exit 0, empty stdout, empty
 # stderr) whenever there is no active wave to enforce, and — the other half
 # of the same claim — must NOT be a no-op when there IS one: a sweep that
-# only ever proves silence would pass just as well against eleven scripts
-# that always do nothing. `_wv_eleven_stdin`/`_wv_eleven_active_state`/
-# `_wv_eleven_seed_files` below are copied, byte-for-byte where practical,
+# only ever proves silence would pass just as well against thirteen scripts
+# that always do nothing. `_wv_thirteen_stdin`/`_wv_thirteen_active_state`/
+# `_wv_thirteen_seed_files` below are copied, byte-for-byte where practical,
 # from an already-GREEN positive case for that script (cited in each case's
 # comment) — never invented — so "produces its rule" is grounded in a fixture
 # this suite has already proven fires, not a guess about what might.
-# Historical helper names stay stable. post-bash.sh now proves the recording
+# post-bash.sh proves the recording
 # observed in bgwait-410; pre-monitor.sh proves the denial in poll-419.
 
-_wv_eleven_scripts() {
+_wv_thirteen_scripts() {
   printf '%s\n' \
     pre-agent.sh post-agent.sh subagent-stop.sh pre-edit.sh pre-read.sh \
     pre-bash.sh pre-commit-guard.sh pre-compact.sh stop.sh session-start.sh \
     user-prompt.sh post-bash.sh pre-monitor.sh
 }
 
-_wv_eleven_active_state() {
+_wv_thirteen_active_state() {
   # The seed.state fixture each script's positive case (cited below) uses.
   case "$1" in
     post-bash.sh|pre-monitor.sh) printf 'state/valid-full.json' ;;
@@ -558,7 +558,7 @@ _wv_eleven_active_state() {
   esac
 }
 
-_wv_eleven_seed_files() {
+_wv_thirteen_seed_files() {
   # Writes into $WV_PROJECT whatever on-disk fixture this script's positive
   # case needs beyond state.json (an artifact file, a ledger line, a
   # checkpoint). Safe to call regardless of scenario: unused files are inert.
@@ -595,7 +595,7 @@ _wv_eleven_seed_files() {
   esac
 }
 
-_wv_eleven_stdin() {
+_wv_thirteen_stdin() {
   # Reads the `.stdin` object straight out of each script's cited positive
   # case file, rather than retyping it here: byte-identical to the fixture
   # that already proves the rule fires (never a second, driftable copy),
@@ -630,8 +630,8 @@ _wv_eleven_stdin() {
 
 WV_ELEVEN_FAILURES=""
 
-run_all_eleven() {
-  # run_all_eleven <scenario> -> 0 if all thirteen scripts behaved as the
+run_all_thirteen() {
+  # run_all_thirteen <scenario> -> 0 if all thirteen scripts behaved as the
   # scenario requires, 1 otherwise (WV_ELEVEN_FAILURES then names which and
   # why). Every script gets its own fresh mkproj() so one script's state
   # write can never leak into the next script's run. <scenario>:
@@ -654,23 +654,23 @@ run_all_eleven() {
   WV_ELEVEN_FAILURES=""
   local script n=0
 
-  for script in $(_wv_eleven_scripts); do
+  for script in $(_wv_thirteen_scripts); do
     n=$((n + 1))
     local proj
     proj="$(mkproj)"
     WV_PROJECT="$proj"
 
     local stdin
-    stdin="$(_wv_eleven_stdin "$script")"
+    stdin="$(_wv_thirteen_stdin "$script")"
 
     case "$scenario" in
       active)
-        seed_state "$(_wv_eleven_active_state "$script")"
-        _wv_eleven_seed_files "$script"
+        seed_state "$(_wv_thirteen_active_state "$script")"
+        _wv_thirteen_seed_files "$script"
         ;;
       closed)
-        seed_state "$(_wv_eleven_active_state "$script")"
-        _wv_eleven_seed_files "$script"
+        seed_state "$(_wv_thirteen_active_state "$script")"
+        _wv_thirteen_seed_files "$script"
         jq '.status = "closed"' "$proj/.wave/state.json" > "$proj/.wave/state.json.tmp" \
           && mv "$proj/.wave/state.json.tmp" "$proj/.wave/state.json"
         ;;
@@ -681,13 +681,13 @@ run_all_eleven() {
         : # nothing: no .wave/ at all.
         ;;
       empty-stdin)
-        seed_state "$(_wv_eleven_active_state "$script")"
-        _wv_eleven_seed_files "$script"
+        seed_state "$(_wv_thirteen_active_state "$script")"
+        _wv_thirteen_seed_files "$script"
         stdin=""
         ;;
       nonjson-stdin)
-        seed_state "$(_wv_eleven_active_state "$script")"
-        _wv_eleven_seed_files "$script"
+        seed_state "$(_wv_thirteen_active_state "$script")"
+        _wv_thirteen_seed_files "$script"
         stdin="not json at all"
         ;;
       *)
@@ -697,7 +697,7 @@ run_all_eleven() {
     esac
 
     local stderr_tmp out rc err
-    stderr_tmp="$(mktemp "$WV_RUN_TMP/eleven-stderr.XXXXXX")"
+    stderr_tmp="$(mktemp "$WV_RUN_TMP/thirteen-stderr.XXXXXX")"
     out="$(cd "$proj" && printf '%s' "$stdin" | WV_NOW="$WV_PINNED_NOW" bash "$WV_REPO_ROOT/scripts/hooks/$script" 2>"$stderr_tmp")"
     rc=$?
     err="$(cat "$stderr_tmp")"
@@ -729,7 +729,7 @@ run_all_eleven() {
       # mandates the single diagnostic lib.sh's wv_parse_stdin already prints
       # here — "stderr is empty" in AC-30/31's own wording therefore cannot
       # mean byte-for-byte zero output without contradicting a binding
-      # Global Constraint every one of these eleven scripts already
+      # Global Constraint every one of these thirteen scripts already
       # satisfies; read together with the qualifier immediately following it
       # in the AC ("no unbound-variable trace, no partial state write"), the
       # operative claim is "no CRASH trace", not "no diagnostic line at

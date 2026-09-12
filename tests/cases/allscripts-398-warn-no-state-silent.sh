@@ -20,7 +20,7 @@ log="${WV_CASE_LOG:-$WV_RUN_TMP/logs/$name.log}"
 mkdir -p "$(dirname "$log")"
 
 rc=0
-if run_all_eleven no-wave-dir; then
+if run_all_thirteen no-wave-dir; then
   printf 'RAN allscripts-398 no-wave-dir scripts=13 decision=silent\n' >> "$log"
 else
   printf 'RAN allscripts-398 no-wave-dir scripts=partial decision=silent\n' >> "$log"

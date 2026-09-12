@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-09-12
+
+### Added
+
+- **W-BGWAIT:** a full/demo subagent returning with recorded background Bash work
+  still running is blocked once; a later latched stop records orphans and fails
+  the phase. Wait with a bounded foreground command or stop the task before returning.
+- **W-POLL:** full/demo Bash denies unbounded polling loops and bare sleeps over
+  300 seconds; subagents cannot use Monitor. Bound the wait with a positive
+  timeout, shorten the sleep, or leave monitoring to the main session.
+- **W-LEFTOVER:** wave completion warns about remaining tasks, crons and watcher
+  processes; checkpoints and scorecards include the inventory and spared pids.
+  PreCompact also inventories, warning only on watcher evidence or scan failure.
+  Inspect the inventory and finish or stop named work; hooks never kill processes.
+
+### Changed
+
+- Stop hook timeout is 20 seconds; PostToolUse Bash and PreToolUse Monitor hooks
+  are registered automatically.
+- The reasons table now contains 37 rules.
+
+### Notes
+
+- Poll detection is lexical: shell `-c` arguments are inspected through depth 3,
+  other quoted spans are stripped, and variables and aliases are not resolved.
+  Heredoc text can trigger a lexical match; a positive literal timeout proves
+  a bound, while `timeout 0` and `timeout $N` do not.
+
 ## [0.2.0] — 2026-09-10
 
 ### Added

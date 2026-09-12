@@ -18,7 +18,7 @@ log="${WV_CASE_LOG:-$WV_RUN_TMP/logs/$name.log}"
 mkdir -p "$(dirname "$log")"
 
 rc=0
-if run_all_eleven nonjson-stdin; then
+if run_all_thirteen nonjson-stdin; then
   printf 'RAN allscripts-031 nonjson-stdin scripts=13 decision=silent\n' >> "$log"
 else
   printf 'RAN allscripts-031 nonjson-stdin scripts=partial decision=silent\n' >> "$log"

@@ -100,7 +100,7 @@ Invoke `/wave-checkpoint` before context fills. The next session resumes from `.
 
 ## Hook-enforced contract
 
-In v0.2.0, `hooks/hooks.json` is auto-loaded with the plugin. Verify that file's
+Since v0.2.0, `hooks/hooks.json` is auto-loaded with the plugin. Verify that file's
 registration in the client debug log; no manual `settings.json` wiring is required.
 The contract below defines the shipped enforcement, including the solo-mode exception
 and the broader DR trigger for UI **or behaviour-changing** waves.
@@ -117,7 +117,7 @@ excluded through `.git/info/exclude`.
 - **Demo** applies the same checks to `AC`, `DR`, `TDE-RED`, `TDE-GREEN`, `TEET`.
   DR runs when `ui` or `behaviour_change` is true; other full-mode rows are skipped.
 - **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit guard,
-  PreCompact checkpoint and ledger. Drive the task directly. No tag is required;
+  PreCompact checkpoint, ledger and W-LEFTOVER inventory. Drive the task directly. No tag is required;
   an untagged dispatch is ledgered as `SOLO`. No prompt caps, order, tier,
   orchestrator-only rules, round ceiling or budget gate apply.
 
@@ -217,11 +217,11 @@ approved exceptions into the checkpoint text when a committable record is needed
   A third completed phase/role round requires the rerun approval above;
   concurrent agents of the same phase/role count as one round.
 
-**Reserved contracts for a later release (the new entry points are currently silent):**
+**v0.2.1 adds these enforced contracts:**
 
 - **W-BGWAIT:** full/demo subagents finish background Bash tasks before returning; one block creates a durable latch, only a later latched stop can fail for orphans, and warn mode records immediately.
-- **W-POLL:** full/demo Bash denies lexical unbounded loops and bare sleeps over 300 seconds after stripping quoted spans; leave Monitor to the main session.
-- **W-LEFTOVER:** closing SubagentStop, still-active completion Stop and PreCompact write checkpoint/scorecard inventories, warn once and print spared pids without killing; wave lifetime stays unchanged and solo receives the inventory too.
+- **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and leave Monitor to the main session.
+- **W-LEFTOVER:** closing SubagentStop, still-active completion Stop and PreCompact write checkpoint/scorecard inventories, warn once per eligible firing and print spared pids without killing; wave lifetime stays unchanged and solo receives the inventory too.
 
 **Declared bounds.** A `Bash` source write is not gated by the edit rule. The
 build/test filter does not interpret `bash -c`, variables or aliases, or skip
