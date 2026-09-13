@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/lean-oneshot-second-stop.sh — fix round 1, item 2.
+# tests/cases/lean-oneshot-second-stop.sh — a lean-return block is one-shot.
 #
 # The lean-return block is a ONE-SHOT keyed on `active[<id>].long_return`, not on
 # `stop_hook_active`. Two sequences, each with the flag FALSE on both stops

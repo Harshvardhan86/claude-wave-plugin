@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/cases/data-after-dag.sh — AC-347 + the controller's SEA/DS/BSEA
-# ruling (finding 5, fix round 3)
+# after-DAG completeness check
 #
 # The controller's ruling: SEA, DS, BSEA depend on BF-BC, BF-SEA, BF-DS
 # respectively (not on the scans BC/SEA/DS), matching OA/BTEET, because

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/stop-stalled-sibling-warn.sh — fix round 1, item 5.
+# tests/cases/stop-stalled-sibling-warn.sh — a skipped sibling check must warn.
 #
 # The closing role's stop is skipped while a sibling of the same phase is still
 # running. That is right for a live fan-out — and it is a silent stall when the

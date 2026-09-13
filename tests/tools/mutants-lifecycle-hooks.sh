@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/tools/mutants-lifecycle-hooks.sh [--keep]
 #
-# The mutation control for Task 10's five scripts (pre-commit-guard.sh,
+# The mutation control for the five lifecycle scripts (pre-commit-guard.sh,
 # pre-compact.sh, stop.sh, session-start.sh, user-prompt.sh) plus the wave-id
 # bound in scripts/wave-init.sh, which is the other half of session-start.sh's
 # character budget: proves the
@@ -93,8 +93,10 @@ wv_register_target() {
 }
 
 wv_register_target scripts/hooks/pre-commit-guard.sh
+wv_register_target scripts/hooks/lib.sh
 wv_register_target scripts/hooks/pre-compact.sh
 wv_register_target scripts/hooks/stop.sh
+wv_register_target scripts/hooks/subagent-stop.sh
 wv_register_target scripts/hooks/user-prompt.sh
 wv_register_target scripts/hooks/session-start.sh
 # Not a hook, but the wave id's bound lives here and the banner's character budget
@@ -350,6 +352,90 @@ wv_run_mutant scorecardtwice        scripts/hooks/stop.sh             wv_body_sc
 wv_run_mutant reminderwithnowave    scripts/hooks/user-prompt.sh      wv_body_reminderwithnowave    'prompt-inject-*'
 wv_run_mutant waveidbound           scripts/wave-init.sh              wv_body_waveidbound           'init-36*'
 wv_run_mutant clauseorder           scripts/hooks/session-start.sh    wv_body_clauseorder           'session-*'
+
+# Leftover mutations act only inside the copied test tree.
+wv_body_leftoverprefixcwd() { cat <<'PYM'
+old = 'if [ "$cwd" = "$root" ]; then'
+assert old in s
+s = s.replace(old, 'if [[ "$cwd" == "$root"* ]]; then', 1)
+PYM
+}
+wv_body_leftovercronsdropped() { cat <<'PYM'
+old = 'crons:($crons|map(select(named)))'
+assert old in s
+s = s.replace(old, 'crons:[]', 1)
+PYM
+}
+wv_body_leftoverwarnremoved() { cat <<'PYM'
+old = '    if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"'
+assert old in s
+s = s.replace(old, '    if true', 1)
+PYM
+}
+wv_body_leftoverstopwarn() { cat <<'PYM'
+old = '          if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"'
+assert old in s
+s = s.replace(old, '          if true', 1)
+PYM
+}
+wv_body_leftoverkills() { cat <<'PYM'
+old = 'if [ "$cwd" = "$root" ]; then'
+assert old in s
+s = s.replace(old, old + '\n        kill "$pid" 2>/dev/null', 1)
+PYM
+}
+wv_body_leftoverscanclean() { cat <<'PYM'
+old = 'if [ "$markers" -eq 0 ]; then WV_LO_STATUS=unavailable'
+assert old in s
+s = s.replace(old, 'if [ "$markers" -eq 0 ]; then WV_LO_STATUS=ok', 1)
+PYM
+}
+wv_body_leftoverprecompactsection() { cat <<'PYM'
+old = '    wv_lo_render_section\n'
+assert old in s
+s = s.replace(old, '', 1)
+PYM
+}
+wv_body_leftoverselfexcluded() { cat <<'PYM'
+old = '''  pid="$BASHPID"
+  while [[ "$pid" =~ ^[1-9][0-9]*$ ]] && [ -z "${excluded[$pid]:-}" ]; do
+    excluded[$pid]=1
+    [ -r "/proc/$pid/stat" ] || break
+    statline="$(<"/proc/$pid/stat")"
+    tail="${statline##*) }"
+    read -r state parent tail <<< "$tail"
+    pid="$parent"
+  done
+  excluded[$$]=1
+'''
+assert old in s
+s = s.replace(old, '', 1)
+PYM
+}
+wv_body_leftovermarkerfirst() { cat <<'PYM'
+old = '  wv_lo_collect\n  wv_lo_write_checkpoint\n'
+assert old in s
+s = s.replace(old, '  [ -f "$WV_WAVE_DIR/.scorecard-printed" ] && return 0\n  wv_lo_collect\n  wv_lo_write_checkpoint\n', 1)
+PYM
+}
+WV_EXPECT[leftoverprefixcwd]=leftover-426-proc-exact-root
+WV_EXPECT[leftovercronsdropped]=leftover-428-absent-vs-empty
+WV_EXPECT[leftoverwarnremoved]=leftover-423-terminal-warn
+WV_EXPECT[leftoverstopwarn]=leftover-431-closing-subagent
+WV_EXPECT[leftoverkills]=leftover-426-proc-exact-root
+WV_EXPECT[leftoverscanclean]=leftover-427-scan-unavailable
+WV_EXPECT[leftoverprecompactsection]=leftover-429-precompact-and-solo
+WV_EXPECT[leftoverselfexcluded]=leftover-426-proc-exact-root
+WV_EXPECT[leftovermarkerfirst]=leftover-430-closed-and-double-stop
+wv_run_mutant leftoverprefixcwd scripts/hooks/lib.sh wv_body_leftoverprefixcwd 'leftover-426*'
+wv_run_mutant leftovercronsdropped scripts/hooks/lib.sh wv_body_leftovercronsdropped 'leftover-428*'
+wv_run_mutant leftoverwarnremoved scripts/hooks/stop.sh wv_body_leftoverwarnremoved 'leftover-423*'
+wv_run_mutant leftoverstopwarn scripts/hooks/subagent-stop.sh wv_body_leftoverstopwarn 'leftover-431*'
+wv_run_mutant leftoverkills scripts/hooks/lib.sh wv_body_leftoverkills 'leftover-426*'
+wv_run_mutant leftoverscanclean scripts/hooks/lib.sh wv_body_leftoverscanclean 'leftover-427*'
+wv_run_mutant leftoverprecompactsection scripts/hooks/pre-compact.sh wv_body_leftoverprecompactsection 'leftover-429*'
+wv_run_mutant leftoverselfexcluded scripts/hooks/lib.sh wv_body_leftoverselfexcluded 'leftover-426*'
+wv_run_mutant leftovermarkerfirst scripts/hooks/stop.sh wv_body_leftovermarkerfirst 'leftover-430*'
 
 # --- the table --------------------------------------------------------------
 

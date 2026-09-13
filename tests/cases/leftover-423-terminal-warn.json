@@ -1,0 +1,33 @@
+{
+  "script": "stop.sh",
+  "seed": {
+    "state": "state/full-all-done.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop",
+    "background_tasks": [
+      {
+        "id": "b2",
+        "type": "shell",
+        "status": "running"
+      }
+    ],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "warn",
+    "rule": "W-LEFTOVER",
+    "reason_template": "W-LEFTOVER",
+    "reason_contains": [
+      "b2",
+      "remedy:"
+    ],
+    "stdout_absent": [
+      "W-SCORECARD"
+    ]
+  }
+}

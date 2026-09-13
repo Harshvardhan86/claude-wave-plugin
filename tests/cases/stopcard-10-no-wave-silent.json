@@ -3,7 +3,9 @@
   "ac": "AC-10",
   "note": "no active wave; silent no-op",
   "stdin": {
-    "hook_event_name": "Stop"
+    "hook_event_name": "Stop",
+    "background_tasks": [],
+    "session_crons": []
   },
   "expect": {
     "decision": "silent"

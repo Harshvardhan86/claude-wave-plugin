@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/taint-warned-idempotent.sh — fix round 1, item 3.
+# tests/cases/taint-warned-idempotent.sh — phases[].warned is a set, not appended on replay.
 #
 # A stop that carries a warning is not exempt from idempotence. Replaying a
 # TAINTED stop used to append the same rendered W-TAINT text to

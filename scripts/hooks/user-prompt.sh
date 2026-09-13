@@ -7,12 +7,9 @@
 #    builds/tests/edits here."
 #
 # Silent (no output at all) with no wave, a closed wave, AND in solo mode
-# (AC-291: "solo enforces no process, so there is nothing to remind about" —
-# this is the one place task-10-brief's own prose ("a one-line variant
-# without the orchestrator sentence") and the acceptance criterion disagree;
-# AC-291 is the binding acceptance test and wins, so solo gets total
-# silence here, same as "no wave").
+# (AC-291): solo receives no orchestrator reminder, just like an inactive wave.
 #
+
 # "Last done" / "next allowed" are computed via lib.sh's wv_last_done_phase /
 # wv_next_allowed_phase, a minimal advisory-only port of pre-agent.sh's own
 # order walk (see lib.sh section 11) — this file does not source

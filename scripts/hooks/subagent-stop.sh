@@ -29,7 +29,7 @@
 #   -> transcript stats + modal tier    (W-TAINT warning at most; the expensive
 #                                        read, deliberately before the lock)
 #   -> take .wave/lock ONCE for the whole write phase, and inside it:
-#        drain the ledger spool  (so Task 6's budget gate sees a spooled line)
+#        drain the ledger spool  (so the W-BUDGET gate sees a spooled line)
 #        the stop record and the round counter
 #        artifact + marker, closing role, last one out  (W-ARTIFACT / W-MARKER)
 #        the phase record, then the ledger line
@@ -786,7 +786,7 @@ wv_stop_warn() {
   shift
   local -a args=()
   local arg
-  for arg in "$@"; do args+=("$(wv_neutralise "$arg")"); done
+  for arg in "$@"; do args+=("${arg//W-/W_}"); done
   WV_STOP_WARN+=("$(wv_render "$rule" "${args[@]:-}")")
   return 0
 }
@@ -801,7 +801,7 @@ wv_stop_block() {
   fi
   local -a args=()
   local arg
-  for arg in "$@"; do args+=("$(wv_neutralise "$arg")"); done
+  for arg in "$@"; do args+=("${arg//W-/W_}"); done
   wv_block "$rule" "${args[@]}"
 }
 
@@ -823,6 +823,91 @@ wv_ledger_has_agent() {
   [ -f "$ledger" ] || return 1
   jq -Rr --arg id "$id" 'fromjson? // empty | select((.agent // "") == $id) | "hit"' \
     "$ledger" 2>/dev/null | command grep -q '^hit$'
+}
+
+wv_bg_running() {
+  # Recorded ids intersect only measured running shell rows. Missing or
+  # malformed payload arrays are unmeasured, never evidence of an orphan.
+  jq -cne --argjson state "$WV_STATE" --argjson input "$WV_JSON" --arg id "$WV_STOP_AGENT" '
+    ($state.bg_tasks // {}) as $map
+    | if ($map | type) != "object" then error("invalid task map") else
+      ($map[$id] // []) as $ids
+      | if ($ids | type) != "array" then error("invalid task ids")
+        elif any($ids[]; type != "string") then error("invalid task id")
+        elif ($input.background_tasks | type) != "array" then []
+        else [$input.background_tasks[] | select(type == "object")
+          | select(.status == "running" and .type == "shell")
+          | .id | select(type == "string") | select(. as $task | $ids | index($task))] | unique
+        end
+      end' 2>/dev/null
+}
+
+wv_bg_stop_metadata() {
+  # Missing maps are optional; corrupt maps or per-agent values are unmeasured.
+  jq -cne --argjson state "$WV_STATE" --arg id "$WV_STOP_AGENT" '
+    ($state.bg_blocked | if . == null then {} else . end) as $blocked
+    | ($state.bg_orphaned | if . == null then {} else . end) as $orphaned
+    | if ($blocked | type) != "object" or ($orphaned | type) != "object"
+      then error("invalid background stop maps") else
+        ($blocked[$id] // false) as $latch
+        | ($orphaned[$id] | if . == null then {ids: []} else . end) as $row
+        | if ($latch | type) != "boolean" or ($row | type) != "object"
+          then error("invalid background stop record")
+          elif ($row.ids | type) != "array" then error("invalid orphan ids")
+          elif any($row.ids[]; type != "string") then error("invalid orphan id")
+          else {latched: $latch, orphans: $row.ids} end
+      end' 2>/dev/null
+}
+
+WV_STOP_RECOVERED=0
+# Copied byte-for-byte from post-agent.sh's WV_TAG_RE (which is itself a copy of
+# pre-agent.sh's grammar, for the reason stated in post-agent.sh's header).
+WV_STOP_TAG_RE='^\[W:([^] ]+) P:([A-Z0-9-]+) R:(lead|executor|reviewer|scanner|writer)\]'
+
+wv_recover_launch() {
+  # wv_recover_launch <agent transcript path> — recovers phase, role and the
+  # requested model when `state.active` holds no record for this agent YET.
+  #
+  # post-agent.sh is wired to PostToolUse(Agent) and is the only writer of
+  # state.active for a background dispatch. For a FOREGROUND Agent dispatch
+  # the client delivers PostToolUse only when the Task returns — after every
+  # SubagentStop of that agent — so the join would otherwise fall to
+  # "unknown" and no phase would be judged. The client writes
+  # <agent transcript>.meta.json beside the transcript at launch.
+  #
+  # Fails closed: no sidecar, no description, a description with no tag, or a
+  # tag whose wave field is not this wave leaves every WV_STOP_* default in
+  # place and the caller warns as today. Reads `.description` only (the
+  # sidecar has no prompt field).
+  local path="${1:-}" meta desc model
+  WV_STOP_RECOVERED=0
+  [ -n "$path" ] || return 1
+  meta="${path%.jsonl}.meta.json"
+  [ -f "$meta" ] || return 1
+  desc="$(jq -r 'if (.description | type) == "string" then .description else "" end' "$meta" 2>/dev/null)"
+  [ -n "$desc" ] || return 1
+  [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1
+  [ "${BASH_REMATCH[1]}" = "$WV_WAVE" ] || return 1
+  WV_STOP_PHASE="${BASH_REMATCH[2]}"
+  WV_STOP_ROLE="${BASH_REMATCH[3]}"
+  model="$(jq -r 'if (.model | type) == "string" then .model else "" end' "$meta" 2>/dev/null)"
+  [ -n "$model" ] && WV_STOP_REQ="$model"
+  WV_STOP_RECOVERED=1
+  return 0
+}
+
+wv_sidecar_wave_mismatch() {
+  # True when the launch sidecar carries a well-formed tag for a DIFFERENT
+  # wave. post-agent.sh's warn path still records that dispatch (AC-200) as
+  # phase untagged / role unknown; the block path refuses it.
+  local path="${1:-}" meta desc
+  [ -n "$path" ] || return 1
+  meta="${path%.jsonl}.meta.json"
+  [ -f "$meta" ] || return 1
+  desc="$(jq -r 'if (.description | type) == "string" then .description else "" end' "$meta" 2>/dev/null)"
+  [ -n "$desc" ] || return 1
+  [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1
+  [ "${BASH_REMATCH[1]}" != "$WV_WAVE" ]
 }
 
 wv_main() {
@@ -877,7 +962,22 @@ wv_main() {
         WV_STOP_PHASE="SOLO"
         ;;
       *)
-        wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT found no state.active record to join, so post-agent.sh did not run for its launch (or the dispatch predates this wave); its spend is ledgered under phase \"unknown\" and no phase was judged"
+        if wv_recover_launch "$transcript"; then
+          local req_brief
+          req_brief="$(jq -n --arg m "$WV_STOP_REQ" \
+            'if ($m | length) > 40 then $m[0:40] + "…" else $m end')"
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $req_brief from the launch sidecar beside the agent transcript; the resolved model is ledgered as \"unknown\""
+        elif [ "$WV_ENFORCE" = "warn" ] && wv_sidecar_wave_mismatch "$transcript"; then
+          # Mirror post-agent.sh: under enforce:warn a tag for another wave is
+          # still spent, so it is recorded as untagged / unknown (AC-200),
+          # never the stale tag's phase.
+          WV_STOP_PHASE="untagged"
+          WV_STOP_ROLE="unknown"
+          WV_STOP_RECOVERED=1
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered a dispatch tag for another wave; under enforce=warn it is ledgered as phase untagged"
+        else
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT found no state.active record to join, so post-agent.sh did not run for its launch (or the dispatch predates this wave); its spend is ledgered under phase \"unknown\" and no phase was judged"
+        fi
         ;;
     esac
   fi
@@ -963,8 +1063,10 @@ wv_main() {
   local have_lock=0
   if wv_lock_acquire; then
     have_lock=1
+    # Re-read after waiting: background launch writes may have won this lock.
+    if ! wv_state_read; then wv_lock_release; return 0; fi
     # A line an earlier hook could not write reaches the ledger before this one
-    # reads it for the dedupe, and before Task 6's budget gate sums it.
+    # reads it for the dedupe, and before the W-BUDGET gate sums it.
     wv_ledger_drain_locked
   else
     wv_warn W-STATE "$(wv_lock_detail), so no phase was judged and no round was counted for agent $WV_STOP_AGENT; its ledger line is spooled instead"
@@ -1068,12 +1170,19 @@ wv_main() {
   # Only for an agent there IS a launch record for: writing `active[<id>]` for an
   # agent nothing launched would invent the phantom entry post-agent.sh refuses to
   # invent (AC-199), and it would be a record of a phase and role nobody knows.
-  if [ "$have_lock" = "1" ] && [ "$WV_STOP_JOINED" = "1" ] && [ "$joined_status" != "stopped" ]; then
+  # A RECOVERED launch is not a phantom: the phase and role come from the client's
+  # own launch record on disk, so it writes the same stop record a joined one does
+  # (post-agent.sh, which runs after it in this ordering, merges rather than
+  # overwrites — see its wv_write_active).
+  if [ "$have_lock" = "1" ] \
+    && { [ "$WV_STOP_JOINED" = "1" ] || [ "$WV_STOP_RECOVERED" = "1" ]; } \
+    && [ "$joined_status" != "stopped" ]; then
     local id_lit ts_lit upd
     id_lit="$(wv_jq_str "$WV_STOP_AGENT")"
     ts_lit="$(wv_jq_str "$ts")"
-    upd="$(printf '.active[%s] = ((.active[%s] // {}) + {status: "stopped", stopped: %s})' \
-      "$id_lit" "$id_lit" "$ts_lit")"
+    upd="$(printf '.active[%s] = ((.active[%s] // {phase: %s, role: %s, requested_model: %s, resolved_model: "unknown"}) + {status: "stopped", stopped: %s})' \
+      "$id_lit" "$id_lit" "$(wv_jq_str "$WV_STOP_PHASE")" "$(wv_jq_str "$WV_STOP_ROLE")" \
+      "$(wv_jq_str "$WV_STOP_REQ")" "$ts_lit")"
     if [ "$WV_STOP_GATED" = "1" ]; then
       local key_lit phase_lit role_lit
       key_lit="$(wv_jq_str "$WV_STOP_PHASE/$WV_STOP_ROLE")"
@@ -1096,6 +1205,26 @@ wv_main() {
   if [ "$have_lock" = "1" ] && [ "$block_lean" = "1" ]; then
     wv_state_update "$(printf '.active[%s] = ((.active[%s] // {}) + {long_return: true})' \
       "$(wv_jq_str "$WV_STOP_AGENT")" "$(wv_jq_str "$WV_STOP_AGENT")")"
+  fi
+
+  local bg_running="[]" bg_orphans="[]" bg_latched="false" bg_detail=""
+  if [ "$have_lock" = "1" ]; then
+    case "$WV_MODE" in
+      full|demo)
+        if ! bg_running="$(wv_bg_running)"; then
+          wv_warn W-STATE 'background task state could not be measured; no background verdict was recorded'
+          bg_running="[]"
+        fi
+        local bg_metadata
+        if bg_metadata="$(wv_bg_stop_metadata)"; then
+          bg_latched="$(printf '%s' "$bg_metadata" | jq -r '.latched')"
+          bg_orphans="$(printf '%s' "$bg_metadata" | jq -c '.orphans')"
+        else
+          wv_warn W-STATE 'background latch or orphan state could not be measured; no background verdict was recorded'
+          bg_running="[]"
+        fi
+        ;;
+    esac
   fi
 
   # ---- 2. the artifact, at the closing role's stop, last one out ----------
@@ -1178,9 +1307,53 @@ wv_main() {
     fi
   fi
 
+  local emit_rule=""
+  if [ -n "$verdict_rule" ] && [ "$stop_active" = "false" ] \
+    && [ "$verdict_blocked_before" = "0" ]; then
+    emit_rule="$verdict_rule"
+  elif [ "$block_lean" = "1" ]; then
+    emit_rule=W-LONG-RETURN
+  fi
+
+  # Background waiting is below artifact and long-return precedence. Only a
+  # durable prior latch arms failure; the payload flag merely disarms a block.
+  if [ "$bg_running" != "[]" ] && [ "$WV_STOP_SEEN" = "0" ]; then
+    # Join JSON strings without splitting embedded newlines. The sentinel
+    # preserves a trailing newline through command substitution; wv_block
+    # JSON-escapes the rendered reason with jq --arg at the emission site.
+    bg_detail="$(printf '%s' "$bg_running" | jq -r '
+      . as $ids | (.[0:5] | join(", "))
+      | if ($ids | length) > 5 then . + ", …" else . end
+      | if length > 120 then .[0:119] + "…" else . end
+      | . + "\u001f"')"
+    bg_detail="${bg_detail%$'\x1f'}"
+    if [ "$WV_ENFORCE" = "warn" ] || [ "$bg_latched" = "true" ]; then
+      local bg_filter
+      bg_filter=".bg_orphaned[$(wv_jq_str "$WV_STOP_AGENT")] = {phase: $(wv_jq_str "$WV_STOP_PHASE"), ids: $bg_running}"
+      if wv_state_update "$bg_filter"; then
+        bg_orphans="$bg_running"
+      fi
+      # Warning delivery is independent of whether the orphan write succeeds.
+      if [ "$WV_ENFORCE" = "warn" ]; then
+        wv_stop_warn W-BGWAIT "$bg_detail"
+      fi
+    elif [ -z "$emit_rule" ] && [ "$stop_active" = "false" ]; then
+      # Never emit without a persisted latch, including on a failed write.
+      if wv_state_update ".bg_blocked[$(wv_jq_str "$WV_STOP_AGENT")] = true"; then
+        emit_rule=W-BGWAIT
+        status_new=""
+      fi
+    fi
+  fi
+  # A replay retains its orphan verdict even after the payload prunes the ids.
+  if [ "$bg_orphans" != "[]" ] && [ "$WV_ENFORCE" != "warn" ] \
+    && [ "$WV_STOP_GATED" = "1" ]; then
+    status_new="failed"
+  fi
+
   local warnjson="[]" warns_new=0
   if [ "${#WV_STOP_WARN[@]}" -gt 0 ]; then
-    warnjson="$(printf '%s\n' "${WV_STOP_WARN[@]}" | jq -Rsc 'split("\n") | map(select(. != ""))')"
+    warnjson="$(jq -nc --args '$ARGS.positional' "${WV_STOP_WARN[@]}")"
     # How many of them are not ALREADY on the phase's record. A replayed stop
     # renders the same warning text again, and appending it again is how
     # `phases[X].warned` grew 1 -> 2 -> 3 across three identical stops and made
@@ -1254,25 +1427,21 @@ wv_main() {
   # hooks/reasons.tsv), `stop_hook_active` disarms the artifact block, and the
   # RECORD disarms both — a rule already blocked for this agent is never blocked
   # for it again.
-  local emit_rule=""
-  if [ -n "$verdict_rule" ] && [ "$stop_active" = "false" ] \
-    && [ "$verdict_blocked_before" = "0" ]; then
-    emit_rule="$verdict_rule"
-  elif [ "$block_lean" = "1" ]; then
-    emit_rule=W-LONG-RETURN
-  fi
 
   local defer_ledger=0
-  if [ "$emit_rule" = "W-LONG-RETURN" ]; then
+  if [ "$emit_rule" = "W-LONG-RETURN" ] || [ "$emit_rule" = "W-BGWAIT" ]; then
     defer_ledger=1
   fi
+  # Orphan settlement owns this stop's ledger line even if a different rule
+  # blocks the return. Never postpone that durable orphan evidence again.
+  [ "$bg_orphans" = "[]" ] || defer_ledger=0
 
   if [ "$WV_STOP_SEEN" = "0" ] && [ "$defer_ledger" = "0" ]; then
     local extras
     extras="$(jq -nc --arg note "$WV_TS_NOTE" --arg skipped "$WV_TS_SKIPPED" \
       --arg excluded "$WV_TS_EXCLUDED" --arg turns "$WV_TS_TURNS" \
       --argjson incomplete "$([ "$WV_TS_INCOMPLETE" = "1" ] && printf 'true' || printf 'false')" \
-      --argjson long "$long_return" --argjson warn "$warnjson" '
+      --argjson bg "$bg_orphans" --argjson long "$long_return" --argjson warn "$warnjson" '
         {}
         + (if $incomplete then {transcript_incomplete: true} else {} end)
         + (if $note != "" then {note: $note}
@@ -1280,6 +1449,7 @@ wv_main() {
              {note: ("\($excluded) of \($turns) assistant line(s) were excluded from the tier vote (no message.model, or output_tokens 0)")}
            else {} end)
         + (if ($skipped | tonumber) > 0 then {skipped_lines: ($skipped | tonumber)} else {} end)
+        + (if ($bg | length) > 0 then {bg_orphaned: $bg} else {} end)
         + (if $long then {long_return: true} else {} end)
         + (if ($warn | length) > 0 then {warn: $warn} else {} end)')"
     local line
@@ -1311,7 +1481,7 @@ wv_main() {
   # emitted without it would be repeated on the agent's next stop (the measured
   # log shows a third stop with stop_hook_active FALSE, so the flag cannot carry
   # this).
-  if [ "$have_lock" = "1" ] && [ -n "$emit_rule" ]; then
+  if [ "$have_lock" = "1" ] && [ -n "$emit_rule" ] && [ "$emit_rule" != "W-BGWAIT" ]; then
     local id_lit2 rule_lit
     id_lit2="$(wv_jq_str "$WV_STOP_AGENT")"
     rule_lit="$(wv_jq_str "$emit_rule")"
@@ -1323,12 +1493,43 @@ wv_main() {
     wv_lock_release
   fi
 
+  # Inventory leftover resources at the terminal role's close, including
+  # failed and artifact-missing verdicts. Warning is informational; the
+  # phase outcome and the block below are unchanged. The flock is released.
+  case "$status_new" in
+    done|failed|artifact-missing)
+      if [ "$WV_STOP_PHASE" = "$(wv_lo_terminal_phase "$WV_MODE")" ]; then
+        wv_lo_collect "$WV_STOP_AGENT"
+        wv_lo_write_checkpoint
+        # EMIT FIRST, MARK SECOND — the marker silences every later Stop and
+        # SubagentStop in the wave, so it is written only once the warning has
+        # actually been queued. A failed emit leaves the wave unmarked and the
+        # next terminal fire retries (tests/cases/leftover-433-warn-before-mark.sh).
+        if [ "$WV_LO_WARN" = "1" ] && [ ! -f "$WV_WAVE_DIR/.leftover-warned" ]; then
+          # `then` is on its own line deliberately: reason-corpus.sh's arity
+          # gate reads a call site to the end of its line, so a trailing
+          # `; then` counts as a second argument to this one-specifier
+          # template. Collapsing these two lines re-trips that gate.
+          if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+          then
+            mkdir -p "$WV_WAVE_DIR" 2>/dev/null
+            : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
+          fi
+        fi
+      fi
+      ;;
+  esac
+
   # ---- the one block, and the terminal close ----------------------------
   #
   # Both are last, so every record above is already on disk whichever way this
   # goes, and `stop_hook_active` disarms every block path without disarming any
   # of the recording.
   case "$emit_rule" in
+    W-BGWAIT)
+      wv_stop_block W-BGWAIT "$bg_detail"
+      return 0
+      ;;
     W-ARTIFACT|W-MARKER)
       wv_stop_block "$emit_rule" "${verdict_args[@]}"
       return 0

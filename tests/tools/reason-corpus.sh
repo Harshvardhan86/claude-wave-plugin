@@ -163,7 +163,7 @@ import re
 import sys
 
 EMITTERS = ("wv_rule_deny", "wv_rule_warn", "wv_deny", "wv_warn", "wv_block",
-            "wv_stop_warn")
+            "wv_stop_warn", "wv_stop_block")
 # The pass-through wrappers themselves: they forward "${args[@]}" by design and
 # are the mechanism, not a call site with an arity of its own.
 WRAPPER_LINES = ("wv_deny \"$rule\" \"${args[@]}\"",

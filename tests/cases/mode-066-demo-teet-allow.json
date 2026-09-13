@@ -1,6 +1,6 @@
 {
   "ac": "AC-66",
-  "note": "a demo wave with ui true, AC+DR+TDE-RED+TDE-GREEN done and the green-visual approval present, dispatching TEET: silent allow (no W-MODE, and no W-ORDER once Task 6 lands).",
+  "note": "a demo wave with ui true, AC+DR+TDE-RED+TDE-GREEN done and the green-visual approval present, dispatching TEET: silent allow (no W-MODE, and no W-ORDER).",
   "script": "pre-agent.sh",
   "seed": {
     "state": "state/demo-through-green.json",

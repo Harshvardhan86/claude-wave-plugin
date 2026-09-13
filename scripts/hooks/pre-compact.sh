@@ -6,8 +6,7 @@
 # stdout are both irrelevant to the platform).
 #
 # Writes .wave/checkpoints/<ISO-ts>-precompact.md from state.json and the
-# ledger, and does nothing else: no subprocess is spawned (AC-317 — this cannot
-# fail for lack of context, because it never asks anything for context), and an
+# ledger, plus the leftover inventory. No agent is dispatched (AC-317). An
 # unwritable .wave/ warns to stderr and still exits 0 —
 # PreCompact has no additionalContext channel (lib.sh's
 # wv_warn_channel_is_stdout), so a W-STATE warning here is stderr-only.
@@ -134,6 +133,7 @@ wv_pc_write_checkpoint() {
     fi
     printf '\n## Ledger\n\n'
     wv_pc_ledger_summary
+    wv_lo_render_section
     printf '\n## Resume\n\n'
     printf 'Resume: cat "%s" and continue wave %s in mode %s from phase %s onward.\n' \
       "${file#"$WV_ROOT"/}" "$WV_WAVE" "$WV_MODE" "$last_done"
@@ -145,6 +145,11 @@ wv_main() {
   [ "$WV_EVENT" = "PreCompact" ] || return 0
   wv_project_root || return 0
   wv_state_read || return 0
+
+  wv_lo_collect
+  if [ "$WV_LO_MATCHED" != "[]" ] || [ "$WV_LO_STATUS" = "unavailable" ]; then
+    wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+  fi
 
   local trigger
   trigger="$(wv_json '.trigger // "unknown"')"

@@ -1,5 +1,5 @@
 {
-  "ac": "AC-69 (fix round 1: the answered-true control)",
+  "ac": "AC-69 (the answered-true control)",
   "note": "the scope-113a state with ui answered TRUE instead of unknown: the DR dispatch is allowed. It isolates the flag VALUE as the discriminator, with everything else identical.",
   "script": "pre-agent.sh",
   "seed": {

@@ -47,6 +47,12 @@ while IFS=$'\t' read -r cmd timeout; do
   esac
   if [ "$script" = "subagent-stop.sh" ]; then
     [ "$timeout" = "60" ] || fail "subagent-stop.sh: want timeout 60, got $timeout"
+  elif [ "$script" = "stop.sh" ]; then
+    [ "$timeout" = "20" ] || fail "stop.sh: want timeout 20, got $timeout"
+  elif [ "$script" = "post-bash.sh" ]; then
+    [ "$timeout" = "15" ] || fail "$script: want timeout 15, got $timeout"
+  elif [ "$script" = "pre-monitor.sh" ]; then
+    [ "$timeout" = "10" ] || fail "$script: want timeout 10, got $timeout"
   else
     if [ "$timeout" -lt 5 ] || [ "$timeout" -gt 30 ]; then
       fail "$script: timeout $timeout is outside [5,30]"
@@ -54,7 +60,7 @@ while IFS=$'\t' read -r cmd timeout; do
   fi
 done <<<"$rows"
 
-[ "$n" -eq 11 ] || fail "want 11 hook entries, found $n"
+[ "$n" -eq 13 ] || fail "want 13 hook entries, found $n"
 
 printf 'RAN wiring-370 entries=%s async_true=%s\n' "$n" "$n_async_true" >> "$log"
 exit $rc

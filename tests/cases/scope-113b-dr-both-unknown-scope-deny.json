@@ -1,5 +1,5 @@
 {
-  "ac": "AC-107 (fix round 1)",
+  "ac": "AC-107",
   "note": "both flags of DR condition unanswered: the reason names ui AND behaviour_change, and its remedy names the first one to answer.",
   "script": "pre-agent.sh",
   "seed": {

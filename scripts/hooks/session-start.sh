@@ -143,7 +143,7 @@ wv_main() {
     if latest="$(wv_latest_checkpoint)"; then
       # `wv_latest_checkpoint` returns a project-relative PATH (it prints
       # `.wave/checkpoints/<file>` itself), so this clause must not prefix it
-      # again: the shortened wording introduced in fix round 1 did, and rendered
+      # again: the shortened wording used previously did, and rendered
       # `.wave/checkpoints/.wave/checkpoints/<file>` — a path no operator can open.
       # The case asserted the FILENAME, which is a substring of the doubled path,
       # so nothing failed; session-327 now pins the whole path and forbids the

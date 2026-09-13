@@ -34,7 +34,7 @@
 #     gate can never quietly disagree.
 #   - "Rework count" is rounds - 1 for that phase/role (state.json's
 #     rounds["<phase>/<role>"], read verbatim from lib.sh's own key shape):
-#     round 1 is the first attempt, not yet a rework: a phase/role that ran
+#     the first round is the initial attempt, not yet a rework: a phase/role that ran
 #     once shows rework 0, one that had to run twice shows rework 1.
 set -u
 
@@ -75,10 +75,13 @@ wave_dir="$WV_ROOT/.wave"
 ledger="$wave_dir/ledger.jsonl"
 state_file="$wave_dir/state.json"
 
-if [ ! -s "$ledger" ]; then
+lo_section="$(wv_lo_latest_section "$wave_dir")"
+if [ ! -s "$ledger" ] && [ -z "$lo_section" ]; then
   printf 'wave-scorecard.sh: no ledger at %s; nothing has been dispatched yet.\n' "$ledger"
   exit 0
 fi
+
+[ -s "$ledger" ] || ledger=/dev/null
 
 [ -n "$out_path" ] || out_path="$wave_dir/scorecard.md"
 
@@ -254,6 +257,15 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Write + print.
 # ---------------------------------------------------------------------------
+
+if [ -n "$lo_section" ]; then
+  wv_sc_append ""
+  wv_sc_append "$lo_section"
+fi
+orphans="$(jq -Rrn '[inputs | fromjson? | select(type=="object") | select((.bg_orphaned // [] | length)>0) | (.agent+": "+(.bg_orphaned|join(", ")))] | join("; ")' < "$ledger" 2>/dev/null)"
+if [ -n "$orphans" ]; then
+  wv_sc_append "- Orphaned background tasks (ledger \`bg_orphaned\`): $orphans"
+fi
 
 mkdir -p "$(dirname "$out_path")" 2>/dev/null
 if ! printf '%s' "$wv_sc_out" > "$out_path" 2>/dev/null; then

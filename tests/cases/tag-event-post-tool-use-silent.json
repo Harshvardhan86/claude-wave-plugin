@@ -1,5 +1,5 @@
 {
-  "ac": "AC-34 (companion: the event guard, controller ruling, fix round 1)",
+  "ac": "AC-34 (companion: the event guard)",
   "note": "hook_event_name PostToolUse with tool_name Agent on an active wave: silent no-op. This script is wired to PreToolUse only, and a PostToolUse payload carries a tool_response it must not judge - the deny channel does not even exist on that event.",
   "script": "pre-agent.sh",
   "seed": {

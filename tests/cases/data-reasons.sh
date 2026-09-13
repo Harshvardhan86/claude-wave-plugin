@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-reasons.sh — AC-353 (finding 4, fix round 3)
+# tests/cases/data-reasons.sh — AC-353
 #
 # data-all.sh only ever counted 31 rows. This is the full AC: every
 # template begins `[<id>] `, has well-formed printf conversions, ends in a
@@ -95,8 +95,8 @@ check_reasons() {
     done
   fi
 
-  # 31 through Task 9; Task 10 added W-SESSION, W-REMINDER and W-SCORECARD.
-  [ "${#actual_order[@]}" = "34" ] || echo "expected 34 rule rows, got ${#actual_order[@]}"
+  # 37 rows: W-SESSION, W-REMINDER and W-SCORECARD added with those hooks.
+  [ "${#actual_order[@]}" = "37" ] || echo "expected 37 rule rows, got ${#actual_order[@]}"
 
   # The third leg: the independent golden. Read here rather than in the caller so
   # the mutation proof below exercises it too.

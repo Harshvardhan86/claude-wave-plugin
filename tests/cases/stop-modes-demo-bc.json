@@ -1,6 +1,6 @@
 {
   "ac": "AC-227",
-  "note": "fix round 1, item 4: a DEMO wave and a stop for BC, whose modes cell is `full` only. The row does not run in this wave, so it is not judged here at all — no phase status, no round — and the mismatch is reported as W-STATE rather than passed over in silence. Without the modes check the hook judged a phase the wave never had, writing phases.BC and rounds[\"BC/scanner\"] into a demo wave.",
+  "note": "a DEMO wave and a stop for BC, whose modes cell is `full` only. The row does not run in this wave, so it is not judged here at all — no phase status, no round — and the mismatch is reported as W-STATE rather than passed over in silence. Without the modes check the hook judged a phase the wave never had, writing phases.BC and rounds[\"BC/scanner\"] into a demo wave.",
   "script": "subagent-stop.sh",
   "seed": {
     "state": "state/stop-demo-bc-scanner.json",

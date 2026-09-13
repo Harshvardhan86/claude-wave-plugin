@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-budgets-full.sh — AC-350 (finding 4, fix round 3)
+# tests/cases/data-budgets-full.sh — AC-350
 #
 # data-all.sh only checked the row count. This is the full AC: exactly one
 # row per phases.tsv code (no unbudgeted phase, no orphan row), every value

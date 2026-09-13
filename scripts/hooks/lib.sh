@@ -1095,7 +1095,7 @@ wv_block() {
 }
 
 # ---------------------------------------------------------------------------
-# 10. The emit choke point, hoisted from pre-agent.sh (Task 9): every one of
+# 10. The emit choke point, hoisted from pre-agent.sh: every one of
 #     pre-agent.sh, pre-edit.sh, pre-read.sh and pre-bash.sh now calls a
 #     rule through here rather than through wv_deny / wv_warn directly, so
 #     there is exactly one place that neutralises `W-` inside a caller's
@@ -1142,7 +1142,7 @@ wv_rule_warn() {
 }
 
 # ---------------------------------------------------------------------------
-# 11. Phase-order and checkpoint helpers (Task 10), shared by
+# 11. Phase-order and checkpoint helpers, shared by
 #     session-start.sh, user-prompt.sh and pre-compact.sh.
 #
 # These are a MINIMAL, READ-ONLY, ADVISORY-ONLY port of pre-agent.sh's
@@ -1154,7 +1154,7 @@ wv_rule_warn() {
 # separate W-ARTIFACT / W-MARKER / W-SCOPE deny: nothing here ever denies
 # anything, so there is no reason to distinguish "skip" from "cannot tell".
 #
-# Task 10 does NOT source pre-agent.sh for this — sourcing it would run its
+# The checkpoint helpers do NOT source pre-agent.sh for this — sourcing it would run its
 # entire PreToolUse(Agent) rule chain against whatever event is live and then
 # `exit 0` before this file's caller ran another line, the same reason
 # subagent-stop.sh gives for not sourcing it either. hooks/phases.tsv is read
@@ -1362,4 +1362,185 @@ wv_wave_stale_24h() {
   now_epoch="$(wv_now_epoch)"
   case "$now_epoch" in ''|*[!0-9]*) return 1 ;; esac
   [ $((now_epoch - started_epoch)) -gt 86400 ]
+}
+
+# Leftover inventory is read-only with respect to processes and wave state.
+WV_LO_MATCHED='[]'
+WV_LO_SPARED='[]'
+WV_LO_UNREADABLE=0
+WV_LO_STATUS=unavailable
+WV_LO_INVENTORY='{}'
+WV_LO_SUMMARY=''
+WV_LO_WARN=0
+
+wv_lo_terminal_phase() {
+  local mode="$1" code modes rest last=""
+  [ -f "$WV_PHASES_TSV" ] || return 0
+  while IFS=$'\t' read -r code modes rest; do
+    case "$code" in ''|'#'*|code) continue ;; esac
+    case ",$modes," in *",$mode,"*) last="$code" ;; esac
+  done < "$WV_PHASES_TSV"
+  printf '%s' "$last"
+}
+
+wv_lo_proc_scan() {
+  # wv_lo_proc_scan <root>. Never run a process scan while holding the flock.
+  local root="$1" pid parent statline tail state path resolved pending="" cwd arg cmd
+  local total=0 measured=0 markers=0
+  local -A excluded=()
+  local -a links=() matched=() spared=()
+  WV_LO_MATCHED='[]'; WV_LO_SPARED='[]'; WV_LO_UNREADABLE=0; WV_LO_STATUS=unavailable
+  [ "$WV_LOCK_DEPTH" -eq 0 ] || return 0
+  [ -d /proc ] && [ -r /proc ] || return 0
+  command -v readlink >/dev/null 2>&1 && command -v realpath >/dev/null 2>&1 || return 0
+  root="$(realpath -- "$root" 2>/dev/null)" || return 0
+  pid="$BASHPID"
+  while [[ "$pid" =~ ^[1-9][0-9]*$ ]] && [ -z "${excluded[$pid]:-}" ]; do
+    excluded[$pid]=1
+    [ -r "/proc/$pid/stat" ] || break
+    statline="$(<"/proc/$pid/stat")"
+    tail="${statline##*) }"
+    read -r state parent tail <<< "$tail"
+    pid="$parent"
+  done
+  excluded[$$]=1
+  for path in /proc/[0-9]*/cwd; do
+    pid="${path#/proc/}"; pid="${pid%/cwd}"
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [ -z "${excluded[$pid]:-}" ] || continue
+    # -f permits a missing final component: this marker remains resolvable
+    # after the pid exits. It cannot be confused with a real cwd in /proc.
+    links+=("$path" "/proc/.wave-leftover-$pid")
+    total=$((total + 1))
+  done
+  if [ "$total" -eq 0 ]; then WV_LO_STATUS=ok; return 0; fi
+  # One readlink argv of every pid on a large host can hit E2BIG and
+  # collapse to unavailable=/proc. Keep (cwd, marker) pairs together and
+  # pass them in bounded chunks; 500 pids is well under ARG_MAX.
+  local chunk_pids=500 i=0 n="${#links[@]}" take
+  local -a chunk=()
+  while [ "$i" -lt "$n" ]; do
+    take=$((chunk_pids * 2))
+    chunk=("${links[@]:i:take}")
+    i=$((i + take))
+    pending=""
+    while IFS= read -r -d '' resolved; do
+      if [[ "$resolved" =~ ^/proc/\.wave-leftover-([0-9]+)$ ]]; then
+        pid="${BASH_REMATCH[1]}"
+        markers=$((markers + 1))
+        cwd="$pending"; pending=""
+        # A `(deleted)` cwd fails `readlink -f`, leaving pending empty: skip
+        # and count unreadable, never spared or matched.
+        [ -n "$cwd" ] || continue
+        measured=$((measured + 1))
+        if [ "$cwd" = "$root" ]; then
+          cmd=""
+          if [ -r "/proc/$pid/cmdline" ]; then
+            while IFS= read -r -d '' arg; do
+              [ -z "$cmd" ] || cmd+=" "
+              cmd+="$arg"
+              [ "${#cmd}" -lt 60 ] || break
+            done < "/proc/$pid/cmdline" 2>/dev/null
+          fi
+          cmd="${cmd:0:60}"
+          matched+=("$pid" "$cwd" "${cmd:-unavailable}")
+        else
+          spared+=("$pid" "$cwd")
+        fi
+      else
+        pending="$resolved"
+      fi
+    done < <(readlink -f -z -- "${chunk[@]}" 2>/dev/null)
+  done
+  WV_LO_UNREADABLE=$((total - measured))
+  WV_LO_STATUS=ok
+  if [ "$markers" -eq 0 ]; then WV_LO_STATUS=unavailable
+  elif [ "$measured" -eq 0 ]; then WV_LO_STATUS=unavailable
+  elif [ "$WV_LO_UNREADABLE" -gt 0 ]; then WV_LO_STATUS=partial; fi
+  if ! WV_LO_MATCHED="$(jq -nc --args '$ARGS.positional | . as $a | [range(0; length; 3) | {pid:$a[.],cwd:$a[.+1],command:$a[.+2]}]' "${matched[@]}")"; then WV_LO_MATCHED='[]'; WV_LO_STATUS=unavailable; fi
+  if ! WV_LO_SPARED="$(jq -nc --args '$ARGS.positional | . as $a | [range(0; length; 2) | {pid:$a[.],cwd:$a[.+1]}]' "${spared[@]}")"; then WV_LO_SPARED='[]'; WV_LO_STATUS=unavailable; fi
+}
+
+wv_lo_collect() {
+  # wv_lo_collect [stopping-agent]. Arrays absent from a payload are unmeasured.
+  local stopping="${1:-}" observed
+  wv_lo_proc_scan "$WV_ROOT"
+  observed="$(date -u -d "@$(wv_now_epoch)" +%Y-%m-%dT%H:%M:%SZ)"
+  WV_LO_INVENTORY="$(printf '%s\n' "$WV_JSON" "$WV_LO_MATCHED" "$WV_LO_SPARED" | jq -sc --arg stopping "$stopping" \
+    --argjson unreadable "$WV_LO_UNREADABLE" --arg scan "$WV_LO_STATUS" \
+    --arg event "$WV_EVENT" --arg observed "$observed" '
+      def rows($v): if ($v|type)=="array" then $v else [] end;
+      def named: if type=="string" then length>0 elif type=="object" then (.id|type)=="string" else false end;
+      .[0] as $input | .[1] as $watchers | .[2] as $spared
+      | (rows($input.background_tasks) | map(select(
+        if type=="object" then (.type != "subagent" or .id != $stopping) else true end))) as $tasks
+      | rows($input.session_crons) as $crons
+      | {tasks:($tasks|map(select(named))), crons:($crons|map(select(named))),
+         watchers:$watchers, spared:$spared, unreadable:$unreadable, scan:$scan, event:$event, observed:$observed,
+         unavailable:([if ($input.background_tasks|type)!="array" or any($tasks[]; named|not) then "background_tasks" else empty end,
+                       if ($input.session_crons|type)!="array" or any($crons[]; named|not) then "session_crons" else empty end,
+                       if $scan=="unavailable" then "/proc" else empty end])}')"
+  if [ -z "$WV_LO_INVENTORY" ]; then
+    WV_LO_INVENTORY="$(jq -nc --arg event "$WV_EVENT" --arg observed "$observed" '{tasks:[],crons:[],watchers:[],spared:[],unreadable:0,scan:"unavailable",unavailable:["inventory"],event:$event,observed:$observed}')"
+    WV_LO_STATUS=unavailable
+  fi
+  WV_LO_SUMMARY="$(printf '%s' "$WV_LO_INVENTORY" | jq -r '
+    def ids: map(if type=="string" then . else .id end);
+    def brief: .[0:5] | join(",") | if length==0 then "none" elif length>24 then .[0:23]+"…" else . end;
+    "tasks="+(.tasks|ids|brief)+"; crons="+(.crons|ids|brief)+"; watchers="+(.watchers|map(.pid)|brief)+"; unavailable="+(.unavailable|brief)')"
+  WV_LO_WARN="$(printf '%s' "$WV_LO_INVENTORY" | jq -r 'if ([.tasks,.crons,.watchers,.unavailable]|map(length)|add)>0 then 1 else 0 end')"
+}
+
+wv_lo_render_section() {
+  printf '\n## Leftovers\n\n'
+  printf '%s' "$WV_LO_INVENTORY" | jq -r --arg root "$WV_ROOT" '
+    def text: tostring | gsub("\n"; "\\n") | gsub("\r"; "\\r");
+    def ids: map(if type=="string" then . else .id end);
+    def listed: if length==0 then "none" else map(text)|join(",") end;
+    def under: ((.cwd|tostring) | startswith($root + "/"));
+    def bypid: sort_by((.pid | tonumber)? // 0);
+    (.spared // []) as $all
+    | (($all | map(select(under)) | bypid) + ($all | map(select(under|not)) | bypid)) as $ordered
+    | ($ordered[0:20]) as $pick
+    | ($pick | bypid) as $shown
+    | "- leftovers: tasks="+(.tasks|ids|listed)+"; crons="+(.crons|ids|listed)+"; watchers="+(.watchers|map(.pid)|listed)+"; unavailable="+(.unavailable|listed),
+    ("- observed: "+.observed+" ("+.event+")"),
+    (.watchers[] | "- watcher: "+.pid+" "+(.cwd|text)+" command="+(.command|text)),
+    ("- spared-count: "+($all|length|tostring)),
+    ($shown[] | "- spared: "+.pid+" "+(.cwd|text)),
+    (if ($all|length) > 20 then ("… +"+((($all|length)-20)|tostring)+" more") else empty end),
+    ("- unreadable: "+(.unreadable|tostring)+" pid(s)"),
+    "- note: this hook never kills; nothing was signalled"'
+}
+
+wv_lo_write_checkpoint() {
+  local dir="$WV_WAVE_DIR/checkpoints" file tmp
+  file="$dir/leftovers-stop.md"
+  if ! mkdir -p "$dir" 2>/dev/null; then
+    wv_warn W-STATE 'could not create the leftovers checkpoint directory; no inventory was saved'
+    return 1
+  fi
+  if ! tmp="$(mktemp "$dir/.leftovers.XXXXXX" 2>/dev/null)"; then
+    wv_warn W-STATE 'could not create a temporary leftovers checkpoint; no inventory was saved'
+    return 1
+  fi
+  if { printf '# Wave %s checkpoint (%s)\n' "$WV_WAVE" "$WV_EVENT"; wv_lo_render_section; } > "$tmp" \
+    && mv -f "$tmp" "$file" 2>/dev/null; then return 0; fi
+  rm -f "$tmp"
+  wv_warn W-STATE 'could not write the leftovers checkpoint; no inventory was saved'
+  return 1
+}
+
+wv_lo_latest_section() {
+  # Modification time also orders numeric same-second PreCompact suffixes.
+  local f latest=""
+  for f in "$1"/checkpoints/*.md; do
+    [ -f "$f" ] || continue
+    if [ -z "$latest" ] || [ "$f" -nt "$latest" ]; then
+      command grep -q '^## Leftovers$' "$f" && latest="$f"
+    fi
+  done
+  [ -n "$latest" ] || return 0
+  awk '/^## Leftovers$/ {inside=1} inside && /^## / && !/^## Leftovers$/ {exit}
+    inside {print}' "$latest"
 }

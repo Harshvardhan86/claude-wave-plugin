@@ -37,7 +37,7 @@ stale_started="$(date -u -d '25 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
 run_session_start "$stale_started"
 printf 'RAN session-start.sh %s decision=stale25h\n' "$name" >> "$log"
 [ "$SS_EXIT" = "0" ] || fail "stale case: exit $SS_EXIT"
-# The clause was shortened in fix round 1 so the whole banner fits the reason
+# The clause was shortened so the whole banner fits the reason
 # corpus's 400-character bound with both advisory clauses on at once; what it must
 # still do is say the wave is over 24h old and name the script that closes it.
 case "$SS_OUT" in

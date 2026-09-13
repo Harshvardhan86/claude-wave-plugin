@@ -1,0 +1,29 @@
+{
+  "script": "post-bash.sh",
+  "seed": {
+    "files": {
+      ".wave/state.json": "{\"schema\": 1, \"wave\": \"1\", \"mode\": \"full\", \"status\": \"active\", \"ui\": false, \"behaviour_change\": false, \"cr_enabled\": false, \"enforce\": \"block\", \"feature\": \"hook enforcement layer\", \"started\": \"2026-09-09T12:00:00Z\", \"ended\": null, \"base_sha\": \"2294917\", \"phases\": {}, \"active\": {\"a1\": {\"phase\": \"AC\", \"role\": \"reviewer\", \"requested_model\": \"opus\", \"resolved_model\": \"opus\", \"tool_use_id\": \"toolu_01RXAwe6jcU5LBKHd9geD6sE\", \"status\": \"launched\"}}, \"pending\": {}, \"rounds\": {}}",
+      ".wave/ac.md": "AC-1 records the spend\n"
+    },
+    "transcripts": {
+      ".wave/tr/a1.jsonl": "transcripts/all-opus.jsonl"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "cwd": ".",
+    "tool_input": {
+      "run_in_background": true
+    },
+    "tool_response": {
+      "backgroundTaskId": "b2emx28v6"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-BGWAIT",
+    "state_assert": ".bg_tasks == null"
+  }
+}

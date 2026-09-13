@@ -1,0 +1,23 @@
+{
+  "script": "pre-bash.sh",
+  "seed": {
+    "state": "state/valid-full.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "while true; do sleep 1; done"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "deny",
+    "rule": "W-POLL",
+    "reason_template": "W-POLL",
+    "reason_contains": [
+      "remedy:",
+      "while true; do sleep 1; done"
+    ]
+  }
+}

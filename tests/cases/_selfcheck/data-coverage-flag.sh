@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# tests/cases/_selfcheck/data-coverage-flag.sh — finding 3, fix round 3
+# tests/cases/_selfcheck/data-coverage-flag.sh — coverage-flag self-check
 #
-# Regression test for the `--coverage` split in tests/run.sh (added in Task
-# 3 fix round 1, 612c8a2). Nothing ever exercised it: proves (a) without
+# Regression test for the `--coverage` split in tests/run.sh (commit
+# 612c8a2). Nothing ever exercised it: proves (a) without
 # the flag, a corpus with an uncovered rule id exits 0 and prints the
 # summary line, and (b) with --coverage the same corpus exits non-zero and
 # names the rule.
@@ -14,7 +14,7 @@
 # nested tests/run.sh invocation, which would then run itself recursively.
 # An empty synthetic cases/ dir also makes the result deterministic and
 # independent of which rule ids the real corpus does or doesn't cover yet
-# (that set changes across Tasks 5-13).
+# (that set grows as rules are added).
 
 set -u
 

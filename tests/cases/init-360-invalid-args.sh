@@ -5,7 +5,7 @@
 # argument on stderr, and write no state.json — plus one ACCEPTED id at the
 # bound, in a project of its own.
 #
-# THE WAVE ID IS A BOUNDED FIELD (fix round 2, item 1). It is interpolated TWICE
+# THE WAVE ID IS A BOUNDED FIELD. It is interpolated TWICE
 # into the W-SESSION banner, whose length the reason corpus holds at 400
 # characters, and it was rejected only for a space or a `]` — so a 40-character id
 # rendered a 458-character reason and made the "400 for any real input" claim in

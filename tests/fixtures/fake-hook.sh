@@ -5,7 +5,7 @@
 # the plugin. It exists only so tests/cases/_selfcheck/ can prove the
 # harness's own plumbing (stdin capture, project cwd, .wave/state.json
 # seeding, ledger append, deny JSON shape) works end to end, without
-# depending on scripts/hooks/lib.sh, which does not exist until Task 2.
+# depending on scripts/hooks/lib.sh.
 #
 # Behaviour, deliberately tiny:
 #   - no .wave/state.json, or status != "active": silent, exit 0 (mirrors

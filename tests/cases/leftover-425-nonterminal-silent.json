@@ -1,0 +1,23 @@
+{
+  "script": "stop.sh",
+  "seed": {
+    "state": "state/valid-full.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop",
+    "background_tasks": [],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-SCORECARD",
+    "stdout_absent": [
+      "W-LEFTOVER",
+      "W-SCORECARD"
+    ]
+  }
+}

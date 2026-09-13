@@ -1,5 +1,5 @@
 {
-  "ac": "AC-109 (fix round 1)",
+  "ac": "AC-109",
   "note": "cr_enabled \"unknown\" with TDE-GREEN done: a CR dispatch is denied W-SCOPE naming cr_enabled, not W-COND claiming the flag is false.",
   "script": "pre-agent.sh",
   "seed": {

@@ -325,7 +325,7 @@ mk name=stop-235-redo-passes-prev ac=AC-235 \
     state_assert: ".phases.AC.status == \"done\" and .phases.AC.prev == \"done\" and .phases.AC.agent == \"a2\" and (.phases.ACB.stale // false) == false and (.phases[\"TDE-RED\"].stale // false) == false"}')"
 
 mk name=stop-modes-demo-bc ac=AC-227 \
-  note='fix round 1, item 4: a DEMO wave and a stop for BC, whose modes cell is `full` only. The row does not run in this wave, so it is not judged here at all — no phase status, no round — and the mismatch is reported as W-STATE rather than passed over in silence. Without the modes check the hook judged a phase the wave never had, writing phases.BC and rounds["BC/scanner"] into a demo wave.' \
+  note='a DEMO wave and a stop for BC, whose modes cell is `full` only. The row does not run in this wave, so it is not judged here at all — no phase status, no round — and the mismatch is reported as W-STATE rather than passed over in silence. Without the modes check the hook judged a phase the wave never had, writing phases.BC and rounds["BC/scanner"] into a demo wave.' \
   state=state/stop-demo-bc-scanner.json \
   seed="$(files .wave/findings/BC.md 'FINDINGS: 0
 ')" \

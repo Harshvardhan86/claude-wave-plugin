@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/order-107-order-outranks-artifact.sh — W-ORDER (precedence 11)
 # outranks W-ARTIFACT (12) and W-MARKER (13) on an input that violates both
-# (fix round 1, item 4).
+# (W-ORDER outranks W-ARTIFACT).
 #
 # THE DEFECT. Two sites emitted an artifact/marker deny BEFORE the order gate had
 # run:

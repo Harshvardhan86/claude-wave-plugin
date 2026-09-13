@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tests/cases/init-364-terminal-close.sh — AC-364.
 #
-# `wave-close.sh --if-terminal <PHASE>` is the primitive a future
-# subagent-stop.sh (Task 8) calls on every phase completion: it derives the
+# `wave-close.sh --if-terminal <PHASE>` is the primitive
+# subagent-stop.sh calls on every phase completion: it derives the
 # mode's terminal phase from hooks/phases.tsv (the LAST row, in file order,
 # whose `modes` column includes the active mode -- AD is the last full-mode
 # row, TEET the last demo-mode row, matching spec section 4/6 by

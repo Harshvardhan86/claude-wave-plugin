@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/init-358c-force-lock-exclusion.sh — fix round 1, review finding 2.
+# tests/cases/init-358c-force-lock-exclusion.sh — --force must not skip the lock.
 #
 # `.wave/lock` is never replaced across a close/init cycle (scripts/hooks/
 # lib.sh's header), so under --force it is the SAME lock file a

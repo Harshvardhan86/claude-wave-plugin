@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-roles.sh — AC-349 (finding 2 + finding 4, fix round 3)
+# tests/cases/data-roles.sh — AC-349
 #
 # hooks/roles.tsv maps every framework role name from
 # framework/references/03-wave-pipeline.md to one of the five tag roles

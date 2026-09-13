@@ -9,8 +9,8 @@
 # alone, tier_verified:false and a ledger line with tier_ok:null and
 # note:"no transcript".
 #
-# AND NEITHER PAYS THE SETTLE CAP (fix round 1, item 8). The bounded settle added
-# in Task 13 waits for a transcript to hold a complete assistant turn and stop
+# AND NEITHER PAYS THE SETTLE CAP. The bounded settle
+# waits for a transcript to hold a complete assistant turn and stop
 # growing; applied to a path that names no file it burned the whole 2.4s cap on
 # every stale path and then marked the ledger line transcript_incomplete — saying
 # the file was unreadable when the finding is that there is no file. A missing file

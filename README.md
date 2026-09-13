@@ -1,6 +1,6 @@
 # claude-wave-plugin
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
 
 > Run Claude Code like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
 
@@ -177,7 +177,7 @@ full/demo routing requires at least the tier in `hooks/phases.tsv`.
   Skipped conditional or out-of-mode rows are looked through transitively so
   unfinished applicable predecessors cannot be bypassed.
 - **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit
-  guard, PreCompact checkpoint and ledger. No tag, prompt caps, phase order,
+  guard, PreCompact checkpoint, ledger and W-LEFTOVER inventory. No tag, prompt caps, phase order,
   tiers, orchestrator-only rules, rounds or budgets are enforced.
 
 `/wave-start` creates `.wave/state.json` before dispatch and records full/demo
@@ -203,6 +203,12 @@ input/output/cache tokens per agent, including failed hand-offs.
 rework and GREEN output per changed line. Model downgrades warn and are recorded. Long prompts
 warn; copying ≥4,000 characters from a `.wave/` file into a prompt is denied.
 Pass a report path and return a summary under 2,000 characters.
+
+v0.2.1 adds these enforced contracts:
+
+- **W-BGWAIT:** full/demo subagents must finish background Bash tasks; block once, then fail only after a prior background-wait latch; warn mode records orphans immediately.
+- **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and gate Monitor by identity only — a subagent's Monitor call is denied, its command is never inspected, and the main session may Monitor.
+- **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; a leftover close prints W-LEFTOVER instead of the W-SCORECARD pointer, which the leftover warning itself carries; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
 `/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
@@ -329,7 +335,7 @@ claude-wave-plugin/
 │   └── reasons.tsv                             # rule ids, precedence, remedies
 │
 ├── scripts/
-│   ├── hooks/                                  # 11 event scripts + shared lib.sh
+│   ├── hooks/                                  # 13 event scripts + shared lib.sh
 │   ├── wave-init.sh                            # state, local exclude, commit-msg guard
 │   ├── wave-set.sh                             # scope answers
 │   ├── wave-close.sh                           # wave lifetime
@@ -373,8 +379,8 @@ This plugin is in early public release. If you're shipping with `claude-wave-plu
 
 ## Status
 
-**v0.2.0** — hook enforcement for active waves, three modes, token accounting and
-automatic recovery checkpoints. See the contract and declared bounds above.
+**v0.2.1** — background-task completion checks, bounded-wait enforcement and
+leftover inventories alongside phase gates, token accounting and recovery checkpoints. See the contract and declared bounds above.
 Issues and PRs are welcome.
 
 ## Contributing

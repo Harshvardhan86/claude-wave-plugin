@@ -1,0 +1,18 @@
+{
+  "script": "pre-monitor.sh",
+  "seed": {
+    "state": "state/valid-full.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Monitor",
+    "tool_input": {
+      "command": "while true; do sleep 1; done"
+    }
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-POLL"
+  }
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-orchestrator-writable.sh — AC-352 (finding 4, fix round 3)
+# tests/cases/data-orchestrator-writable.sh — AC-352
 #
 # data-all.sh only checked README.md's presence. This is the full AC: the
 # exact required set (CHANGELOG.md, README.md, CONTINUE-HERE.md, docs/**),

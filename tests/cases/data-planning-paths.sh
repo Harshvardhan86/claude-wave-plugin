@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-planning-paths.sh — AC-351 (finding 1, fix round 3)
+# tests/cases/data-planning-paths.sh — AC-351
 #
 # hooks/planning-paths.tsv is glob<TAB>label. This golden test proves, in
 # both directions, that every row matches the fixture(s) it was written for

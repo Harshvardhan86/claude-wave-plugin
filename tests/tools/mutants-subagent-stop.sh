@@ -15,7 +15,7 @@
 #
 # Twenty mutants: the eight properties the task brief names, the seven the
 # round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
-# a mutant now names its own target file), and the two Task 13 added with the
+# a mutant now names its own target file), and the two added with the
 # bounded transcript settle and the enforce=warn conversion.
 #   1. closingrole    the artifact check is applied to EVERY role's stop, not
 #                     only the closing role's
@@ -108,7 +108,7 @@ WV_BASE_SHA=""
 
 declare -A WV_PRISTINE_OF=()
 declare -A WV_SHA_OF=()
-for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh scripts/hooks/post-agent.sh; do
   cp "$WV_TREE/$rel" "$WV_TMP/$(basename "$rel").pristine" || exit 1
   WV_PRISTINE_OF["$rel"]="$WV_TMP/$(basename "$rel").pristine"
   WV_SHA_OF["$rel"]="$(sha256sum < "$WV_TMP/$(basename "$rel").pristine" | cut -d' ' -f1)"
@@ -304,15 +304,25 @@ PY
 }
 
 # --- 8. the terminal-phase close is never called --------------------------
+# Re-anchored on the post-inventory call site: leftover collection now runs
+# before case "$emit_rule", so the close is the bare done-block below.
 wv_body_terminalskip() { cat <<'PY'
-old = '''  if [ "$status_new" = "done" ]; then
+old = '''  if [ -n "$verdict_rule" ]; then
+    return 0
+  fi
+
+  if [ "$status_new" = "done" ]; then
     wv_close_if_terminal "$WV_STOP_PHASE"
   fi'''
-new = '''  if [ "$status_new" = "done" ] && false; then
+new = '''  if [ -n "$verdict_rule" ]; then
+    return 0
+  fi
+
+  if [ "$status_new" = "done" ] && false; then
     wv_close_if_terminal "$WV_STOP_PHASE"
   fi'''
 assert old in s, "anchor missing: the terminal close"
-s = s.replace(old, new)
+s = s.replace(old, new, 1)
 PY
 }
 
@@ -436,6 +446,46 @@ s = s.replace(old, new)
 PY
 }
 
+# Background-wait controls use a payload with both non-shell and stopped ids
+# in the recorded set; a pruned id alone cannot kill a removed status filter.
+wv_body_bgtyperemoved() { cat <<'PYBODY'
+old = '.status == "running" and .type == "shell"'
+assert old in s
+s = s.replace(old, '.status == "running"')
+PYBODY
+}
+wv_body_bgrunningremoved() { cat <<'PYBODY'
+old = '.status == "running" and .type == "shell"'
+assert old in s
+s = s.replace(old, '.type == "shell"')
+PYBODY
+}
+wv_body_bglatchremoved() { cat <<'PYBODY'
+old = 'if wv_state_update ".bg_blocked[$(wv_jq_str "$WV_STOP_AGENT")] = true"; then'
+assert old in s
+s = s.replace(old, 'if true; then')
+PYBODY
+}
+wv_body_bgorphanledgeromitted() { cat <<'PYBODY'
+old = '+ (if ($bg | length) > 0 then {bg_orphaned: $bg} else {} end)'
+assert old in s
+s = s.replace(old, '+ {}')
+PYBODY
+}
+wv_body_bgflagonlyorphan() { cat <<'PYBODY'
+old = '[ "$bg_latched" = "true" ]'
+assert old in s
+s = s.replace(old, '[ "$stop_active" = "true" ]')
+PYBODY
+}
+
+wv_body_bgrecordanyagent() { cat <<'PYBODY'
+old = '  [ -n "$WV_AGENT_ID" ] || return 0\n'
+assert old in s
+s = s.replace(old, '', 1)
+PYBODY
+}
+
 H="$WV_HOOK_REL"
 L="$WV_LIB_REL"
 
@@ -485,6 +535,65 @@ wv_run_mutant warnviablock   wv_body_warnviablock   "$H" 'warn-mode-*'
 wv_run_mutant settlewaitsmissing wv_body_settlewaitsmissing "$H" 'taint-242*'
 wv_run_mutant settlefastloose    wv_body_settlefastloose    "$H" 'taint-243*' 'stop-181-*'
 
+WV_EXPECT[bgtyperemoved]=bgwait-407-partial-intersection
+WV_EXPECT[bgrunningremoved]=bgwait-407-partial-intersection
+WV_EXPECT[bglatchremoved]=bgwait-408-second-stop-orphans
+WV_EXPECT[bgorphanledgeromitted]=bgwait-408-second-stop-orphans
+WV_EXPECT[bgflagonlyorphan]=bgwait-409-consumed-first-stop
+wv_run_mutant bgtyperemoved wv_body_bgtyperemoved "$H" 'bgwait-407*'
+wv_run_mutant bgrunningremoved wv_body_bgrunningremoved "$H" 'bgwait-407*'
+wv_run_mutant bglatchremoved wv_body_bglatchremoved "$H" 'bgwait-408*'
+wv_run_mutant bgorphanledgeromitted wv_body_bgorphanledgeromitted "$H" 'bgwait-408*'
+wv_run_mutant bgflagonlyorphan wv_body_bgflagonlyorphan "$H" 'bgwait-409*'
+
+WV_EXPECT[bgrecordanyagent]=bgwait-411-no-agentid-no-record
+wv_run_mutant bgrecordanyagent wv_body_bgrecordanyagent scripts/hooks/post-bash.sh 'bgwait-411*'
+
+wv_body_sidecartagdropped() { cat <<'PYBODY'
+old = '  [[ "$desc" =~ $WV_STOP_TAG_RE ]] || return 1'
+assert old in s
+s = s.replace(old, '  return 1', 1)
+PYBODY
+}
+wv_body_activemergeremoved() { cat <<'PYBODY'
+old = '.active[%s] = ({phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s} + ((.active[%s] // {}) | with_entries(select(.key == "status" or .key == "stopped"))))'
+assert old in s
+s = s.replace(old, '.active[%s] = {phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s}', 1)
+PYBODY
+}
+wv_body_waveidignored() { cat <<'PYBODY'
+old = '  [ "${BASH_REMATCH[1]}" = "$WV_WAVE" ] || return 1'
+assert old in s
+s = s.replace(old, '  true', 1)
+PYBODY
+}
+wv_body_recoveredguard() { cat <<'PYBODY'
+old = '    && { [ "$WV_STOP_JOINED" = "1" ] || [ "$WV_STOP_RECOVERED" = "1" ]; } \\'
+assert old in s
+s = s.replace(old, '    && [ "$WV_STOP_JOINED" = "1" ] \\', 1)
+PYBODY
+}
+wv_body_recoveredseed() { cat <<'PYBODY'
+old = '''    upd="$(printf '.active[%s] = ((.active[%s] // {phase: %s, role: %s, requested_model: %s, resolved_model: "unknown"}) + {status: "stopped", stopped: %s})' \\
+      "$id_lit" "$id_lit" "$(wv_jq_str "$WV_STOP_PHASE")" "$(wv_jq_str "$WV_STOP_ROLE")" \\
+      "$(wv_jq_str "$WV_STOP_REQ")" "$ts_lit")"'''
+new = '''    upd="$(printf '.active[%s] = ((.active[%s] // {}) + {status: "stopped", stopped: %s})' \\
+      "$id_lit" "$id_lit" "$ts_lit")"'''
+assert old in s
+s = s.replace(old, new, 1)
+PYBODY
+}
+WV_EXPECT[sidecartagdropped]=bgwait-434-foreground-unjoined
+WV_EXPECT[activemergeremoved]=bgwait-434-foreground-unjoined
+WV_EXPECT[waveidignored]=bgwait-434-foreground-unjoined
+WV_EXPECT[recoveredguard]=bgwait-434-foreground-unjoined
+WV_EXPECT[recoveredseed]=bgwait-434-foreground-unjoined
+wv_run_mutant sidecartagdropped wv_body_sidecartagdropped "$H" 'bgwait-434*'
+wv_run_mutant activemergeremoved wv_body_activemergeremoved scripts/hooks/post-agent.sh 'bgwait-434*'
+wv_run_mutant waveidignored wv_body_waveidignored "$H" 'bgwait-434*'
+wv_run_mutant recoveredguard wv_body_recoveredguard "$H" 'bgwait-434*'
+wv_run_mutant recoveredseed wv_body_recoveredseed "$H" 'bgwait-434*'
+
 # --- the table --------------------------------------------------------------
 
 printf '\n%-15s %-11s %-33s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'
@@ -498,7 +607,7 @@ done
 printf '%s\n' '-----------------------------------------------------------------------------------------'
 
 wv_restored=yes
-for rel in "$WV_HOOK_REL" "$WV_LIB_REL"; do
+for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh scripts/hooks/post-agent.sh; do
   if [ "$(sha256sum < "$WV_TREE/$rel" | cut -d' ' -f1)" != "${WV_SHA_OF[$rel]}" ]; then
     printf 'NOT RESTORED: %s\n' "$rel" >&2
     wv_restored=NO

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/cases/data-models-full.sh — AC-348 (finding 4, fix round 3)
+# tests/cases/data-models-full.sh — AC-348
 #
 # data-all.sh only ever checked haiku->1. This is the full AC: the exact
 # tier ranks for all four models, opusplan/default declared unknown, the

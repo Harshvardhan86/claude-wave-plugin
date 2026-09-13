@@ -1,5 +1,5 @@
 {
-  "ac": "AC-107 (fix round 1: the controller ruling on \"unknown\")",
+  "ac": "AC-107 (unknown is unanswered, never false)",
   "note": "ui \"unknown\" with AC+ACB done: a DR dispatch is denied W-SCOPE naming ui and the command that answers it - NOT W-COND, which would state that the wave declares no design review when nobody has said so.",
   "script": "pre-agent.sh",
   "seed": {

@@ -2,7 +2,7 @@
 # tests/tools/mutants-orchestrator-rules.sh [--keep]
 #
 # The mutation control for scripts/hooks/pre-edit.sh, pre-read.sh and
-# pre-bash.sh (spec section 8.1-8.3, Task 9). Same construction as
+# pre-bash.sh (spec section 8.1-8.3). Same construction as
 # tests/tools/mutants-pre-agent.sh (read its header first) — a mutant is
 # applied to a COPY of the tree in a temp directory, never the working
 # tree, with logs outside the copied tree so the measurement cannot write
@@ -15,7 +15,7 @@
 # Eleven mutants, covering all three scripts and the shared library function
 # pre-edit.sh and pre-read.sh both call:
 #   1. the `.wave/` exemption becomes a string prefix instead of a directory one,
-#      in pre-edit.sh AND (added by Task 13) in pre-read.sh's own copy of it
+#      in pre-edit.sh AND in pre-read.sh's own copy of it
 #      directory prefix (pre-edit.sh)                    -> edit-265
 #   2. the main-session-only guard is removed             (pre-edit.sh)  -> edit-269
 #   3. the main-session-only guard is removed             (pre-read.sh)  -> read-276
@@ -28,7 +28,7 @@
 #   9. hooks/orchestrator-writable.tsv is never consulted  (pre-edit.sh)  -> edit-267a
 #  10. the shared path resolver stops resolving symlinks (`-s` instead of
 #      `-m`), so a symlink under .wave/ launders an edit   (lib.sh)       -> edit-271
-#  11. Fix round 1 (2026-09-10): the widened wrapper/env-assignment prefix
+#  11. The widened wrapper/env-assignment prefix (2026-09-10)
 #      group is reverted to the original bare anchor, so `sudo make` /
 #      `CI=1 npm test` / leading-whitespace `make` go back to silently
 #      allowed                                             (pre-bash.sh)  -> bash-fix1-*
@@ -79,7 +79,7 @@ git -C "$WV_TREE" init -q 2>/dev/null
 # Every file a mutant might touch, pristine copies kept by basename.
 declare -A WV_PRISTINE=()
 declare -A WV_BASE_SHA=()
-for f in scripts/hooks/pre-edit.sh scripts/hooks/pre-read.sh scripts/hooks/pre-bash.sh scripts/hooks/lib.sh; do
+for f in scripts/hooks/pre-edit.sh scripts/hooks/pre-read.sh scripts/hooks/pre-bash.sh scripts/hooks/pre-monitor.sh scripts/hooks/lib.sh; do
   base="$(basename "$f")"
   cp "$WV_TREE/$f" "$WV_TMP/$base.pristine"
   WV_PRISTINE["$f"]="$WV_TMP/$base.pristine"
@@ -239,7 +239,7 @@ s = s.replace(old, new)
 PY
 }
 
-# --- 11. the wrapper/env prefix group is removed (Fix round 1, 2026-09-10) --
+# --- 11. the wrapper/env prefix group is removed (2026-09-10) --
 # Reverts just the widened prefix (leading whitespace, env assignments,
 # sudo/time/nice/env wrappers) back to the original bare anchor, so a
 # controller-ruling case like `sudo make` or `CI=1 npm test` goes back to
@@ -247,7 +247,7 @@ PY
 wv_body_prefix_group_removed() { cat <<'PY'
 old = "WV_BASH_RUNNER_RE='(^|[;&|])[[:space:]]*((sudo|time|nice|env)([[:space:]]+-[^[:space:]]+)*[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(npx[[:space:]]+)?(jest|vitest|mocha|playwright|pytest|py\\.test|go test|cargo (test|build)|dotnet (test|build)|make|tsc|ng (build|test)|vite build|npm (test|run (build|test|e2e))|pnpm (test|build)|yarn (test|build))\\b'"
 new = "WV_BASH_RUNNER_RE='(^|[;&|][[:space:]]*)(npx[[:space:]]+)?(jest|vitest|mocha|playwright|pytest|py\\.test|go test|cargo (test|build)|dotnet (test|build)|make|tsc|ng (build|test)|vite build|npm (test|run (build|test|e2e))|pnpm (test|build)|yarn (test|build))\\b'"
-assert old in s, "anchor missing: the widened runner regex definition (Fix round 1)"
+assert old in s, "anchor missing: the widened runner regex definition"
 s = s.replace(old, new)
 PY
 }
@@ -301,6 +301,70 @@ wv_run_mutant regex-unanchored     scripts/hooks/pre-bash.sh wv_body_regex_unanc
 wv_run_mutant writable-ignored     scripts/hooks/pre-edit.sh wv_body_writable_ignored      'edit-267*'
 wv_run_mutant symlink-realpath-removed scripts/hooks/lib.sh  wv_body_symlink_removed       'edit-271*'
 wv_run_mutant prefix-group-removed scripts/hooks/pre-bash.sh wv_body_prefix_group_removed  'bash-fix1-*'
+
+# W-POLL controls: a bounded wrapper, the inclusive 300-second allowance,
+# and main-session Monitor must each survive normal enforcement.
+wv_body_poll_timeout_removed() { cat <<'PYM'
+old = '  if wv_poll_timeout_wraps "$cmd"; then'
+assert old in s, "anchor missing: timeout exemption"
+s = s.replace(old, '  if false; then', 1)
+PYM
+}
+wv_body_poll_sleep_boundary() { cat <<'PYM'
+old = '"$secs" -gt 300'
+assert old in s, "anchor missing: sleep threshold"
+s = s.replace(old, '"$secs" -gt 301', 1)
+PYM
+}
+wv_body_poll_monitor_identity() { cat <<'PYM'
+old = '  [ -n "$WV_AGENT_ID" ] || return 0\n'
+assert old in s, "anchor missing: Monitor identity guard"
+s = s.replace(old, '', 1)
+PYM
+}
+WV_EXPECT[polltimeoutremoved]=poll-416-timeout-wrapped-allow
+WV_EXPECT[pollsleepoffbyone]=poll-418-sleep-boundary
+WV_EXPECT[pollmonitoragentid]=poll-420-monitor-main-allow
+wv_run_mutant polltimeoutremoved scripts/hooks/pre-bash.sh wv_body_poll_timeout_removed 'poll-416*'
+wv_run_mutant pollsleepoffbyone scripts/hooks/pre-bash.sh wv_body_poll_sleep_boundary 'poll-418*'
+wv_run_mutant pollmonitoragentid scripts/hooks/pre-monitor.sh wv_body_poll_monitor_identity 'poll-420*'
+
+# Additional independent boundaries: prefix anchoring, sleep quote stripping,
+# subagent enforcement and returning only from the poll checker.
+wv_body_poll_timeout_unanchored() { cat <<'PYM'
+old = "WV_POLL_TIMEOUT_RE='^"
+assert old in s, "anchor missing: timeout regex"
+s = s.replace(old, "WV_POLL_TIMEOUT_RE='", 1)
+PYM
+}
+wv_body_poll_sleep_quotes_removed() { cat <<'PYM'
+a = s.index('wv_poll_sleep_seconds() {')
+old = 'stripped="$(wv_poll_strip_quotes "$cmd")"'
+assert old in s[a:], "anchor missing: sleep quote stripping"
+s = s[:a] + s[a:].replace(old, 'stripped="$cmd"', 1)
+PYM
+}
+wv_body_poll_early_agent_return() { cat <<'PYM'
+a = s.index('wv_main() {')
+old = '  wv_project_root || return 0'
+assert old in s[a:], "anchor missing: main root guard"
+s = s[:a] + s[a:].replace(old, '  [ -z "$WV_AGENT_ID" ] || return 0\n' + old, 1)
+PYM
+}
+wv_body_poll_exempt_returns_main() { cat <<'PYM'
+old = '  if wv_poll_check "$cmd" >/dev/null; then'
+assert old in s, "anchor missing: poll call"
+s = s.replace(old, '  if wv_poll_timeout_wraps "$cmd"; then return 0; fi\n' + old, 1)
+PYM
+}
+WV_EXPECT[polltimeoutunanchored]=poll-417-lexical-bounds
+WV_EXPECT[pollsleepquotesremoved]=poll-418-sleep-boundary
+WV_EXPECT[pollearlyagentreturn]=poll-418-sleep-boundary
+WV_EXPECT[pollexemptreturnsmain]=poll-421-precedence-vs-bash
+wv_run_mutant polltimeoutunanchored scripts/hooks/pre-bash.sh wv_body_poll_timeout_unanchored 'poll-417*'
+wv_run_mutant pollsleepquotesremoved scripts/hooks/pre-bash.sh wv_body_poll_sleep_quotes_removed 'poll-418*'
+wv_run_mutant pollearlyagentreturn scripts/hooks/pre-bash.sh wv_body_poll_early_agent_return 'poll-418*'
+wv_run_mutant pollexemptreturnsmain scripts/hooks/pre-bash.sh wv_body_poll_exempt_returns_main 'poll-421*'
 
 # --- the table --------------------------------------------------------------
 
