@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# tests/tools/mutants-lifecycle-hooks.sh [--keep]
+# tests/tools/mutants-lifecycle-hooks.sh [--keep] [--mutant <label>]
 #
 # The mutation control for the five lifecycle scripts (pre-commit-guard.sh,
 # pre-compact.sh, stop.sh, session-start.sh, user-prompt.sh) plus the wave-id
 # bound in scripts/wave-init.sh, which is the other half of session-start.sh's
-# character budget: proves the
-# case corpus is not vacuous by breaking one property at a time and
-# requiring at least one case to go red for each. Same construction as
+# character budget, plus the advisory evaluator in scripts/hooks/lib.sh
+# (wv_up_condition_met / wv_next_allowed_phase) that those hooks print:
+# proves the case corpus is not vacuous by breaking one property at a time
+# and requiring at least one case to go red for each. Same construction as
 # tests/tools/mutants-post-agent.sh (read its header first) — a mutant is
 # applied to a COPY of the tree in a temp directory, never the working
 # tree, with logs OUTSIDE the copied tree so the measurement cannot write
@@ -14,6 +15,9 @@
 # lines (`no positive case` / `no negative control`) before deciding
 # SURVIVED vs killed, because those fire on every narrow --filter regardless
 # of the mutant and would otherwise manufacture a false `killed`.
+#
+# `--mutant <label>` runs only that row (used to re-check a single new
+# mutant without replaying the rest of the sweep).
 #
 # Eight mutants — the task-10-brief's own six, plus the two properties the fix
 # rounds added, which cases pinned and no mutant could break:
@@ -35,6 +39,7 @@
 #
 #   bash tests/tools/mutants-lifecycle-hooks.sh
 #   bash tests/tools/mutants-lifecycle-hooks.sh --keep   # leave the temp root behind
+#   bash tests/tools/mutants-lifecycle-hooks.sh --mutant unansweredskipped
 #
 # Deliberately `set -u`, never `set -e`: a mutant whose run fails must reach
 # the table rather than abort the sweep.
@@ -44,7 +49,23 @@ set -u
 WV_TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WV_REPO_ROOT="$(cd "$WV_TOOLS_DIR/../.." && pwd)"
 WV_KEEP=0
-[ "${1:-}" = "--keep" ] && WV_KEEP=1
+WV_ONLY_MUTANT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --keep) WV_KEEP=1; shift ;;
+    --mutant)
+      [ $# -ge 2 ] || {
+        printf 'mutants-lifecycle-hooks.sh: --mutant needs a label\n' >&2
+        exit 1
+      }
+      WV_ONLY_MUTANT="$2"; shift 2 ;;
+    *)
+      printf 'mutants-lifecycle-hooks.sh: unknown argument: %s\n' "$1" >&2
+      printf 'usage: bash tests/tools/mutants-lifecycle-hooks.sh [--keep] [--mutant <label>]\n' >&2
+      exit 1
+      ;;
+  esac
+done
 
 for tool in jq git python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -147,6 +168,9 @@ wv_run_mutant() {
   # wv_run_mutant <label> <relative-script-path> <body-function> <filter>...
   local label="$1" rel="$2" body="$3"
   shift 3
+  if [ -n "$WV_ONLY_MUTANT" ] && [ "$label" != "$WV_ONLY_MUTANT" ]; then
+    return
+  fi
   local target="$WV_TREE/$rel"
   wv_total=$((wv_total + 1))
 
@@ -437,6 +461,26 @@ wv_run_mutant leftoverprecompactsection scripts/hooks/pre-compact.sh wv_body_lef
 wv_run_mutant leftoverselfexcluded scripts/hooks/lib.sh wv_body_leftoverselfexcluded 'leftover-426*'
 wv_run_mutant leftovermarkerfirst scripts/hooks/stop.sh wv_body_leftovermarkerfirst 'leftover-430*'
 
+# --- unanswered reads as skipped (advisory evaluator, design 3.2) ----------
+#
+# Collapses wv_up_condition_met's third outcome (return 2, unanswered) back
+# into return 1 (not met). wv_up_phase_settled then treats the row as
+# skipped and wv_next_allowed_phase walks through it to a successor the
+# gate would refuse. Killed by advisory-gate-agreement.
+wv_body_unansweredskipped() { cat <<'PY'
+start = s.find('wv_up_condition_met()')
+end = s.find('wv_up_phase_settled()')
+assert start != -1 and end != -1, "anchor missing: wv_up_condition_met / wv_up_phase_settled"
+block = s[start:end]
+assert 'return 2' in block, "anchor missing: unanswered return 2 in wv_up_condition_met"
+new_block = block.replace('return 2', 'return 1')
+assert new_block != block, "unansweredskipped: return 2 was not replaced"
+s = s[:start] + new_block + s[end:]
+PY
+}
+WV_EXPECT[unansweredskipped]=advisory-gate-agreement
+wv_run_mutant unansweredskipped scripts/hooks/lib.sh wv_body_unansweredskipped 'advisory-gate-agreement'
+
 # --- the table --------------------------------------------------------------
 
 printf '\n%-21s %-11s %-33s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'
@@ -458,5 +502,10 @@ for rel in "${!WV_PRISTINE[@]}"; do
   fi
 done
 printf 'mutants=%s survived=%s restored=%s\n' "$wv_total" "$wv_survived" "$wv_all_restored"
+
+if [ -n "$WV_ONLY_MUTANT" ] && [ "$wv_total" -eq 0 ]; then
+  printf 'mutants-lifecycle-hooks.sh: no mutant named %s\n' "$WV_ONLY_MUTANT" >&2
+  exit 1
+fi
 
 [ "$wv_survived" -eq 0 ] && [ "$wv_all_restored" = "yes" ]

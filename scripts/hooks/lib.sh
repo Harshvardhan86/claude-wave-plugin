@@ -1152,11 +1152,14 @@ wv_rule_warn() {
 # These are a MINIMAL, READ-ONLY, ADVISORY-ONLY port of pre-agent.sh's
 # wv_condition_met / wv_phase_done / wv_after_unmet. They answer "what would a
 # human call the last completed step and the next one" for a banner or a
-# reminder — never a gate — so unlike pre-agent.sh's versions they collapse
-# every "cannot be measured" case (an unreadable findings file, an unanswered
-# ui/behaviour_change/cr flag) to a plain "not met" rather than raising a
-# separate W-ARTIFACT / W-MARKER / W-SCOPE deny: nothing here ever denies
-# anything, so there is no reason to distinguish "skip" from "cannot tell".
+# reminder — never a gate. An unreadable findings file still collapses to
+# "not met" (advisory has no W-ARTIFACT channel). An unanswered scope flag
+# (the string "unknown") does not: that is a third outcome, *unanswered*,
+# required and not yet allowed, never skipped. Collapsing it into "not met"
+# made wv_up_phase_settled treat the row as skipped and the reminder name a
+# successor the gate would refuse with W-SCOPE. Absent (empty string) stays
+# false, matching the gate. Mode is tested before condition, matching the
+# gate, so demo is unaffected.
 #
 # The checkpoint helpers do NOT source pre-agent.sh for this — sourcing it would run its
 # entire PreToolUse(Agent) rule chain against whatever event is live and then
@@ -1181,37 +1184,57 @@ wv_state_phase_status() {
 }
 
 wv_up_condition_met() {
-  # wv_up_condition_met <code> -> 0 when the row's condition holds in the
-  # current state, 1 otherwise (including "cannot be measured", which a gate
-  # would refuse to guess and an advisory just treats as not-yet).
-  local code="$1" cond file
+  # wv_up_condition_met <code> ->
+  #   0  met
+  #   1  not met (answered false, or the flag is absent / empty — same as the
+  #      gate; an unreadable findings file also lands here)
+  #   2  unanswered: a flag the row reads is the string "unknown", or the
+  #      source of a done:/findings: row is itself unanswered
+  #
+  # 2 is not a bare non-zero. wv_up_phase_settled must not read it as skipped.
+  local code="$1" cond file src src_rc
   cond="$(wv_row_get "$code" "$WV_COL_CONDITION")" || return 1
   case "$cond" in
     ''|always) return 0 ;;
     'ui|behaviour_change')
       [ "$WV_UI" = "true" ] && return 0
       [ "$WV_BC" = "true" ] && return 0
+      [ "$WV_UI" = "unknown" ] && return 2
+      [ "$WV_BC" = "unknown" ] && return 2
       return 1
       ;;
     cr)
       [ "$WV_CR" = "true" ] && return 0
+      [ "$WV_CR" = "unknown" ] && return 2
       return 1
       ;;
     vocabulary)
       [ "$WV_VOCAB" = "true" ] && return 0
+      [ "$WV_VOCAB" = "unknown" ] && return 2
       return 1
       ;;
     behaviour_change)
       [ "$WV_BC" = "true" ] && return 0
+      [ "$WV_BC" = "unknown" ] && return 2
       return 1
       ;;
     done:*)
       [ "$(wv_state_phase_status "${cond#done:}")" = "done" ] && return 0
+      src="${cond#done:}"
+      wv_up_condition_met "$src"
+      src_rc=$?
+      [ "$src_rc" -eq 2 ] && return 2
       return 1
       ;;
     findings:*)
       file="$WV_WAVE_DIR/findings/${cond#findings:}.md"
-      [ -f "$file" ] || return 1
+      if [ ! -f "$file" ]; then
+        src="${cond#findings:}"
+        wv_up_condition_met "$src"
+        src_rc=$?
+        [ "$src_rc" -eq 2 ] && return 2
+        return 1
+      fi
       wv_scan "$file" '^FINDINGS: [0-9]+$' || return 1
       [ "$WV_SCAN_COUNT" != "0" ] || return 1
       local line n
@@ -1228,26 +1251,34 @@ wv_up_condition_met() {
 wv_up_phase_settled() {
   # wv_up_phase_settled <code> -> 0 when the row counts as settled for the
   # purpose of walking `after`: its state row says done, its `modes` exclude
-  # the active mode, or its own condition does not hold (the skip rule).
-  local code="$1" modes
+  # the active mode, or its own condition is false (the skip rule). An
+  # unanswered condition is not settled: the row is still required.
+  # Mode is tested before condition, matching the gate.
+  local code="$1" modes crc
   [ "$(wv_state_phase_status "$code")" = "done" ] && return 0
   modes="$(wv_row_get "$code" "$WV_COL_MODES")" || return 1
   case ",$modes," in
     *",$WV_MODE,"*) : ;;
     *) return 0 ;;
   esac
-  wv_up_condition_met "$code" && return 1
-  return 0
+  wv_up_condition_met "$code"
+  crc=$?
+  case "$crc" in
+    0) return 1 ;;
+    2) return 1 ;;
+    *) return 0 ;;
+  esac
 }
 
 WV_UP_VISITED=""
 
 wv_up_after_settled() {
   # wv_up_after_settled <code> -> 0 when every predecessor in `after` is
-  # settled (done or skipped), walking through a skipped predecessor into ITS
-  # predecessors the same way pre-agent.sh's order walk does, so a wave with
-  # cr_enabled false still does not report CR's successor as allowed before
-  # TDE-GREEN is actually done.
+  # settled (done or skipped by mode or a false condition), walking through a
+  # skipped predecessor into ITS predecessors the same way pre-agent.sh's
+  # order walk does, so a wave with cr_enabled false still does not report
+  # CR's successor as allowed before TDE-GREEN is actually done. An
+  # unanswered predecessor is not settled, so a successor is never returned.
   WV_UP_VISITED=""
   wv_up_after_settled_walk "$1"
 }
@@ -1295,11 +1326,13 @@ wv_last_done_phase() {
 
 wv_next_allowed_phase() {
   # wv_next_allowed_phase -> the first `when=phase` row (file order) that is
-  # allowed in this mode, not already done, whose own condition holds, and
-  # whose predecessors are all settled — i.e. the phase pre-agent.sh would let
-  # through right now — or "none" when every such row is already settled.
+  # in this mode, not already done, whose predecessors are all settled, and
+  # whose own condition is either met or unanswered. An unanswered row is
+  # returned itself (that is the phase the operator is waiting on) and a
+  # successor of an unanswered row is never returned. "none" when every
+  # such row is already settled. Mode is tested before condition.
   [ -f "$WV_PHASES_TSV" ] || { printf 'none'; return 0; }
-  local code modes when rest
+  local code modes when rest crc
   while IFS=$'\t' read -r code modes when rest; do
     case "$code" in ''|'#'*|code) continue ;; esac
     [ "$when" = "phase" ] || continue
@@ -1308,11 +1341,16 @@ wv_next_allowed_phase() {
       *) continue ;;
     esac
     [ "$(wv_state_phase_status "$code")" = "done" ] && continue
-    wv_up_condition_met "$code" || continue
-    if wv_up_after_settled "$code"; then
-      printf '%s' "$code"
-      return 0
-    fi
+    wv_up_condition_met "$code"
+    crc=$?
+    case "$crc" in
+      0|2)
+        if wv_up_after_settled "$code"; then
+          printf '%s' "$code"
+          return 0
+        fi
+        ;;
+    esac
   done < "$WV_PHASES_TSV"
   printf 'none'
   return 0

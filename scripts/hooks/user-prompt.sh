@@ -37,6 +37,16 @@ wv_main() {
   last_done="$(wv_last_done_phase)"
   next_allowed="$(wv_next_allowed_phase)"
 
+  # An unanswered row is the phase the operator is waiting on, but it is not
+  # yet dispatchable: a scope flag still has to be answered. The template's
+  # third %s carries that note so the reminder stays one rule, stays
+  # truthful, and stays under the 400-character bound (the longest fill is
+  # a 9-character code plus " (scope answer pending)", well inside it).
+  wv_up_condition_met "$next_allowed"
+  if [ "$?" -eq 2 ]; then
+    next_allowed="$next_allowed (scope answer pending)"
+  fi
+
   wv_rule_warn W-REMINDER "$WV_WAVE" "$last_done" "$next_allowed"
   return 0
 }
