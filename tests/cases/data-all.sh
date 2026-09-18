@@ -25,16 +25,16 @@ for f in hooks/phases.tsv hooks/models.tsv hooks/roles.tsv hooks/budgets.tsv \
   [ -f "$f" ] || fail "$f does not exist"
 done
 
-# AC-339: 12 columns, 26 full-mode rows
+# AC-339: 12 columns, 31 full-mode rows
 header=$(head -n1 hooks/phases.tsv)
 expected_header="code	modes	when	condition	after	fanout	lead	executor	reviewer	artifact	marker	findings"
 [ "$header" = "$expected_header" ] || fail "phases.tsv header mismatch"
 
 full_count=$(command grep -v '^#' hooks/phases.tsv | awk -F'\t' '$2 ~ /full/ { print }' | wc -l)
-[ "$full_count" = "26" ] || fail "phases.tsv should have 26 full-mode rows, got $full_count"
+[ "$full_count" = "31" ] || fail "phases.tsv should have 31 full-mode rows, got $full_count"
 
 # Verify order of full-mode rows
-expected_order="AC ACB DR TDE-RED TDE-GREEN CR BC BF-BC SEA BF-SEA DS BF-DS BSEA BF-BSEA OA TEET-TC TEET BF-TEET BTEET BTEET-X BF-BTEET VB COMMIT CL CCP AD"
+expected_order="UIA BEN AC ACB DR TDE-RED TDE-GREEN CR BC BF-BC ES BF-ES SEA BF-SEA DS BF-DS BSEA BF-BSEA OA TEET-TC TEET BF-TEET BTEET BTEET-X BF-BTEET BEN-CLOSE VB COMMIT CL CCP AD"
 actual_order=$(command grep -v '^#' hooks/phases.tsv | awk -F'\t' '$2 ~ /full/ { print $1 }' | tr '\n' ' ' | sed 's/ $//')
 [ "$actual_order" = "$expected_order" ] || fail "full-mode rows in wrong order"
 
@@ -60,16 +60,16 @@ for phase in TEET-TC TEET BTEET-X BC; do
   [ "$fanout" = "3" ] || fail "$phase fanout should be 3, got '$fanout'"
 done
 
-for phase in AC DR; do
+for phase in AC DR BEN; do
   fanout=$(awk -F'\t' -v p="$phase" '$1==p {print $6}' hooks/phases.tsv)
   [ "$fanout" = "2" ] || fail "$phase fanout should be 2, got '$fanout'"
 done
 
-# AC-344: Tier cells (78 total)
+# AC-344: Tier cells (93 total = 31 rows × 3)
 cells=0
 phases_rows=$(command grep -v '^#' hooks/phases.tsv | tail -n +2 | wc -l)
 cells=$((phases_rows * 3))
-[ "$cells" = "78" ] || fail "should have 78 tier cells, got $cells"
+[ "$cells" = "93" ] || fail "should have 93 tier cells, got $cells"
 
 printf 'cells=%s\n' "$cells" >&2
 
@@ -77,9 +77,17 @@ printf 'cells=%s\n' "$cells" >&2
 haiku_rank=$(awk -F'\t' '/^haiku\t/ {print $2}' hooks/models.tsv)
 [ "$haiku_rank" = "1" ] || fail "haiku should be rank 1"
 
-# AC-350: budgets.tsv has 26 rows (one per phase)
+# AC-350: budgets.tsv has 31 rows (one per phase)
 budget_count=$(command grep -v '^#' hooks/budgets.tsv | tail -n +2 | wc -l)
-[ "$budget_count" = "26" ] || fail "budgets.tsv should have 26 rows, got $budget_count"
+[ "$budget_count" = "31" ] || fail "budgets.tsv should have 31 rows, got $budget_count"
+
+# SKILL.md numbering for the five v0.3.0 rows (source of tests/golden/phases-tiers.tsv)
+skill=framework/SKILL.md
+command grep -qF '| 0.5 | `[UIA]`' "$skill" || fail "framework/SKILL.md missing 0.5 UIA row"
+command grep -qF '| 0.8 | `[BEN]`' "$skill" || fail "framework/SKILL.md missing 0.8 BEN row"
+command grep -qF '| 4.2 | `[ES]`' "$skill" || fail "framework/SKILL.md missing 4.2 ES row"
+command grep -qF '| 4.3 | `[BF-ES]`' "$skill" || fail "framework/SKILL.md missing 4.3 BF-ES row"
+command grep -qF '| 12.5 | `[BEN-CLOSE]`' "$skill" || fail "framework/SKILL.md missing 12.5 BEN-CLOSE row"
 
 # AC-351: planning-paths.tsv is glob<TAB>label, first row's glob is .wave/**
 # (full row-completeness + bidirectional fixture coverage: tests/cases/data-planning-paths.sh)
@@ -93,8 +101,7 @@ first_label=$(printf '%s' "$first_row" | awk -F'\t' '{print $2}')
 has_readme=$(command grep -c '^README.md$' hooks/orchestrator-writable.tsv || echo 0)
 [ "$has_readme" -gt 0 ] || fail "orchestrator-writable.tsv should contain README.md"
 
-# AC-353: reasons.tsv gained W-SESSION, W-REMINDER and W-SCORECARD
-# with the session-start / user-prompt / stop hooks (now 37 rules).
+# AC-353: reasons.tsv stays at 37 rules in this task (rule 38 is a later task).
 rule_count=$(command grep -v '^#' hooks/reasons.tsv | command grep -v '^rule_id' | wc -l)
 [ "$rule_count" = "37" ] || fail "reasons.tsv should have 37 rules, got $rule_count"
 

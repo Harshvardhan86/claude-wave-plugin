@@ -629,6 +629,91 @@ wv_run_mutant scanwarnlost      wv_body_scanwarnlost      'gate-scan-warning*' '
 wv_run_mutant conddenyearly     wv_body_conddenyearly     'order-107*' 'gate-083*'
 wv_run_mutant walkpreempts      wv_body_walkpreempts      'order-107*' 'gate-083*'
 
+# --- v0.3.0: pending-branch rule, done: arm, vocabulary unanswered ----------
+
+wv_body_pendingskipstillpending() { cat <<'PY'
+old = """        wv_row_applies "$src"
+        case "$?" in
+          1)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
+"""
+assert old in s, "anchor missing: the findings pending-branch applies check"
+s = s.replace(old, "        :\n")
+PY
+}
+
+wv_body_pendingappliesskipped() { cat <<'PY'
+old = """        wv_row_applies "$src"
+        case "$?" in
+          1)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
+"""
+new = """        wv_row_applies "$src"
+        case "$?" in
+          0)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
+"""
+assert old in s, "anchor missing: the findings pending-branch applies check"
+s = s.replace(old, new)
+PY
+}
+
+wv_body_donenotdonemet() { cat <<'PY'
+old = '''    done:*)
+      src="${cond#done:}"
+      if [ "$(wv_state_phase_status "$src")" = "done" ]; then
+        return 0
+      fi'''
+new = '''    done:*)
+      return 0
+      src="${cond#done:}"
+      if [ "$(wv_state_phase_status "$src")" = "done" ]; then
+        return 0
+      fi'''
+assert old in s, "anchor missing: the done: met check"
+s = s.replace(old, new)
+PY
+}
+
+wv_body_vocabunknownisfalse() { cat <<'PY'
+old = '      wv_unanswered_scope "$WV_VOCAB" vocabulary && return 2\n'
+assert old in s, "anchor missing: the vocabulary unanswered check"
+s = s.replace(old, "")
+PY
+}
+
+WV_EXPECT[pendingskipstillpending]=cond-bf-es-vocab-false-deny
+WV_EXPECT[pendingappliesskipped]=order-bf-es-before-es-pending-deny
+WV_EXPECT[donenotdonemet]=order-commit-ben-not-done-allow
+WV_EXPECT[vocabunknownisfalse]=scope-uia-vocab-unknown-deny
+
+wv_run_mutant pendingskipstillpending wv_body_pendingskipstillpending \
+  'cond-bf-es-vocab-false*' 'order-sea-after-bf-bc*' 'order-081*' 'scope-v030*'
+wv_run_mutant pendingappliesskipped wv_body_pendingappliesskipped \
+  'order-bf-es-before-es-pending*' 'order-sea-before-es*' 'order-sea-after-bf-bc*' 'scope-v030*'
+wv_run_mutant donenotdonemet wv_body_donenotdonemet \
+  'order-commit-ben-not-done*' 'order-commit-before-ben-close*' 'scope-v030*'
+wv_run_mutant vocabunknownisfalse wv_body_vocabunknownisfalse \
+  'scope-uia-vocab-unknown*' 'scope-111-unknown*' 'scope-v030*'
+
 # --- the table ------------------------------------------------------------
 
 printf '\n%-17s %-11s %-33s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'

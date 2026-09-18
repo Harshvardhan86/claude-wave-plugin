@@ -604,6 +604,65 @@ wv_unanswered_scope() {
   return 0
 }
 
+wv_row_applies() {
+  # wv_row_applies <code> — whether a row applies to this wave from its mode
+  # and its condition KEYWORD alone, with no file reads. Used by the pending
+  # branch of findings:* (design 7.1) and by done:* so a helper never calls
+  # wv_condition_met recursively (that would reset WV_COND_TEXT to the source
+  # row's keyword).
+  #
+  # Returns:
+  #   0  applies (in this mode, and the keyword is met or always)
+  #   1  not in this mode, or the keyword is false
+  #   2  the keyword is unanswered (WV_COND_RULE/ARGS carry W-SCOPE; WV_COND_TEXT
+  #      is left as the caller set it)
+  # Does not touch WV_COND_TEXT, WV_COND_DETAIL, or WV_COND_PENDING.
+  local code="$1" modes cond
+  modes="$(wv_row_get "$code" "$WV_COL_MODES")" || return 1
+  case ",$modes," in
+    *",$WV_MODE,"*) : ;;
+    *) return 1 ;;
+  esac
+  cond="$(wv_row_get "$code" "$WV_COL_CONDITION")" || return 0
+  case "$cond" in
+    ''|always) return 0 ;;
+    'ui|behaviour_change')
+      [ "$WV_UI" = "true" ] && return 0
+      [ "$WV_BC" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_UI" ui "$WV_BC" behaviour_change; then
+        return 2
+      fi
+      return 1
+      ;;
+    cr)
+      [ "$WV_CR" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_CR" cr_enabled; then
+        return 2
+      fi
+      return 1
+      ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_VOCAB" vocabulary; then
+        return 2
+      fi
+      return 1
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_BC" behaviour_change; then
+        return 2
+      fi
+      return 1
+      ;;
+    *)
+      # findings:/done: must not appear as the source (one-level rule). Treat
+      # an unknown keyword as applies so we fall through to pending as today.
+      return 0
+      ;;
+  esac
+}
+
 wv_condition_met() {
   # wv_condition_met <code> — the row's `condition` cell, evaluated against the
   # wave state and, for `findings:<CODE>`, against `.wave/findings/<CODE>.md`.
@@ -653,6 +712,30 @@ wv_condition_met() {
       WV_COND_DETAIL="state.cr_enabled is false in .wave/state.json; run \`scripts/wave-set.sh cr true\` if this wave does need a code review"
       return 1
       ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && return 0
+      wv_unanswered_scope "$WV_VOCAB" vocabulary && return 2
+      WV_COND_DETAIL="state.vocabulary is false in .wave/state.json, so this wave declares no new user-visible vocabulary; run \`scripts/wave-set.sh vocabulary true\` if that is wrong"
+      return 1
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && return 0
+      wv_unanswered_scope "$WV_BC" behaviour_change && return 2
+      WV_COND_DETAIL="state.behaviour_change is false in .wave/state.json, so this wave declares no behaviour change; run \`scripts/wave-set.sh behaviour-change true\` if that is wrong"
+      return 1
+      ;;
+    done:*)
+      src="${cond#done:}"
+      if [ "$(wv_state_phase_status "$src")" = "done" ]; then
+        return 0
+      fi
+      wv_row_applies "$src"
+      case "$?" in
+        2) return 2 ;;
+      esac
+      WV_COND_DETAIL="phase $src is not done, so there is no completed $src for $code to close"
+      return 1
+      ;;
     findings:*)
       src="${cond#findings:}"
       rel=".wave/findings/$src.md"
@@ -663,6 +746,16 @@ wv_condition_met() {
           WV_COND_ARGS=("$rel" "$src" "$rel")
           return 2
         fi
+        wv_row_applies "$src"
+        case "$?" in
+          1)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
         WV_COND_PENDING="$src"
         return 3
       fi
@@ -759,8 +852,17 @@ wv_required_because() {
     cr)
       [ "$WV_CR" = "true" ] && printf ' (required because state.cr_enabled is true)'
       ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && printf ' (required because state.vocabulary is true)'
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && printf ' (required because state.behaviour_change is true)'
+      ;;
     findings:*)
       printf ' (required because %s reported findings)' "${cond#findings:}"
+      ;;
+    done:*)
+      printf ' (required because %s ran)' "${cond#done:}"
       ;;
   esac
   return 0
@@ -1408,9 +1510,11 @@ wv_main() {
   #     Warn-only, queued here so a later deny carries it (spec section 7).
   wv_taint_warn
 
-  # 10. Scope: TDE-RED is the first phase whose predecessor set depends on the
-  #     answers, so it is where an unanswered scope question stops the wave.
-  #     Earlier phases stay dispatchable — a wave has to be able to start.
+  # 10. Scope: TDE-RED still demands ui/cr answers, because those flags only
+  #     affect TDE-RED's predecessor set. vocabulary and behaviour_change are
+  #     demanded earlier: AC names UIA and BEN, and an unanswered predecessor
+  #     is W-SCOPE, so a full-mode wave cannot dispatch any phase row until
+  #     those two are answered. ui and cr may still wait until TDE-RED.
   if [ "$WV_TAG_PHASE" = "TDE-RED" ] && ! wv_scope_ready; then
     wv_rule_deny W-SCOPE "$WV_SCOPE_FLAG" "$WV_SCOPE_ARG"
     return 0

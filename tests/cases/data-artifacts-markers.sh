@@ -2,7 +2,7 @@
 # tests/cases/data-artifacts-markers.sh — AC-345
 #
 # Compares hooks/phases.tsv `artifact` and `marker` columns against the
-# spec section 6 hand-off table, cell by cell, for all 26 rows. Round 1/2's
+# spec section 6 hand-off table, cell by cell, for all 31 rows. Round 1/2's
 # report claimed this AC passed but no case ever asserted it.
 
 set -u
@@ -26,6 +26,8 @@ PHASES=hooks/phases.tsv
 # code -> "artifact\tmarker", transcribed verbatim from
 # docs/design/2026-09-09-hook-enforcement.md §6's hand-off table.
 declare -A expect_artifact=(
+  [UIA]='.wave/uia.md'
+  [BEN]='.wave/ben.md'
   [AC]='.wave/ac.md'
   [ACB]='.wave/acb.md'
   [DR]='.wave/dr.md'
@@ -34,6 +36,8 @@ declare -A expect_artifact=(
   [CR]='.wave/cr.md'
   [BC]='.wave/findings/BC.md'
   [BF-BC]='.wave/bf-BC.md'
+  [ES]='.wave/findings/ES.md'
+  [BF-ES]='.wave/bf-ES.md'
   [SEA]='.wave/findings/SEA.md'
   [BF-SEA]='.wave/bf-SEA.md'
   [DS]='.wave/findings/DS.md'
@@ -47,6 +51,7 @@ declare -A expect_artifact=(
   [BTEET]='.wave/bteet.md'
   [BTEET-X]='.wave/bteet-x.md'
   [BF-BTEET]='.wave/bf-BTEET.md'
+  [BEN-CLOSE]='.wave/ben-close.md'
   [VB]='-'
   [COMMIT]='-'
   [CL]='-'
@@ -55,6 +60,8 @@ declare -A expect_artifact=(
 )
 
 declare -A expect_marker=(
+  [UIA]='^UIA-[0-9]+'
+  [BEN]='^BEN-VERIFIED red=[1-9][0-9]* authorities=[1-9][0-9]*$'
   [AC]='^AC-[0-9]+'
   [ACB]='^ACB-VERIFIED'
   [DR]='^DR-VERIFIED'
@@ -63,6 +70,8 @@ declare -A expect_marker=(
   [CR]='^CR-VERIFIED'
   [BC]='^FINDINGS: [0-9]+$'
   [BF-BC]='^BF-VERIFIED'
+  [ES]='^FINDINGS: [0-9]+$'
+  [BF-ES]='^BF-VERIFIED'
   [SEA]='^FINDINGS: [0-9]+$'
   [BF-SEA]='^BF-VERIFIED'
   [DS]='^FINDINGS: [0-9]+$'
@@ -76,6 +85,7 @@ declare -A expect_marker=(
   [BTEET]='^BTEET-VERIFIED$'
   [BTEET-X]='^BTEET-X-VERIFIED$'
   [BF-BTEET]='^BF-VERIFIED'
+  [BEN-CLOSE]='^BENEFIT: (DELIVERED|UNDELIVERED)$'
   [VB]='-'
   [COMMIT]='-'
   [CL]='-'
@@ -117,8 +127,8 @@ fi
 
 row_count=$(command grep -vc '^#' "$PHASES")
 row_count=$((row_count - 1))
-[ "$row_count" = "26" ] || fail "expected 26 phase rows, got $row_count"
-[ "${#expect_artifact[@]}" = "26" ] || fail "expected table itself should list 26 codes, has ${#expect_artifact[@]}"
+[ "$row_count" = "31" ] || fail "expected 31 phase rows, got $row_count"
+[ "${#expect_artifact[@]}" = "31" ] || fail "expected table itself should list 31 codes, has ${#expect_artifact[@]}"
 
 # ---- mutation proof: corrupt one artifact/marker cell in a temp copy ----
 

@@ -1,5 +1,7 @@
 # Golden budget reference - should match hooks/budgets.tsv exactly
 code	output_tokens
+UIA	5000
+BEN	5000
 AC	5000
 ACB	3000
 DR	4000
@@ -8,6 +10,8 @@ TDE-GREEN	3000
 CR	2000
 BC	1500
 BF-BC	3000
+ES	1500
+BF-ES	3000
 SEA	1500
 BF-SEA	3000
 DS	1500
@@ -21,6 +25,7 @@ BF-TEET	3000
 BTEET	3000
 BTEET-X	2000
 BF-BTEET	3000
+BEN-CLOSE	3000
 VB	500
 COMMIT	1000
 CL	1000

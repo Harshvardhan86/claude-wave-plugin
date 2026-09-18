@@ -43,7 +43,7 @@ while IFS=$'\x1f' read -r code aft; do
   i=$((i + 1))
 done < <(awk -F'\t' 'NR==1{next} /^#/{next} {print $1"\037"$5}' "$PHASES")
 
-[ "${#order[@]}" = "26" ] || fail "expected 26 rows, got ${#order[@]}"
+[ "${#order[@]}" = "31" ] || fail "expected 31 rows, got ${#order[@]}"
 
 # ---- every `after` code exists and appears earlier in file order --------
 
@@ -65,19 +65,23 @@ done
 # ---- the controller ruling: SEA/DS/BSEA depend on the BF-* row, not the
 # scan they wrap --------------------------------------------------------
 
-[ "${after[SEA]:-}" = "BF-BC" ] || fail "SEA's after should be BF-BC (findings are fixed before the next gate), got '${after[SEA]:-}'"
+[ "${after[SEA]:-}" = "BF-ES" ] || fail "SEA's after should be BF-ES (empty-state findings are fixed before the next gate), got '${after[SEA]:-}'"
 [ "${after[DS]:-}" = "BF-SEA" ] || fail "DS's after should be BF-SEA, got '${after[DS]:-}'"
 [ "${after[BSEA]:-}" = "BF-DS" ] || fail "BSEA's after should be BF-DS, got '${after[BSEA]:-}'"
+[ "${after[ES]:-}" = "BF-BC" ] || fail "ES's after should be BF-BC, got '${after[ES]:-}'"
+[ "${after[BF-ES]:-}" = "ES" ] || fail "BF-ES's after should be ES, got '${after[BF-ES]:-}'"
 
 # and this matches how OA/BTEET are already wired (waiting on the
 # preceding BF-*, never the bare scan)
 [ "${after[OA]:-}" = "BF-BSEA" ] || fail "sanity: OA's after should be BF-BSEA, got '${after[OA]:-}'"
 [ "${after[BTEET]:-}" = "BF-TEET" ] || fail "sanity: BTEET's after should be BF-TEET, got '${after[BTEET]:-}'"
+[ "${after[BEN-CLOSE]:-}" = "BTEET-X,BF-BTEET" ] || fail "BEN-CLOSE's after should be BTEET-X,BF-BTEET, got '${after[BEN-CLOSE]:-}'"
 
 # ---- shared predecessor sets: VB/COMMIT/CL/CCP identical; AD empty ------
 
 vb="${after[VB]:-}"; commit="${after[COMMIT]:-}"; cl="${after[CL]:-}"; ccp="${after[CCP]:-}"
 [ -n "$vb" ] || fail "VB's after must not be empty"
+[ "$vb" = "BEN-CLOSE" ] || fail "VB/COMMIT/CL/CCP shared after should be BEN-CLOSE, got '$vb'"
 for pair in "COMMIT:$commit" "CL:$cl" "CCP:$ccp"; do
   nm="${pair%%:*}"; val="${pair#*:}"
   [ "$val" = "$vb" ] || fail "$nm's after ('$val') should equal VB's ('$vb')"
@@ -85,11 +89,13 @@ done
 
 [ -z "${after[AD]:-}" ] || fail "AD's after must be empty, got '${after[AD]}'"
 
-# first row of each mode has empty predecessors after mode/condition
-# skipping: the very first row of the file (AC) is the first row of BOTH
-# modes (full and demo both start at AC), and AC's own `after` is empty.
-[ "${order[0]}" = "AC" ] || fail "first row of the file should be AC, got '${order[0]}'"
-[ -z "${after[AC]:-}" ] || fail "AC's after must be empty (it is the first row of both modes)"
+# first row of the file is UIA with empty after; AC now waits on UIA,BEN.
+# Demo still starts at AC: UIA and BEN are full-only, so the skip rule walks
+# through them without reading their flags.
+[ "${order[0]}" = "UIA" ] || fail "first row of the file should be UIA, got '${order[0]}'"
+[ -z "${after[UIA]:-}" ] || fail "UIA's after must be empty, got '${after[UIA]}'"
+[ "${after[AC]:-}" = "UIA,BEN" ] || fail "AC's after should be UIA,BEN, got '${after[AC]:-}'"
+[ "${after[BEN]:-}" = "UIA" ] || fail "BEN's after should be UIA, got '${after[BEN]:-}'"
 
 # ---- acyclic: real DFS cycle detection over the after-graph, independent
 # of the file-order check above -----------------------------------------

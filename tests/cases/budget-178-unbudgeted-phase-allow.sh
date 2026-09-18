@@ -5,7 +5,7 @@
 # fail OPEN: no `W-BUDGET`, whatever the ledger says. (AC-350 separately fails
 # the build when a row is missing, so this is the runtime half of that pair.)
 #
-# Every one of the 26 shipped phases HAS a budget row, so the state AC-178
+# Every one of the 31 shipped phases HAS a budget row, so the state AC-178
 # describes cannot be reached with the shipped data. The case therefore runs the
 # hook out of a copy of the tree whose `budgets.tsv` has the `TDE-GREEN` row
 # removed — and, so the assertion is not vacuous, drives the IDENTICAL ledger

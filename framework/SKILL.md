@@ -36,6 +36,8 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 
 | # | Code | Phase | Team | Topology | Lead / Executor / Reviewer model |
 |---|------|-------|------|----------|----------------------------------|
+| 0.5 | `[UIA]` | User-intent criteria | AC Team | E | **Opus** / Sonnet / **Opus** |
+| 0.8 | `[BEN]` | Benefit contract | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 1 | `[AC]` | Acceptance Criteria | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 1.2 | `[ACB]` | Brutal AC Review (fresh eyes) | AC Hardening Team | E | **Opus** / **Opus** / **Opus** |
 | 1.5 | `[DR]` | Design Review (**mandatory for UI waves**, skipped otherwise) | Design Review Team | E | **Opus** / Sonnet / **Opus** |
@@ -44,6 +46,8 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 | 3.5 | `[CR]` | Code Review gate (CodeRabbit — **optional**) | CodeRabbit Plugin | QG | plugin-managed |
 | 4 | `[BC]` | Bug Capture | Bug Capture Team | QG | Sonnet |
 | 4.1 | `[BF-BC]` | Fix BC findings (user approves) | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
+| 4.2 | `[ES]` | Empty-state scan | Silent Error Team | QG | Sonnet |
+| 4.3 | `[BF-ES]` | Fix ES findings (user approves) | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
 | 5 | `[SEA]` | Silent Error Scan | Silent Error Team | QG | Sonnet |
 | 5.1 | `[BF-SEA]` | Fix SEA findings | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
 | 6 | `[DS]` | Dependency Validation | Dependency Audit Team | QG | Sonnet |
@@ -57,6 +61,7 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 | 11 | `[BTEET]` | Brutal E2E Hardening (fresh eyes) | E2E Hardening Team | QG | **Opus** / **Opus** / **Opus** |
 | 12 | `[BTEET-X]` | Execute brutalized E2E tests | E2E Execution Team | SA | Sonnet / Sonnet / Sonnet |
 | 12.1 | `[BF-BTEET]` | Fix BTEET findings | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
+| 12.5 | `[BEN-CLOSE]` | Benefit-contract close | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 13 | — | Version Bump (parallel with 14) | Standalone subagent | — | Haiku |
 | 14 | — | Git Commit (specific files only) | Standalone subagent | — | Sonnet |
 | 15 | `[CL]` | Cleanup | Cleanup Team | P | Sonnet |

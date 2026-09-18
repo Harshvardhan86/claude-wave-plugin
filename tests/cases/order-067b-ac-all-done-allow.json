@@ -1,6 +1,6 @@
 {
   "ac": "AC-67",
-  "note": "the same AC dispatch replayed against an all-done phases map: no state of phases can produce a W-ORDER for the first row.",
+  "note": "the same AC dispatch replayed against an all-done phases map: no state of phases can produce a W-ORDER for AC once its conditional predecessors are skipped or done. UIA is now the first row of the file.",
   "script": "pre-agent.sh",
   "seed": {
     "state": "state/full-all-done.json"

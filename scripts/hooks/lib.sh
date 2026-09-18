@@ -1197,6 +1197,18 @@ wv_up_condition_met() {
       [ "$WV_CR" = "true" ] && return 0
       return 1
       ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && return 0
+      return 1
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && return 0
+      return 1
+      ;;
+    done:*)
+      [ "$(wv_state_phase_status "${cond#done:}")" = "done" ] && return 0
+      return 1
+      ;;
     findings:*)
       file="$WV_WAVE_DIR/findings/${cond#findings:}.md"
       [ -f "$file" ] || return 1

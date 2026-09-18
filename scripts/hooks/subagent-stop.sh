@@ -714,10 +714,16 @@ wv_stale_successors() {
   local code="$1"
   local frontier="$code" next seen="" line rec c after
   local -a codes=()
-  # One pass per generation over the (26-row) table; the DAG is small and this
-  # keeps the walk obviously terminating.
-  local guard=0
-  while [ -n "$frontier" ] && [ "$guard" -lt 30 ]; do
+  # One pass per generation over the table; the DAG is small and this keeps
+  # the walk obviously terminating. The cap is the row count so a longer chain
+  # cannot be truncated by a leftover literal.
+  local guard=0 n_rows=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
+    n_rows=$((n_rows + 1))
+  done < "$WV_PHASES_TSV"
+  [ "$n_rows" -gt 0 ] || n_rows=1
+  while [ -n "$frontier" ] && [ "$guard" -lt "$n_rows" ]; do
     guard=$((guard + 1))
     next=""
     while IFS= read -r line || [ -n "$line" ]; do

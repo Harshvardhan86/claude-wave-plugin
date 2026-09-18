@@ -1,6 +1,6 @@
 {
   "ac": "AC-67",
-  "note": "AC has an empty after column: with phases {} there is no order gate at all.",
+  "note": "AC after UIA,BEN: with vocabulary and behaviour_change false those predecessors are skipped, so with phases {} there is no order gate.",
   "script": "pre-agent.sh",
   "seed": {
     "state": "state/valid-full.json"

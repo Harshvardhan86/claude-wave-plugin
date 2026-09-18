@@ -6,12 +6,23 @@
   "ui": true,
   "behaviour_change": false,
   "cr_enabled": false,
+  "vocabulary": false,
   "enforce": "block",
   "feature": "hook enforcement layer",
   "started": "2026-09-09T12:00:00Z",
   "ended": null,
   "base_sha": "2294917",
   "phases": {
+    "UIA": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BEN": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
     "AC": {
       "status": "done",
       "at": "2026-09-09T12:10:00Z",
@@ -48,6 +59,16 @@
       "agent": "a6a129f2ae0850db1"
     },
     "BF-BC": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "ES": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BF-ES": {
       "status": "done",
       "at": "2026-09-09T12:10:00Z",
       "agent": "a6a129f2ae0850db1"
@@ -113,6 +134,11 @@
       "agent": "a6a129f2ae0850db1"
     },
     "BF-BTEET": {
+      "status": "done",
+      "at": "2026-09-09T12:10:00Z",
+      "agent": "a6a129f2ae0850db1"
+    },
+    "BEN-CLOSE": {
       "status": "done",
       "at": "2026-09-09T12:10:00Z",
       "agent": "a6a129f2ae0850db1"
