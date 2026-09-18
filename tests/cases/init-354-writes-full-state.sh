@@ -36,6 +36,7 @@ if [ -f "$state_file" ]; then
   assert_state '.ui == "unknown"' || rc=1
   assert_state '.behaviour_change == "unknown"' || rc=1
   assert_state '.cr_enabled == "unknown"' || rc=1
+  assert_state '.vocabulary == "unknown"' || rc=1
   assert_state '.enforce == "block"' || rc=1
   assert_state '.feature == "hook enforcement layer"' || rc=1
   assert_state '.started | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' || rc=1

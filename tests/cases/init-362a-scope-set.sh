@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # tests/cases/init-362a-scope-set.sh — AC-362, the positive half.
 #
-# wave-set.sh ui true, then behaviour-change false, then cr true: each sets
-# its state field and appends one dated line to .wave/approvals/scope.md.
+# wave-set.sh ui true, then behaviour-change false, then cr true, then
+# vocabulary true and vocabulary false: each accepted value sets its state
+# field and appends one dated line to .wave/approvals/scope.md.
 set -u
 
 # shellcheck source=tests/lib/assert.sh
@@ -19,6 +20,12 @@ WV_PROJECT="$(mkproj)"
 : > "$WV_PROJECT/README.md"
 git -C "$WV_PROJECT" add README.md
 git -C "$WV_PROJECT" commit -q -m init
+
+usage="$(command grep -m1 '^# Usage:' "$WV_REPO_ROOT/scripts/wave-set.sh")"
+case "$usage" in
+  *vocabulary*) : ;;
+  *) fail "wave-set.sh usage does not mention vocabulary: '$usage'" ;;
+esac
 
 run_cli scripts/wave-init.sh --wave 1 --mode full --feature x
 [ "$CLI_EXIT" = "0" ] || fail "setup init: exit $CLI_EXIT, stderr: $CLI_STDERR"
@@ -46,5 +53,19 @@ assert_state '.cr_enabled == true' || rc=1
 [ "$(wc -l < "$scope" | tr -d ' ')" = "3" ] || fail "scope.md has $(wc -l < "$scope") lines after 3 sets, want 3"
 command grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z .*cr=true$' "$scope" || \
   fail "scope.md does not carry a dated 'cr=true' entry: $(cat "$scope")"
+
+run_cli scripts/wave-set.sh vocabulary true
+[ "$CLI_EXIT" = "0" ] || fail "wave-set.sh vocabulary true: exit $CLI_EXIT, stderr: $CLI_STDERR"
+assert_state '.vocabulary == true' || rc=1
+[ "$(wc -l < "$scope" | tr -d ' ')" = "4" ] || fail "scope.md has $(wc -l < "$scope") lines after 4 sets, want 4"
+command grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z .*vocabulary=true$' "$scope" || \
+  fail "scope.md does not carry a dated 'vocabulary=true' entry: $(cat "$scope")"
+
+run_cli scripts/wave-set.sh vocabulary false
+[ "$CLI_EXIT" = "0" ] || fail "wave-set.sh vocabulary false: exit $CLI_EXIT, stderr: $CLI_STDERR"
+assert_state '.vocabulary == false' || rc=1
+[ "$(wc -l < "$scope" | tr -d ' ')" = "5" ] || fail "scope.md has $(wc -l < "$scope") lines after 5 sets, want 5"
+command grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z .*vocabulary=false$' "$scope" || \
+  fail "scope.md does not carry a dated 'vocabulary=false' entry: $(cat "$scope")"
 
 exit $rc

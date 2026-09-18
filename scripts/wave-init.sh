@@ -6,7 +6,9 @@
 #
 # Usage:
 #   wave-init.sh --wave <id> (--mode full|demo | --solo) [--ui|--no-ui]
-#                [--cr|--no-cr] [--enforce block|warn] --feature <text> [--force]
+#                [--cr|--no-cr] [--vocabulary|--no-vocabulary]
+#                [--behaviour-change|--no-behaviour-change]
+#                [--enforce block|warn] --feature <text> [--force]
 #
 #   <id> is 1-24 characters of [A-Za-z0-9._-]. It is bounded here because it is
 #   interpolated into the dispatch tag and twice into the session banner, whose
@@ -39,6 +41,8 @@ mode=""
 solo=0
 ui="unknown"
 cr="unknown"
+vocabulary="unknown"
+behaviour_change="unknown"
 enforce="block"
 enforce_given=0
 feature=""
@@ -62,6 +66,14 @@ while [ $# -gt 0 ]; do
       cr="true"; shift ;;
     --no-cr)
       cr="false"; shift ;;
+    --vocabulary)
+      vocabulary="true"; shift ;;
+    --no-vocabulary)
+      vocabulary="false"; shift ;;
+    --behaviour-change)
+      behaviour_change="true"; shift ;;
+    --no-behaviour-change)
+      behaviour_change="false"; shift ;;
     --enforce)
       [ $# -ge 2 ] || wv_die "--enforce requires a value"
       enforce="$2"; enforce_given=1; shift 2 ;;
@@ -271,6 +283,8 @@ if ! jq -n \
   --arg mode "$mode" \
   --argjson ui "$([ "$ui" = "unknown" ] && printf '"unknown"' || printf '%s' "$ui")" \
   --argjson cr "$([ "$cr" = "unknown" ] && printf '"unknown"' || printf '%s' "$cr")" \
+  --argjson vocabulary "$([ "$vocabulary" = "unknown" ] && printf '"unknown"' || printf '%s' "$vocabulary")" \
+  --argjson bc "$([ "$behaviour_change" = "unknown" ] && printf '"unknown"' || printf '%s' "$behaviour_change")" \
   --arg enforce "$enforce" \
   --arg feature "$feature" \
   --arg started "$started" \
@@ -282,8 +296,9 @@ if ! jq -n \
     mode: $mode,
     status: "active",
     ui: $ui,
-    behaviour_change: "unknown",
+    behaviour_change: $bc,
     cr_enabled: $cr,
+    vocabulary: $vocabulary,
     enforce: $enforce,
     feature: $feature,
     started: $started,

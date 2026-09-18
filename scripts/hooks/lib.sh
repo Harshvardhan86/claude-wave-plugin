@@ -90,6 +90,7 @@ WV_WAVE=""
 WV_UI=""
 WV_BC=""            # behaviour_change
 WV_CR=""            # cr_enabled
+WV_VOCAB=""         # vocabulary
 WV_STATE_OK=0
 
 WV_EMITTED=0        # 1 once one JSON object has been written to stdout
@@ -337,7 +338,7 @@ wv_project_root() {
 
 wv_state_read() {
   # Sets WV_STATE / WV_MODE / WV_STATUS / WV_ENFORCE / WV_WAVE / WV_UI / WV_BC /
-  # WV_CR / WV_STATE_OK, plus WV_WAVE_DIR and WV_STATE_FILE (both resolved).
+  # WV_CR / WV_VOCAB / WV_STATE_OK, plus WV_WAVE_DIR and WV_STATE_FILE (both resolved).
   #
   # Returns 1 — and the caller then exits 0 — when there is no wave, when the
   # wave is not active (silent, per "no wave, no hooks"), or when the state
@@ -350,6 +351,7 @@ wv_state_read() {
   WV_UI=""
   WV_BC=""
   WV_CR=""
+  WV_VOCAB=""
   WV_STATE_OK=0
   WV_WAVE_DIR=""
   WV_STATE_FILE=""
@@ -380,7 +382,8 @@ wv_state_read() {
   blob="$(jq -r '
       def field(k): if has(k) then (.[k] | tostring) else "" end;
       [ field("schema"), field("status"), field("mode"), field("enforce"),
-        field("wave"), field("ui"), field("behaviour_change"), field("cr_enabled") ]
+        field("wave"), field("ui"), field("behaviour_change"), field("cr_enabled"),
+        field("vocabulary") ]
       | join("\u001f")
     ' "$resolved_state" 2>/dev/null)"
   if [ -z "$blob" ]; then
@@ -388,8 +391,8 @@ wv_state_read() {
     return 1
   fi
 
-  local schema status mode enforce wave ui bc cr
-  IFS=$'\x1f' read -r schema status mode enforce wave ui bc cr <<<"$blob"
+  local schema status mode enforce wave ui bc cr vocab
+  IFS=$'\x1f' read -r schema status mode enforce wave ui bc cr vocab <<<"$blob"
 
   WV_STATUS="$status"
   # A closed or unrecognised status enforces nothing, and says nothing.
@@ -435,6 +438,7 @@ wv_state_read() {
   WV_UI="$ui"
   WV_BC="$bc"
   WV_CR="$cr"
+  WV_VOCAB="$vocab"
   WV_STATE_OK=1
   return 0
 }

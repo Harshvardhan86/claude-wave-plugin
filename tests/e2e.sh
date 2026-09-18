@@ -297,20 +297,14 @@ wv_e2e_new_scratch() {
 wv_e2e_seed_wave() {
   # wv_e2e_seed_wave <dir> — starts an active wave 1, mode full, matching
   # AC-380's GIVEN clause exactly: ui:false, behaviour_change:false,
-  # cr_enabled:false, enforce block, no phase done yet. wave-init.sh has no
-  # --behaviour-change flag (state.json's behaviour_change is always
-  # written "unknown" by wave-init.sh itself, spec section 4), so it is set
-  # to false separately through scripts/wave-set.sh, the same locked
-  # read-modify-write every lifecycle script uses — not a hand-rolled jq
-  # edit, per the brief's "document how".
+  # vocabulary:false, cr_enabled:false, enforce block, no phase done yet.
+  # The four boolean scope flags are passed to wave-init.sh (--no-ui,
+  # --no-cr, --no-behaviour-change, --no-vocabulary) rather than written
+  # afterwards.
   local d="$1"
   local out
-  if ! out="$(cd "$d" && "$WV_REPO_ROOT/scripts/wave-init.sh" --wave 1 --mode full --no-ui --no-cr --feature "e2e-test" 2>&1)"; then
+  if ! out="$(cd "$d" && "$WV_REPO_ROOT/scripts/wave-init.sh" --wave 1 --mode full --no-ui --no-cr --no-behaviour-change --no-vocabulary --feature "e2e-test" 2>&1)"; then
     printf 'tests/e2e.sh: could not seed a wave in %s: %s\n' "$d" "$out" >&2
-    return 1
-  fi
-  if ! out="$(cd "$d" && "$WV_REPO_ROOT/scripts/wave-set.sh" behaviour-change false 2>&1)"; then
-    printf 'tests/e2e.sh: could not set behaviour-change false in %s: %s\n' "$d" "$out" >&2
     return 1
   fi
   return 0

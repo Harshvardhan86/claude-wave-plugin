@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/wave-set.sh — records a scope answer while a wave is active.
 #
-# Usage: wave-set.sh ui|behaviour-change|cr true|false
+# Usage: wave-set.sh ui|behaviour-change|cr|vocabulary true|false
 #
 # Sets the matching state.json field and appends one dated line to
 # .wave/approvals/scope.md. An unknown key or a non-boolean value exits
@@ -29,7 +29,8 @@ case "$key" in
   ui) field="ui" ;;
   behaviour-change) field="behaviour_change" ;;
   cr) field="cr_enabled" ;;
-  *) wv_die "unknown key: '$key' (want ui, behaviour-change, or cr)" ;;
+  vocabulary) field="vocabulary" ;;
+  *) wv_die "unknown key: '$key' (want ui, behaviour-change, cr, or vocabulary)" ;;
 esac
 
 case "$val" in

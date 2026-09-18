@@ -593,6 +593,7 @@ wv_unanswered_scope() {
       case "$key" in
         behaviour_change) first="behaviour-change" ;;
         cr_enabled) first="cr" ;;
+        vocabulary) first="vocabulary" ;;
         *) first="$key" ;;
       esac
     fi
