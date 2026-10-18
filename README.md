@@ -367,6 +367,7 @@ claude-wave-plugin/
 - [Skills Directory](https://www.skillsdirectory.com/skills?author=Harshvardhan86) — all seven skills listed with `npx skills add` install commands
 - [SkillsMP](https://skillsmp.com/creators/harshvardhan86) — creator page listing the plugin's seven skills
 - [Claude Code Insights](https://zhoux77899.github.io/claude-code-insights/) — daily-updated tracker of active Claude Code repositories
+- [Agensi](https://www.agensi.io/skills/claude-wave-plugin-evidence-first-engineering-waves) — free listing of the full plugin: seven skills, both commands and the hooks
 
 ## Used in production by
 
@@ -375,6 +376,7 @@ This plugin is in early public release. If you're shipping with `claude-wave-plu
 ## Talks & writing
 
 - 🎤 **[Beyond Vibe Coding — Claude Builders Delhi NCR, May 2026](https://www.linkedin.com/posts/harshvardhan-chouhan_claude-delhi-event-recap-ugcPost-7459117381680881664-tJ1q)** — the talk that introduced this framework. Recap with photos and the core thesis.
+- ✍️ **[The Two Birthday Cakes: Why 483,000 Tokens Is the Cheap Part of Shipping to Production](https://www.linkedin.com/pulse/two-birthday-cakes-why-483000-tokens-cheap-part-shipping-chouhan-mpk8c)** — the token-cost question, answered as a bedtime story.
 - ✍️ *Coming soon:* TDD with sub-agents — the patterns from `claude-wave`. Acceptance criteria, evidence-first verification, brutal silent-error scans.
 
 ## Status
