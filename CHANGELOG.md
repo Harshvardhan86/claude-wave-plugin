@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Documentation now shows plugin commands with the plugin prefix, as Claude Code lists them:
+  `/claude-wave-plugin:wave-start` and `/claude-wave-plugin:wave-checkpoint`.
+  The plugin name, commands and behaviour are unchanged.
+
 ## [0.2.1] — 2026-09-12
 
 ### Added

@@ -6,7 +6,7 @@
 
 ![A complete wave run — 17 phases, 4h 56m, 483.2k tokens, all checks green](assets/wave-run-output.png)
 
-*A real `/wave-start` run end-to-end: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
+*A real `/claude-wave-plugin:wave-start` run end-to-end: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
 
 The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin optimises for *time-to-shippable*.
 
@@ -77,10 +77,16 @@ This plugin packages that workflow.
 
 After installation you should see two new slash commands available:
 
-- `/wave-start`
-- `/wave-checkpoint`
+- `/claude-wave-plugin:wave-start`
+- `/claude-wave-plugin:wave-checkpoint`
 
 …and six skills registered: `wave-orchestrator`, `ac-writer`, `design-reviewer`, `red-tests`, `green-impl`, `teet-verify`.
+
+### Command names
+
+Claude Code lists plugin commands under the plugin's name, so type `/claude-wave-plugin:wave-start` and `/claude-wave-plugin:wave-checkpoint`.
+Typing the bare `/wave-start` does not run the command.
+If you already installed the plugin, you don't need to do anything else: use the prefixed form in your existing setup.
 
 ### Manual install (no marketplace)
 
@@ -98,7 +104,7 @@ Restart Claude Code. The plugin should be picked up automatically.
 In any project you want to ship a feature in:
 
 ```bash
-/wave-start --demo "make the save button show a loading spinner"
+/claude-wave-plugin:wave-start --demo "make the save button show a loading spinner"
 ```
 
 What you'll see:
@@ -115,12 +121,12 @@ If the agent says "done" without showing you a screenshot, refuse the hand-off �
 Once you've shipped two or three waves with `--demo` successfully, drop the flag:
 
 ```bash
-/wave-start "implement the new payment flow"
+/claude-wave-plugin:wave-start "implement the new payment flow"
 ```
 
 This invokes the canonical pipeline: 17 base phases plus `[DR]` (auto-engaged for UI waves) and optional `[CR]` (opt-in via `cr_enabled`). Brutal AC, Silent Error Analysis, Brutal SEA, Dependency Audit, Output Alignment, Brutalised E2E, version bump, commit, cleanup, checkpoint, dashboard — all dispatched as separate Agents with proper Opus / Sonnet / Haiku model routing.
 
-If context fills before completion, `/wave-checkpoint` writes resume state to `.wave/checkpoints/`. A fresh session picks up exactly where you left off.
+If context fills before completion, `/claude-wave-plugin:wave-checkpoint` writes resume state to `.wave/checkpoints/`. A fresh session picks up exactly where you left off.
 
 ## What you get
 
@@ -141,15 +147,15 @@ For first-time users, small features, and live-demo segments, the plugin ships *
 | `green-impl` | GREEN | Minimum implementation, verify-before-scan: live stack + tests + screenshot |
 | `teet-verify` | TEET | True end-to-end with computed-style assertions, not `toBeVisible()` lies |
 
-These run as `/wave-start --demo "<feature>"`. The recommended starting point.
+These run as `/claude-wave-plugin:wave-start --demo "<feature>"`. The recommended starting point.
 
 ### Commands (`commands/`)
 
-- `/wave-start <feature>` — runs the full v2 pipeline (17 base + conditional `[DR]` and `[CR]` gates)
-- `/wave-start --demo <feature>` — runs the trimmed 5-phase entry subset
-- `/wave-start --solo <feature>` — runs a direct task with explicit models, commit guard,
+- `/claude-wave-plugin:wave-start <feature>` — runs the full v2 pipeline (17 base + conditional `[DR]` and `[CR]` gates)
+- `/claude-wave-plugin:wave-start --demo <feature>` — runs the trimmed 5-phase entry subset
+- `/claude-wave-plugin:wave-start --solo <feature>` — runs a direct task with explicit models, commit guard,
   PreCompact checkpoint and token ledger
-- `/wave-checkpoint` — saves wave state to disk so an auto-compact (or laptop battery dying) doesn't kill the run
+- `/claude-wave-plugin:wave-checkpoint` — saves wave state to disk so an auto-compact (or laptop battery dying) doesn't kill the run
 
 ## Hook enforcement (v0.2.0)
 
@@ -176,11 +182,11 @@ full/demo routing requires at least the tier in `hooks/phases.tsv`.
 - **Demo** applies the same rules to `AC`, `DR`, `TDE-RED`, `TDE-GREEN`, `TEET`.
   Skipped conditional or out-of-mode rows are looked through transitively so
   unfinished applicable predecessors cannot be bypassed.
-- **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit
+- **Solo** (`/claude-wave-plugin:wave-start --solo`) keeps only the explicit-model rule, commit
   guard, PreCompact checkpoint, ledger and W-LEFTOVER inventory. No tag, prompt caps, phase order,
   tiers, orchestrator-only rules, rounds or budgets are enforced.
 
-`/wave-start` creates `.wave/state.json` before dispatch and records full/demo
+`/claude-wave-plugin:wave-start` creates `.wave/state.json` before dispatch and records full/demo
 scope answers with `scripts/wave-set.sh`. The state defaults to `enforce: "block"`.
 **Escape hatch:** use `--enforce warn` when invoking `scripts/wave-init.sh`, or
 set `enforce` to `warn` in the active `.wave/state.json`. Event-hook denials become
@@ -211,7 +217,7 @@ v0.2.1 adds these enforced contracts:
 - **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; a leftover close prints W-LEFTOVER instead of the W-SCORECARD pointer, which the leftover warning itself carries; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
-`/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
+`/claude-wave-plugin:wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
 advised: Claude Code cannot block compaction through this hook. Start a fresh
 terminal from the recorded resume instructions.
 
@@ -321,8 +327,8 @@ claude-wave-plugin/
 │   └── teet-verify/SKILL.md
 │
 ├── commands/
-│   ├── wave-start.md                            # /wave-start [--demo|--solo] "<feature>"
-│   └── wave-checkpoint.md                       # /wave-checkpoint
+│   ├── wave-start.md                            # /claude-wave-plugin:wave-start [--demo|--solo] "<feature>"
+│   └── wave-checkpoint.md                       # /claude-wave-plugin:wave-checkpoint
 │
 ├── hooks/                                       # auto-loaded wiring + rule data
 │   ├── hooks.json                              # events, matchers, command timeouts
