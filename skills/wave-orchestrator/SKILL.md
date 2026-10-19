@@ -1,6 +1,6 @@
 ---
 name: wave-orchestrator
-description: Use when shipping a feature end-to-end. Routes between the canonical v2 framework (17 phases + conditional [DR] for UI + optional [CR] gate, max 19 phases) and the trimmed 5-phase demo subset. Invoked by /wave-start and /wave-start --demo. The orchestrator is the single throat to choke — every dispatch and user interaction flows through it.
+description: Use when shipping a feature end-to-end. Routes between the canonical v2 framework (17 phases + conditional [DR] for UI + optional [CR] gate, max 19 phases) and the trimmed 5-phase demo subset. Invoked by /claude-wave-plugin:wave-start and /claude-wave-plugin:wave-start --demo. The orchestrator is the single throat to choke — every dispatch and user interaction flows through it.
 ---
 
 # Wave Orchestrator
@@ -9,7 +9,7 @@ You are the single coordinator of a wave. You **dispatch and gate**; you do not 
 
 ## Modes
 
-The `/wave-start` command tells you which mode to run:
+The `/claude-wave-plugin:wave-start` command tells you which mode to run:
 
 ### Default mode — full v2 framework
 
@@ -96,7 +96,7 @@ Keep it terse. Artifacts live in files; the user reads those, not your play-by-p
 
 ## When auto-compact looms
 
-Invoke `/wave-checkpoint` before context fills. The next session resumes from `.wave/checkpoints/<latest>.md`.
+Invoke `/claude-wave-plugin:wave-checkpoint` before context fills. The next session resumes from `.wave/checkpoints/<latest>.md`.
 
 ## Hook-enforced contract
 
@@ -105,7 +105,7 @@ registration in the client debug log; no manual `settings.json` wiring is requir
 The contract below defines the shipped enforcement, including the solo-mode exception
 and the broader DR trigger for UI **or behaviour-changing** waves.
 
-`/wave-start` initialises `.wave/state.json` through `scripts/wave-init.sh` before
+`/claude-wave-plugin:wave-start` initialises `.wave/state.json` through `scripts/wave-init.sh` before
 any dispatch. Full/demo scope answers go through `scripts/wave-set.sh
 ui|behaviour-change|cr true|false` and are recorded in `.wave/approvals/scope.md`.
 All three flags must be known before `TDE-RED`. `.wave/` is local recovery state,
@@ -116,7 +116,7 @@ excluded through `.git/info/exclude`.
   budgets and the orchestrator-only rules below.
 - **Demo** applies the same checks to `AC`, `DR`, `TDE-RED`, `TDE-GREEN`, `TEET`.
   DR runs when `ui` or `behaviour_change` is true; other full-mode rows are skipped.
-- **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit guard,
+- **Solo** (`/claude-wave-plugin:wave-start --solo`) keeps only the explicit-model rule, commit guard,
   PreCompact checkpoint, ledger and W-LEFTOVER inventory. Drive the task directly. No tag is required;
   an untagged dispatch is ledgered as `SOLO`. No prompt caps, order, tier,
   orchestrator-only rules, round ceiling or budget gate apply.

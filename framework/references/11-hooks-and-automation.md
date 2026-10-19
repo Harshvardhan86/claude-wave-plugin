@@ -280,7 +280,7 @@ goal, phase, artifacts, token totals, trigger and resume command. It spawns no
 agent. An unwritable directory warns and allows compaction. The platform ignores
 PreCompact output, so the hook cannot prevent compaction. On `SessionStart`
 with source `compact`, the latest checkpoint is named with a fresh-terminal
-advisory. `/wave-checkpoint` is the manual form; CCP separately requires a
+advisory. `/claude-wave-plugin:wave-checkpoint` is the manual form; CCP separately requires a
 `*-ccp.md` file.
 
 Invariant 6 uses `scripts/hooks/pre-commit-guard.sh` on `Bash`. It recognises git
