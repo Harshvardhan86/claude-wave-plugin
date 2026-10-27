@@ -18,7 +18,7 @@
 # below — retained as a separate live-validation concern rather than
 # silently dropped.
 #
-# Usage: tests/e2e.sh [--keep] [--scenario=a|b|c|d|e|f|g|load|all]
+# Usage: tests/e2e.sh [--keep] [--scenario=a|b|c|d|e|f|f2|g|load|all]
 #   --scenario=g runs only the background-wait proof (one parent and one
 #                subagent, both haiku, bounded at 120 seconds). Default: all.
 #   All runs have a combined timeout ceiling of 13 minutes, plus setup.
@@ -89,9 +89,9 @@ WV_E2E_SCENARIO=all
 for wv_arg in "$@"; do
   case "$wv_arg" in
     --keep) WV_KEEP=1 ;;
-    --scenario=all|--scenario=load|--scenario=[a-g]) WV_E2E_SCENARIO="${wv_arg#*=}" ;;
+    --scenario=all|--scenario=load|--scenario=[a-g]|--scenario=f2) WV_E2E_SCENARIO="${wv_arg#*=}" ;;
     *)
-      printf 'tests/e2e.sh: unknown argument: %s (use --keep or --scenario=a|b|c|d|e|f|g|load|all)\n' "$wv_arg" >&2
+      printf 'tests/e2e.sh: unknown argument: %s (use --keep or --scenario=a|b|c|d|e|f|f2|g|load|all)\n' "$wv_arg" >&2
       exit 1
       ;;
   esac
@@ -113,7 +113,8 @@ WV_E2E_ASSERTIONS=(
   "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
-  "scenario-f (AC-385): /<plugin>:wave-start \"x\" run WITHOUT --dangerously-skip-permissions needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json"
+  "scenario-f (AC-385): /<plugin>:wave-start \"x\" with the two early scope answers (no new vocabulary, no behaviour change) in the same message, run WITHOUT --dangerously-skip-permissions, needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json with vocabulary=false and behaviour_change=false"
+  "scenario-f2: the same /<plugin>:wave-start with NO scope answers produces NO .wave/state.json and the reply asks the vocabulary and behaviour-change scope questions"
   "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, then either waits with timeout 30 bash -c 'sleep 25' (AD done, no orphans) or stops while the task still runs (AD failed, bg_orphaned ids match); ledger phase AD / role executor"
 )
 
@@ -379,7 +380,7 @@ wv_e2e_scenario_a() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="probe untagged", prompt="Reply with the single word: DONE". Do not add any bracket tag, prefix, or other text to the description or prompt. Do this immediately without asking any questions or explaining your plan.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -463,7 +464,7 @@ wv_e2e_scenario_b() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="[W:1 P:AC R:lead] probe tier", prompt="Reply with the single word: DONE". Do this immediately without asking any questions. If the dispatch is denied, do not retry with a different model; just report the denial reason.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -551,7 +552,7 @@ wv_e2e_scenario_c_attempt() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { WV_SC_C_MSG="could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] probe allowed", prompt="Reply with the single word: DONE". Do this immediately without asking any questions.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -679,7 +680,7 @@ wv_e2e_scenario_d() {
   printf 'old\n' > "$d/src/x.ts"
   ( cd "$d" && git add src/x.ts && git commit -q -m "add x.ts" ) >/dev/null 2>&1
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
   abs_x="$d/src/x.ts"
   abs_notes="$d/.wave/notes.md"
 
@@ -742,7 +743,7 @@ wv_e2e_scenario_e() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   # Deliberately no wv_e2e_seed_wave call: no .wave/ directory at all.
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="probe nowave", prompt="Reply with the single word: DONE". Do this immediately without asking any questions.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -792,9 +793,12 @@ wv_e2e_scenario_f() {
   local d sid errfile
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
-  local prompt="/${plugin_name}:wave-start \"e2e probe feature\""
+  # Since 0.3.0 /wave-start must ask the vocabulary and behaviour-change
+  # scope questions BEFORE wave-init.sh runs, so the prompt answers both in
+  # the same message, the way a user would.
+  local prompt="/${plugin_name}:wave-start \"e2e probe feature\" -- Scope answers: this wave introduces no new vocabulary (no new record kind or status value), and it does not change any existing behaviour."
   wv_e2e_run_session_no_bypass "$d" "$prompt" 90 "$errfile"
 
   if [ -z "$WV_E2E_JSON" ]; then
@@ -825,10 +829,61 @@ wv_e2e_scenario_f() {
   wave_val="$(jq -r '.wave // empty' "$d/.wave/state.json" 2>/dev/null)"
   [ -n "$wave_val" ] || { wv_sc_fail "$name" "$d/.wave/state.json has no .wave key: $(cat "$d/.wave/state.json")"; return; }
 
+  local vocab_val bc_val
+  vocab_val="$(jq -c '.vocabulary' "$d/.wave/state.json" 2>/dev/null)"
+  bc_val="$(jq -c '.behaviour_change' "$d/.wave/state.json" 2>/dev/null)"
+  if [ "$vocab_val" != "false" ] || [ "$bc_val" != "false" ]; then
+    wv_sc_fail "$name" "state.json scope answers not recorded as answered: vocabulary=$vocab_val behaviour_change=$bc_val (expected false/false); $(cat "$d/.wave/state.json")"
+    return
+  fi
+
   wv_sc_pass "$name"
   printf '  prompt: %s\n' "$prompt"
   printf '  session: %s\n' "$sid"
-  printf '  permission_denials: 0; %s/.wave/state.json produced (wave=%s)\n' "$d" "$wave_val"
+  printf '  permission_denials: 0; %s/.wave/state.json produced (wave=%s vocabulary=%s behaviour_change=%s)\n' "$d" "$wave_val" "$vocab_val" "$bc_val"
+}
+
+# Scenario (f2): the bare prompt, with no scope answers, is refused until the
+# two early scope questions are answered — no state.json, and the reply asks
+# both questions. Positive assertion of the 0.3.0 refusal.
+wv_e2e_scenario_f2() {
+  local name="scenario-f2-wave-start-asks-scope"
+  local d sid errfile
+  d="$(wv_e2e_new_scratch)"
+  WV_E2E_SCRATCH_DIRS+=("$d")
+  errfile="$wv_tmp/$name.stderr.log"
+
+  local prompt="/${plugin_name}:wave-start \"e2e probe feature\""
+  wv_e2e_run_session_no_bypass "$d" "$prompt" 90 "$errfile"
+
+  if [ -z "$WV_E2E_JSON" ]; then
+    if wv_e2e_looks_like_auth_error "$(cat "$errfile" 2>/dev/null)"; then
+      wv_e2e_print_skip_banner "the host CLI refused non-interactive auth during $name: $(cat "$errfile" 2>/dev/null)"
+      exit 3
+    fi
+    wv_sc_fail "$name" "empty output (rc=$WV_E2E_RC); stderr: $(cat "$errfile" 2>/dev/null)"
+    return
+  fi
+
+  sid="$(wv_e2e_session_id)"
+  [ -n "$sid" ] || { wv_sc_fail "$name" "no session_id in output: $WV_E2E_JSON"; return; }
+
+  if [ -e "$d/.wave/state.json" ]; then
+    wv_sc_fail "$name" "$d/.wave/state.json was produced although no scope answer was given: $(cat "$d/.wave/state.json")"
+    return
+  fi
+
+  local result
+  result="$(printf '%s' "$WV_E2E_JSON" | jq -r '.result // empty')"
+  if ! printf '%s' "$result" | command grep -qi 'vocabulary' || ! printf '%s' "$result" | command grep -qi 'behaviou\?r'; then
+    wv_sc_fail "$name" "reply does not ask the vocabulary and behaviour-change scope questions; result: $result"
+    return
+  fi
+
+  wv_sc_pass "$name"
+  printf '  prompt: %s\n' "$prompt"
+  printf '  session: %s\n' "$sid"
+  printf '  no %s/.wave/state.json; reply asks the scope questions\n' "$d"
 }
 
 # Scenario (g): one real background-task stop block, then either a sanctioned
@@ -839,7 +894,7 @@ wv_e2e_scenario_g() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
   local prompt='Use the Agent tool exactly once with subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] background wait probe", prompt="Use Bash exactly once with command sleep 20 and run_in_background true. Immediately return DONE without waiting or calling any other tool first. If a stop hook blocks that return, run exactly timeout 30 bash -c '\''sleep 25'\'' once in the foreground using Bash, then stop. Do not start another background task, use Monitor, or repeat the hook message." Wait for this subagent to finish, then reply DONE. Do not perform other work.'
   wv_e2e_run_session "$d" "$prompt" 120 "$errfile"
   if [ -z "$WV_E2E_JSON" ]; then
@@ -932,7 +987,7 @@ wv_e2e_scenario_g() {
     "$sid" "$child" "$count" "$outcome" "$shape"
 }
 
-for wv_scenario in a b c d e f g; do
+for wv_scenario in a b c d e f f2 g; do
   if [ "$WV_E2E_SCENARIO" = all ] || [ "$WV_E2E_SCENARIO" = "$wv_scenario" ]; then
     "wv_e2e_scenario_$wv_scenario"
   fi

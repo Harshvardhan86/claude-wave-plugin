@@ -120,7 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vendor, a model or a specific host product; protocol keys, environment names
   and the model-tier routing words are unchanged.
 - **Renamed the plugin to `wave-orchestrator`:** the host validator reserves
-  plugin names that begin with `claude-`. The marketplace entry is renamed too:
+  a name prefix. The marketplace entry is renamed too:
   remove the old marketplace entry, add it again, uninstall the old name and
   install `wave-orchestrator`. The repository URL is unchanged for now. The
   unrecognised `contributors` manifest field was removed.
