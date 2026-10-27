@@ -25,6 +25,13 @@ Open a GitHub issue with:
 5. Sign off your commit (`git commit -s`)
 6. One PR per logical change
 
+## Running the tests
+
+- `bash tests/run.sh` runs every case; `--filter '<glob>'` narrows a run while you work, and the release gates are listed in the README.
+- Write the failing case first. Case schema, `expect.rule` / `expect.rules` / `expect.stderr_rules` and the self-checks are documented in `tests/cases/README.md`.
+- A green run removes its scratch directory; a failed run, or one with `WV_KEEP_TMP=1`, keeps it and prints its path so the case logs stay readable.
+- A case that needs a cleanup registers it with `wv_on_exit '<command>'` from `tests/lib/assert.sh`; never install a `trap ... EXIT` in a case, which would replace the scratch cleanup.
+
 ## Style
 
 - Markdown files: hard-wrap not required; prefer one sentence per line for clean diffs in long-form prose

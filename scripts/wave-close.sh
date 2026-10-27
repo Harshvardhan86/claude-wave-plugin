@@ -2,7 +2,13 @@
 # scripts/wave-close.sh — closes the active wave.
 #
 # Usage:
-#   wave-close.sh                       unconditional close (AC-363)
+#   wave-close.sh                       closes the current active wave whatever
+#                                        its completeness (AC-363); exits 1 and
+#                                        closes NOTHING when the wave changed
+#                                        (another wave id or start time) or was
+#                                        closed while this script waited for the
+#                                        lock — check .wave/state.json, then
+#                                        re-run to close the current wave
 #   wave-close.sh --if-complete         close only if every when=phase row of
 #                                        the active mode is settled (wave
 #                                        complete); a silent no-op otherwise
@@ -22,7 +28,10 @@
 # A hook that records a redo, a changed benefit verdict, a new wave or
 # another close while this script waits for the lock is therefore seen, not
 # overwritten (tests/cases/complete-close-lock-race.sh). The first read,
-# before the lock, only locates the wave and records which one it is.
+# before the lock, only locates the wave and records which one it is. On a
+# changed or already-closed wave, --if-complete exits 0 silently (the hook
+# that called it reads state.json back and reports); the bare form dies with
+# exit 1 naming what changed, and nothing is written.
 #
 # Wave complete is derived from hooks/phases.tsv, never from a hardcoded
 # terminal phase: every when=phase row of the active mode must be settled

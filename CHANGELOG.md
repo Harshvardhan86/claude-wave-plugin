@@ -5,14 +5,177 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] — Unreleased
+## [0.3.0] — 2026-10-27
+
+### Added
+
+- **`[UIA]` user-intent criteria (Phase 0.5),** on waves that answer `vocabulary`
+  true. One block per criterion in the user's voice — "As a *role*, when I
+  *action* against *data state*, I expect *observable outcome*" — each naming one
+  of three pinned data states. `[AC]` receives them and every `UIA-n` must be
+  covered by at least one `AC-n`. Artifact `.wave/uia.md`, marker `^UIA-[0-9]+`.
+- **`[BEN]` the benefit contract (Phase 0.8),** on waves that answer
+  `behaviour-change` true. Three artifacts before any criteria are written: one
+  Benefit AC that names no symbol the wave introduces and whose subject is not the
+  new component, backed by a named failing test; an authority census listing every
+  existing component that already decides the same outcome, read from code; and an
+  integration count with the sign inverted, where 0 or 1 file changed outside the
+  feature's own directory is a finding that needs a written justification.
+  Artifact `.wave/ben.md`, marker `BEN-VERIFIED red=<n> authorities=<n>`, both ≥ 1.
+- **`[ES]` empty-state scan (Phase 4.2) and `[BF-ES]` (Phase 4.3),** on waves that
+  answer `vocabulary` true. `[ES]` reads the data-state matrix and reports any
+  element whose visibility, presence or rendering depends on a count being
+  non-zero, with file and line. `[BF-ES]` runs on findings and needs
+  `.wave/approvals/bf-ES.md` like every other bug-fix row.
+- **`[BEN-CLOSE]` the benefit verdict (Phase 12.5),** after the last hardening
+  phase and before the version bump, on waves where `[BEN]` ran. A separate team
+  re-runs the named benefit test, sweeps for orphan state (new classes, tables,
+  flags or states with no production reader outside the feature's own directory),
+  lists any statement in the wave's own notes that the existing system undoes the
+  feature, and writes `BENEFIT: DELIVERED` or `BENEFIT: UNDELIVERED` with reasons.
+- **The `vocabulary` scope flag,** asked as: does this wave introduce a new kind of
+  record, or a new value of an existing classification (a status, a category, a
+  role), that a user will see? `wave-init.sh` gains `--vocabulary` /
+  `--no-vocabulary` and `--behaviour-change` / `--no-behaviour-change`;
+  `wave-set.sh` gains the `vocabulary` key.
+- **A delivery verdict and `W-UNDELIVERED`.** `wave-close.sh` records `delivery`
+  — `delivered`, `undelivered`, `unverified` or `not-applicable` — in the same
+  write that closes the wave, read from the first verdict line of
+  `.wave/ben-close.md`; nothing unanswered or missing reads as a pass, and the
+  verdict is `not-applicable` in solo and in any mode `BEN` does not run in
+  (demo). `W-UNDELIVERED` is emitted once, at the close, for `undelivered` and
+  `unverified`, always in the same call as a scorecard pointer; it never blocks
+  the close. `scripts/wave-scorecard.sh` prints a `## Delivery` section under its
+  title whenever a verdict was recorded, including on a wave with an empty
+  ledger, and caps each quoted reason line at 200 characters.
+- **A data-state matrix on acceptance criteria.** Every criterion that asserts on a
+  user-visible surface carries a `**Data states:**` line and must hold in three
+  pinned states: empty (no records at all), partial (only records that existed
+  before the wave — what every installation looks like on deploy day) and full
+  (records in every value the wave introduces). `[ACB]` rejects criteria
+  conditional on data being present unless they also state the absent-data outcome.
+- **A `benefit-contract` entry skill,** teaching the Benefit AC, the authority
+  census, the inverted integration count and the close-time sweeps.
+- **The `done:<CODE>` condition keyword** (met when that row is done) and a closed
+  condition vocabulary pinned by a data test: `always`, `ui|behaviour_change`,
+  `cr`, `vocabulary`, `behaviour_change`, `findings:<scanner>`, `done:<row>`.
+- **`wave-close.sh --if-complete`.** `--if-terminal <PHASE>` remains an accepted
+  alias with the same meaning and its argument ignored.
+- **`W-STATE` on a complete wave that is not closed.** In full and demo mode a
+  Stop on such a wave refreshes the leftover inventory and prints only `W-STATE`
+  naming `scripts/wave-close.sh`, on every Stop until the wave is closed.
+- **Test harness: several rule ids from one call.** `expect.rules` asserts the
+  exact ordered list of rule ids in a stdout reason; `expect.stderr_rules` does
+  the same on stderr, where the closing SubagentStop writes its close-time
+  warnings. A case declares exactly one of `rule`, `rules` and `stderr_rules`
+  (by key presence), and `tests/tools/reason-corpus.sh` drives every listed id.
+- **Test harness: scratch hygiene.** A green run removes its scratch directory;
+  a failed run, or `WV_KEEP_TMP=1`, keeps it and prints its path. Cases register
+  cleanups with `wv_on_exit` instead of an EXIT trap, and the mutation drivers
+  keep their scratch inside their own temporary root.
 
 ### Changed
 
-- **Renamed the plugin to `wave-orchestrator`:** the host validator reserves plugin
-  names that begin with `claude-`. Existing installs: uninstall the old name and
-  install the new one from the same marketplace. The repository URL is unchanged
-  for now. The unrecognised `contributors` manifest field was removed.
+- **A full-mode wave answers two scope questions before its first dispatch.** `AC`
+  now names `UIA` and `BEN` as predecessors, and an unanswered flag on a
+  predecessor denies the successor, so `vocabulary` and `behaviour-change` must be
+  answered before any phase can be dispatched. `ui` and `cr` may still wait until
+  `TDE-RED`. `/wave-start` asks the first two before `wave-init.sh` runs. This
+  withdraws the 0.2.x statement that earlier phases stay dispatchable while scope
+  is unanswered. Demo mode is unaffected; solo mode consults no phase table.
+- **A wave closes when it is complete,** meaning every `when=phase` row of the
+  active mode is done, or skipped by mode or by a condition answered false. An
+  unanswered condition is not settled; neither is a done scan whose findings
+  file is missing or cannot be measured, nor a `failed`, `artifact-missing` or
+  `redo` row. `anytime` rows never count, and only a `when=phase` row's stop
+  triggers the close, so an `AD` stop never closes a wave. Full mode closes when
+  `VB`, `COMMIT`, `CL` and `CCP` are done; demo closes on `TEET`, as before; solo
+  never closes automatically.
+- **Only the closing SubagentStop closes and announces.** After it reads the
+  state back as `closed` it emits, in this order, `W-LEFTOVER` (leftovers found
+  and not warned before; it names the scorecard), `W-UNDELIVERED` (when the
+  verdict calls for it) and `W-SCORECARD` (unless `W-LEFTOVER` already pointed
+  there; forced whenever a verdict was queued). Each fires at most once per wave
+  and its marker is written after it is queued. A failed close gets `W-STATE`
+  alone, marks nothing, and the next closing stop retries. A Stop never closes a
+  wave, and in full and demo mode no longer prints `W-LEFTOVER` or
+  `W-SCORECARD`; solo keeps its ledger-based pointer through the same
+  composition.
+- **The leftover inventory follows the final rows.** A closing-role stop of a
+  final row (full `VB`, `COMMIT`, `CL`, `CCP`; demo `TEET`, derived from
+  `hooks/phases.tsv`) whose other rows are settled takes the inventory whatever
+  its outcome, so a wave that ends on a failed final row still warns once.
+- **`wave-close.sh` decides under the wave lock.** Both forms re-read the state
+  once they hold the lock, check it is the same active wave (id and start time)
+  they first saw, and decide completeness and the verdict there. A wave that
+  changed or closed while they waited is not closed: `--if-complete` exits 0
+  silently, and the bare form says what changed and exits 1 — check
+  `.wave/state.json` and re-run. The usage text says so.
+- **One attribution-trailer pattern.** The commit guard and the `commit-msg`
+  hook installed by `wave-init.sh` both read `WV_TRAILER_ERE` from
+  `scripts/hooks/lib.sh` and refuse the same five forms; the installed hook
+  previously let a session line and a vendor-domain co-author line through, and
+  the guard missed the latter.
+- **Generic prose.** Documentation, comments and messages no longer name a
+  vendor, a model or a specific host product; protocol keys, environment names
+  and the model-tier routing words are unchanged.
+- **Renamed the plugin to `wave-orchestrator`:** the host validator reserves
+  plugin names that begin with `claude-`. The marketplace entry is renamed too:
+  remove the old marketplace entry, add it again, uninstall the old name and
+  install `wave-orchestrator`. The repository URL is unchanged for now. The
+  unrecognised `contributors` manifest field was removed.
+- **Design Review is described as what the table has always enforced:** `[DR]` runs
+  when the wave ships UI **or** changes existing behaviour. Sixteen documents still
+  said "UI waves only"; all are corrected except the historical 0.1.0 entry below.
+- The phase table now has 31 rows and 93 tier cells. 18 rows run in every full-mode
+  wave; 7 are the `[BF-*]` rows that run only on findings; 6 depend on the wave's
+  scope answers or on whether `[BEN]` ran. Maximum surface per wave: 31 phases.
+- The reasons table now contains 38 rules.
+- The advisory prompt reminder no longer contradicts the gate: a row whose
+  condition is unanswered is reported as required and not yet allowed, never as
+  skipped.
+- A `findings:` or `done:` row whose source row does not run in this wave reports
+  its condition unmet instead of waiting for a scan that will never happen.
+
+### Fixed
+
+- **Since 0.2.0, the first dashboard stop closed a full-mode wave.** The terminal
+  phase was derived as the last table row of the mode, which in full mode is `AD` —
+  an `anytime` row with no artifact, exempt from the order gate. The first time a
+  dashboard executor stopped, the wave was closed whatever else had or had not run,
+  and every hook was silent for the rest of that wave's work. Wave completion
+  replaces the terminal-phase derivation, and `anytime` rows never count towards it.
+- **The once-per-wave scorecard pointer could not fire in full or demo mode.** The
+  Stop hook printed it when the wave was active and its terminal phase was done,
+  but the call that recorded the terminal phase as done closed the wave in the same
+  breath, so outside a blocked stop the two conditions were never true together.
+  The fixtures that exercised the pointer seeded a state the engine could not
+  durably produce. The closing `SubagentStop` now emits the pointer itself, once
+  per wave, after it has confirmed the close.
+
+### Upgrade notes
+
+- The state schema stays at 1. There is no migration and no hook goes silent.
+- A flag absent from an existing `state.json` reads as the empty string, which is
+  neither `true` nor `unknown`, so it behaves as false — this is how the engine has
+  always treated an absent field. `vocabulary` is absent in every 0.2.x state file,
+  so `[UIA]` and `[ES]` are skipped on waves already in flight.
+- For a wave in flight whose `AC` is not yet done: `behaviour_change` was always
+  written `unknown` by 0.2.x, so `AC` is now denied `W-SCOPE` until it is answered.
+  Answer it with `scripts/wave-set.sh behaviour-change true|false`. If the answer is
+  `true`, `BEN` is required before `AC` and `BEN-CLOSE` before the tail.
+- For a wave in flight whose `AC` is already done: `BEN` can never run, `BEN-CLOSE`
+  is skipped, and the tail is unchanged. If `behaviour_change` is `true` the wave
+  closes `unverified` and says so once.
+- A wave whose dashboard has not yet been dispatched no longer closes when it is. A
+  wave already closed that way stays closed.
+- A wave that is complete but still open (its closing stop was blocked or its
+  close failed) is reported by every Stop; close it with `scripts/wave-close.sh`.
+- New waves: `/wave-start` asks four scope questions. A wave driven by hand must
+  answer `vocabulary` and `behaviour-change` before its first full-mode dispatch.
+- Solo mode is unchanged. Demo mode keeps the same five phases and the same gates.
+- Anything that parsed "`AD` closes the wave" out of the 0.2.x specification must
+  use wave completion instead.
 
 ## [0.2.1] — 2026-09-12
 

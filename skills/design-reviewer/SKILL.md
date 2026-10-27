@@ -1,11 +1,13 @@
 ---
 name: design-reviewer
-description: Use after AC and before RED for any wave that ships UI. Performs component API audit against installed dist files, produces per-route mockup, defines visual ACs, flags design-system gaps. Output written to .wave/dr.md.
+description: Use after AC and before RED for any wave that ships UI or changes existing behaviour. Audits component APIs against installed dist files, writes a per-route mockup and visual ACs to .wave/dr.md.
 ---
 
 # Design Reviewer
 
 You produce the **Design Review document** for the wave. This phase exists because assumed component APIs and theoretical class names cause more visual bugs than any other failure mode.
+
+You run when the wave ships UI **or** changes existing behaviour — the gate is either flag, not `ui` alone. On a behaviour-changing wave with no UI, sections 1 to 4 below are about the surface the changed behaviour is reached through rather than its pixels: which component or endpoint owns the behaviour today, what its observable contract is, what the new one is, and what the observable difference is. Sections 5 and the OPEN-item gate are unchanged. If the wave ran `[BEN]`, read `.wave/ben.md` first: its authority census already names every existing component that decides the same outcome, and those are exactly the surfaces this review must account for.
 
 ## Why this skill exists
 
@@ -20,6 +22,7 @@ You prevent this by reading **what the app actually ships**, not what it should 
 ## Inputs
 
 - `.wave/ac.md` from the AC phase
+- `.wave/ben.md` when the wave ran `[BEN]` — the Benefit AC and the authority census
 - The project root and its `package.json`, design system path (`node_modules/<ds>/dist/...` or equivalent), and any compiled CSS
 
 ## Procedure
@@ -66,6 +69,8 @@ Convert the AC phase's general visual ACs into **concrete computed-style asserti
 - `getComputedStyle(body).backgroundColor === 'rgb(17, 17, 17)'` after toggle
 - `getComputedStyle(toggle).getPropertyValue('--toggle-thumb-x') === '20px'`
 - Bounding box of `.theme-toggle` must be `>= 44px × 24px` (touch target)
+
+Each visual AC keeps the data-state line it inherits from `.wave/ac.md`. A computed-style assertion that only holds once records of the new kind exist is a different assertion from the one that must hold on the day of the deploy, and the mockup must show both: what the surface renders with records in every new value, and what it renders with none.
 
 These visual ACs are what the RED tests will assert and TEET will verify.
 

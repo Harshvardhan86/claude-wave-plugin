@@ -6,7 +6,7 @@ effort: xhigh
 
 # Wave Execution Framework v2 — Model-Routed
 
-A multi-wave, multi-team engineering execution framework. Work is decomposed into waves; each wave runs a strict 17-phase pipeline plus two conditional gates: `[DR]` Design Review at Phase 1.5 (**mandatory** when the wave ships UI — web, mobile, Storybook, or CLI-TUI) and `[CR]` Code Review at Phase 3.5 (optional, opt-in). Maximum surface per wave: 19 phases. Enforced by specialized subagent teams (Stream-Aligned, Quality Gate, Platform, Enabling). **The orchestrator is the single point of coordination and the single throat to choke.**
+A multi-wave, multi-team engineering execution framework. Work is decomposed into waves; each wave runs a strict pipeline of 31 phase rows. 18 of them run in every full-mode wave. 13 are conditional: the seven `[BF-*]` rows run only when the scan before them reported findings, and six more depend on what the wave is — `[UIA]` and `[ES]` when the wave introduces new vocabulary, `[BEN]` when it changes existing behaviour, `[DR]` Design Review at Phase 1.5 when it ships UI (web, mobile, Storybook, CLI-TUI) **or** changes existing behaviour, `[CR]` Code Review at Phase 3.5 when the code-review gate is opted in, and `[BEN-CLOSE]` when `[BEN]` ran. Maximum surface per wave: 31 phases; the smallest full-mode wave runs 18. Enforced by specialized subagent teams (Stream-Aligned, Quality Gate, Platform, Enabling). **The orchestrator is the single point of coordination and the single throat to choke.**
 
 v2 preserves every phase, invariant, and cardinal rule from v1 and adds three changes that realize the framework against the current (2026) host CLI / agent SDK primitives:
 
@@ -30,9 +30,9 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 
 ## Abbreviations
 
-`AC`=Acceptance Criteria · `ACB`=Brutal AC · `DR`=Design Review (UI waves only) · `TDE`=Test-Driven Execution · `CR`=Code Review (optional) · `BC`=Bug Capture · `BF`=Bug Fix · `SEA`=Silent Error Analysis · `BSEA`=Brutal SEA · `DS`=Dependency Scan · `OA`=Output Alignment · `TEET`=True E2E Testing · `TEET-TC`=TEET Test Case Design · `BTEET`=Brutal TEET · `BTEET-X`=Brutal TEET Execution · `CL`=Cleanup · `CCP`=Checkpoint · `AD`=Dashboard Update · `E`=Enabling · `SA`=Stream-Aligned · `QG`=Quality Gate · `P`=Platform
+`UIA`=User-Intent Criteria (vocabulary waves) · `BEN`=Benefit Contract (behaviour-changing waves) · `AC`=Acceptance Criteria · `ACB`=Brutal AC · `DR`=Design Review (UI **or** behaviour-changing waves) · `TDE`=Test-Driven Execution · `CR`=Code Review (optional) · `BC`=Bug Capture · `BF`=Bug Fix · `ES`=Empty-State Scan (vocabulary waves) · `BF-ES`=Fix ES findings · `SEA`=Silent Error Analysis · `BSEA`=Brutal SEA · `DS`=Dependency Scan · `OA`=Output Alignment · `TEET`=True E2E Testing · `TEET-TC`=TEET Test Case Design · `BTEET`=Brutal TEET · `BTEET-X`=Brutal TEET Execution · `BEN-CLOSE`=Benefit Verdict · `CL`=Cleanup · `CCP`=Checkpoint · `AD`=Dashboard Update · `E`=Enabling · `SA`=Stream-Aligned · `QG`=Quality Gate · `P`=Platform
 
-## Wave pipeline (17 sequential phases + 2 conditional gates)
+## Wave pipeline (31 rows — 18 unconditional, 13 conditional)
 
 | # | Code | Phase | Team | Topology | Lead / Executor / Reviewer model |
 |---|------|-------|------|----------|----------------------------------|
@@ -40,7 +40,7 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 | 0.8 | `[BEN]` | Benefit contract | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 1 | `[AC]` | Acceptance Criteria | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 1.2 | `[ACB]` | Brutal AC Review (fresh eyes) | AC Hardening Team | E | **Opus** / **Opus** / **Opus** |
-| 1.5 | `[DR]` | Design Review (**mandatory for UI waves**, skipped otherwise) | Design Review Team | E | **Opus** / Sonnet / **Opus** |
+| 1.5 | `[DR]` | Design Review (**mandatory for UI or behaviour-changing waves**, skipped otherwise) | Design Review Team | E | **Opus** / Sonnet / **Opus** |
 | 2 | `[TDE-RED]` | Write tests, verify FAIL | TDD-RED Team | SA | Sonnet / Sonnet / Sonnet |
 | 3 | `[TDE-GREEN]` | Implement, verify PASS (`isolation: worktree`) | TDD-GREEN Team | SA | Sonnet / Sonnet / **Opus** |
 | 3.5 | `[CR]` | Code Review gate (CodeRabbit — **optional**) | CodeRabbit Plugin | QG | plugin-managed |
@@ -70,7 +70,11 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 
 **Fresh-eyes rule — unchanged from v1:** every hardening phase (`[ACB]`, `[BSEA]`, `[BTEET]`) must be a separate dispatch from the team that did the first pass. Every `[BF-*]` runs only if its preceding scan found bugs, and every fix strategy is user-approved — never auto-resolved.
 
-**Design Review rule (Phase 1.5):** `[DR]` is mandatory for any wave that ships UI (web, mobile, Storybook, CLI-TUI). It is a separate team from `[AC]` and `[ACB]` because its inputs (installed design-system dist files, compiled CSS, route topology) and its outputs (component API audit, per-route mockup, computed-style visual ACs, gaps as OPEN items) are categorically different from functional acceptance criteria. `[DR]` skipped silently on non-UI waves; `[TDE-RED]` does not begin while any DR OPEN item is unresolved.
+**Design Review rule (Phase 1.5):** `[DR]` is mandatory for any wave that ships UI (web, mobile, Storybook, CLI-TUI) **or changes existing behaviour**. It is a separate team from `[AC]` and `[ACB]` because its inputs (installed design-system dist files, compiled CSS, route topology) and its outputs (component API audit, per-route mockup, computed-style visual ACs, gaps as OPEN items) are categorically different from functional acceptance criteria. On a behaviour-changing wave with no UI it reviews the changed behaviour's surface and topology instead of its pixels. `[DR]` is skipped silently only when the wave neither ships UI nor changes behaviour; `[TDE-RED]` does not begin while any DR OPEN item is unresolved.
+
+**Scope rule (v0.3.0):** a full-mode wave answers `vocabulary` and `behaviour-change` before its first dispatch, because `[AC]` names `[UIA]` and `[BEN]` as predecessors and an unanswered flag on a predecessor denies the successor. `ui` and `cr` may still be answered any time before `[TDE-RED]`. Demo mode is unchanged: its five phases and its gates are exactly as they were.
+
+**Benefit rule (v0.3.0):** a wave whose value is an outcome rather than a computation states that outcome as one Benefit AC at `[BEN]` before any criteria are written, and gets a written verdict at `[BEN-CLOSE]` before version bump and commit. `BENEFIT: UNDELIVERED` is a label, not a block — the wave still closes, and the verdict is recorded in state and printed in the scorecard.
 
 ## The 10 Invariant Rules (non-negotiable, verbatim from v1)
 

@@ -9,13 +9,13 @@ Opus holds every position where bad judgement causes rework — planning, criter
 | Role type | Model | Why |
 |-----------|-------|-----|
 | Orchestrator (main session) | **Opus tier (long context), effort: xhigh** | Long-horizon planning + routing user decisions + holding all wave summaries. long context prevents mid-mission compaction. |
-| Team Lead — reasoning-heavy (AC, ACB, OA, TEET-TC, BTEET, Bug Fix) | **Opus** | Decomposition, criteria authoring, options presentation — judgement tasks. |
+| Team Lead — reasoning-heavy (UIA, BEN, AC, ACB, OA, TEET-TC, BTEET, BEN-CLOSE, Bug Fix) | **Opus** | Decomposition, criteria authoring, options presentation — judgement tasks. |
 | Team Lead — execution-heavy (TDD-RED, TDD-GREEN, TEET, BTEET-X, SEA, DS, Cleanup, Checkpoint, Permission) | **Sonnet** | Coordinates mechanical work; doesn't need to author novel judgement. |
 | Executor — writing code / tests / fixes | **Sonnet** | Clean implementation at 1/5 Opus cost. |
 | Executor — adversarial hardening (ACB, BSEA, BTEET) | **Opus** | "What could go wrong?" is the exact task where Opus beats Sonnet most. |
-| Reviewer — risky artifact (AC, GREEN, BF, OA, TEET-TC, hardening phases) | **Opus** | Sign-off is a judgement call; Opus reviewing Sonnet's output is the core quality mechanism. |
+| Reviewer — risky artifact (UIA, BEN, AC, GREEN, BF, OA, TEET-TC, BEN-CLOSE, hardening phases) | **Opus** | Sign-off is a judgement call; Opus reviewing Sonnet's output is the core quality mechanism. |
 | Reviewer — mechanical scan (BC Reviewer, SEA, DS) | **Sonnet** (BC Reviewer → Opus — false positives cost a full BF loop) | Cheaper review where the question is "did the scan run?" not "is the finding real judgement?" |
-| Scanner (BC static/runtime, SEA, DS auditor) | **Sonnet** | Running tools and aggregating output. |
+| Scanner (BC static/runtime, ES, SEA, DS auditor) | **Sonnet** | Running tools and aggregating output. |
 | Dashboard render | **Haiku** | ASCII redraw; failure mode is stale display. |
 | Version bump | **Haiku** | Change one number. |
 | Git commit | **Sonnet** | Needs to understand which files are allowed to be committed. |
@@ -43,8 +43,8 @@ The orchestrator may escalate a dispatch's model at runtime based on signals:
 
 Token distribution per wave, measured over dispatches (not wall clock):
 
-- **Sonnet ~70%** — every `[TDE-RED]`, `[TDE-GREEN]` Implementer, `[BC]`, `[SEA]`, `[DS]`, `[TEET]`, `[BTEET-X]`, Bug Fix Executor, Permission, Checkpoint, Cleanup, Git Commit.
-- **Opus ~25%** — Orchestrator, every Reviewer on critical artifacts, every hardening phase (Lead + Executor + Reviewer all Opus), `[OA]`, Bug Fix Team Lead.
+- **Sonnet ~70%** — every `[TDE-RED]`, `[TDE-GREEN]` Implementer, `[UIA]` and `[BEN]` Executor, `[BC]`, `[ES]`, `[SEA]`, `[DS]`, `[TEET]`, `[BTEET-X]`, `[BEN-CLOSE]` Executor, Bug Fix Executor, Permission, Checkpoint, Cleanup, Git Commit.
+- **Opus ~25%** — Orchestrator, every Reviewer on critical artifacts, every hardening phase (Lead + Executor + Reviewer all Opus), `[UIA]`, `[BEN]` and `[BEN-CLOSE]` Lead and Reviewer, `[OA]`, Bug Fix Team Lead.
 - **Haiku ~5%** — Dashboard redraws (triggered by `PostToolUse` hook, so frequency is high but each dispatch is tiny), Version Bump.
 
 Compared to an all-Opus realization this saves a large fraction of cost; compared to an all-Sonnet realization the extra Opus spend is concentrated on reviewer + hardening roles where Sonnet would miss enough to force rework.

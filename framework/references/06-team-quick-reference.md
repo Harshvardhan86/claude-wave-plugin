@@ -18,12 +18,15 @@ Every team names its **dispatch pattern** (SDT / SDT-seq / PDT from [`01-archite
 
 | Team | Topology | Members | Pattern | Models | Agent flags | Phase |
 |------|----------|---------|---------|--------|-------------|-------|
+| User-Intent Team | E | 3 (Lead + Executor + Reviewer) | SDT-seq | Lead: Opus · Executor: Sonnet · Reviewer: Opus | — | 0.5 `[UIA]` (vocabulary waves only) |
+| Benefit Contract Team | E | 4 (Lead + 2 Executors + Reviewer) | SDT-seq | Lead: Opus · Executors: Sonnet · Reviewer: Opus | — | 0.8 `[BEN]` (behaviour-changing waves only) |
 | AC Team | E | 4 (Lead + 2 Writers + Reviewer) | SDT-seq | Lead: Opus · Writers: Sonnet · Reviewer: Opus | — | 1 `[AC]` |
 | AC Hardening Team | E | 3 (Lead + Adversarial Writer + Reviewer) | SDT-seq (fresh eyes) | All Opus | — | 1.2 `[ACB]` |
-| Design Review Team | E | 4 (Lead + Component API Auditor + Mockup Writer + Reviewer) | SDT-seq | Lead: Opus · Auditor: Sonnet · Writer: Sonnet · Reviewer: Opus | — | 1.5 `[DR]` (UI waves only — skipped on backend/library/CLI) |
+| Design Review Team | E | 4 (Lead + Component API Auditor + Mockup Writer + Reviewer) | SDT-seq | Lead: Opus · Auditor: Sonnet · Writer: Sonnet · Reviewer: Opus | — | 1.5 `[DR]` (UI **or** behaviour-changing waves — skipped when neither) |
 | TDD-RED Team | SA | 3 (Lead + Test Writer + Verifier) | SDT-seq | All Sonnet (Reviewer → Opus for cross-language) | Test Writer: `isolation: "worktree"` when tests live with code | 2 `[TDE-RED]` |
 | TDD-GREEN Team | SA | 3 (Lead + Implementer + Verifier) → Reviewer | SDT-seq | Lead / Implementer / Verifier: Sonnet · Reviewer: Opus | Implementer: `isolation: "worktree"` | 3 `[TDE-GREEN]` |
 | CodeRabbit plugin | QG | 1 (plugin) | single plugin call | plugin-managed | — | 3.5 `[CR]` (opt-in) |
+| Empty-State Team | QG | 1 (Scanner) | single dispatch | Sonnet | — | 4.2 `[ES]` (vocabulary waves only) |
 | Silent Error Team | QG | 3 (Lead + Scanner + Reviewer) | SDT | All Sonnet | — | 5 `[SEA]` |
 | Dependency Audit Team | QG | 3 (Lead + Auditor + Reviewer) | SDT | All Sonnet | — | 6 `[DS]` |
 | SEA Hardening Team | QG | 3 (Lead + Adversarial Scanner + Reviewer) | SDT-seq (fresh eyes) | All Opus | — | 7 `[BSEA]` |
@@ -32,6 +35,7 @@ Every team names its **dispatch pattern** (SDT / SDT-seq / PDT from [`01-archite
 | E2E Team | SA | 4 (Lead + Backend + Frontend + Integration) | PDT | All Sonnet | Frontend: Playwright MCP, `run_in_background: true` for long runs | 10 `[TEET]` |
 | E2E Hardening Team | QG | 3 (Lead + Adversarial Executor + Reviewer) | SDT-seq (fresh eyes) | All Opus | — | 11 `[BTEET]` |
 | E2E Execution Team | SA | 4 (Lead + Backend + Frontend + Reviewer) | PDT | All Sonnet | Playwright MCP, `run_in_background: true` | 12 `[BTEET-X]` |
+| Benefit Verdict Team | E | 3 (Lead + Executor + Reviewer) | SDT-seq (fresh eyes, separate from the Benefit Contract Team) | Lead: Opus · Executor: Sonnet · Reviewer: Opus | — | 12.5 `[BEN-CLOSE]` (when `[BEN]` ran) |
 
 ## Standalone Subagents (no team needed — atomic tasks)
 

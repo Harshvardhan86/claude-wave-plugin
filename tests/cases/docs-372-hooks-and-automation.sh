@@ -27,6 +27,14 @@ for str in 'hooks/hooks.json' 'hooks/planning-paths.tsv' '.wave/approvals/commit
   fi
 done
 
+# v0.3.0: the delivery verdict, the rule that announces it, and the completion
+# flag must be documented here.
+for str in 'W-UNDELIVERED' '--if-complete' 'BENEFIT: DELIVERED' 'wave complete'; do
+  if ! command grep -F -- "$str" "$file" >/dev/null 2>&1; then
+    fail "Missing required v0.3.0 string: $str"
+  fi
+done
+
 # Check for script paths mentioned (at least some of them)
 for script in 'session-start.sh' 'pre-agent.sh' 'subagent-stop.sh'; do
   if ! command grep -F "$script" "$file" >/dev/null 2>&1; then

@@ -110,17 +110,18 @@ Both verdicts satisfy the marker, so an undelivered wave can still be committed 
 
 | `BEN` done | `behaviour_change` | first matching line of `.wave/ben-close.md` | `delivery` |
 |---|---|---|---|
+| any (solo, or a mode the `BEN` row's `modes` cell does not list, such as demo) | any | n/a | `not-applicable` |
 | no | `false`, or absent | n/a | `not-applicable` |
 | no | `true` or `unknown` | n/a | `unverified` |
 | yes | any | `BENEFIT: DELIVERED` | `delivered` |
 | yes | any | `BENEFIT: UNDELIVERED` | `undelivered` |
 | yes | any | file absent or no matching line | `unverified` |
 
-Nothing unanswered or missing ever reads as a pass.
+Nothing unanswered or missing ever reads as a pass. The first row is read from `hooks/phases.tsv`, never a hard-coded mode name: the contract cannot apply where its phase does not run, and a table with no `BEN` row falls through to the rows below, so a missing table never reads as a pass.
 
 `wave-scorecard.sh` prints a `## Delivery` section directly under the title whenever `delivery` is set, including on a wave with an empty ledger (the early return prints the title and this section first). For `undelivered` it quotes the reasons from `ben-close.md`; for `unverified` it says the benefit was never checked at close.
 
-A new warning, **`W-UNDELIVERED`** (rule 38), is emitted by the hook call that closes the wave whenever `delivery` is `undelivered` or `unverified`, alongside the scorecard pointer (section 9). `wave-close.sh` run by hand prints the same sentence. Under `--if-complete` it prints nothing to stdout, as today, and its stderr is discarded by the caller, so the hook reads `delivery` back from state and emits the rule itself.
+A new warning, **`W-UNDELIVERED`** (rule 38), is emitted by the hook call that closes the wave whenever `delivery` is `undelivered` or `unverified`, always in the same call as a scorecard pointer (section 9). `wave-close.sh` run by hand prints the same sentence. Under `--if-complete` it prints nothing to stdout, as today, and its stderr is discarded by the caller, so the hook reads `delivery` back from state and emits the rule itself.
 
 ## 6. Data-state matrix on acceptance criteria
 
@@ -172,8 +173,9 @@ An unknown condition string fails open in both evaluators. That stays the right 
 
 **Repair.** The notion of a terminal phase is replaced by **wave complete**: every `when=phase` row of the active mode is settled, meaning done, or skipped by mode or condition. An unanswered condition is not settled, and neither is an unmeasurable one (a findings file without a `FINDINGS: n` line, an unreadable file, a scan that returned no count): the gate denies or fails open there, it never skips. `anytime` rows never count, and only a `when=phase` row's stop triggers the close, so an `AD` stop never closes a wave, not even one that is already complete. One function in `lib.sh` replaces the three copies of the terminal-phase derivation (`wave-close.sh`, `stop.sh`, the leftover inventory).
 
-- `subagent-stop.sh`: when a phase is recorded done and the wave is now complete, it takes the leftover inventory (previously at the terminal role's close), closes the wave, and then itself emits the once-per-wave `W-SCORECARD` pointer and, when section 5.4 calls for it, `W-UNDELIVERED`. The once-per-wave marker file is shared with the Stop hook, so neither repeats the other.
-- `stop.sh` keeps its check for solo mode and for the blocked-stop window, now expressed as wave complete.
+- `subagent-stop.sh`: when the closing role's stop of a `when=phase` row records it done, with no block, and the wave is now complete, it takes the leftover inventory (previously at the terminal role's close), runs `wave-close.sh --if-complete`, and reads `state.json` back. Only when it reads `closed` does it announce, on stderr, through one composition in `lib.sh` (`wv_close_announce`): `W-LEFTOVER` when leftovers exist and no earlier call warned of them (it names the scorecard, so it is this call's pointer), then `W-UNDELIVERED` when section 5.4 calls for it and it has not been told, then `W-SCORECARD` unless `W-LEFTOVER` went out in this call — forced whenever a verdict was queued, so a verdict never goes out without a same-call pointer, and otherwise once per wave when the ledger is non-empty. Each marker (`.leftover-warned`, `.undelivered-warned`, `.scorecard-printed`) is written after its warning is queued, in the same call. A close that did not happen gets `W-STATE` alone ("complete but could not be closed", naming `scripts/wave-close.sh`); nothing is announced or marked, and the next closing stop retries.
+- The closing role's stop of a final row (one no other `when=phase` row of the mode names in `after`: full `VB`, `COMMIT`, `CL`, `CCP`; demo `TEET`) whose every other row is settled takes the inventory whatever its outcome, so a wave that ends on a failed final row — which never completes — still warns `W-LEFTOVER` once, without closing.
+- `stop.sh` never closes a wave and, in full and demo mode, never announces one. On a wave that is complete but still active (the close failed, the final stop was blocked, or the remaining rows were skipped without a closing stop) it refreshes the leftover inventory and emits only `W-STATE`: complete but not closed, noting leftovers when found, with the remedy `scripts/wave-close.sh`. No verdict, no pointer, no marker; it repeats on every Stop until the wave is closed, and an incomplete or closed wave is silent. In solo mode, which has no close and whose verdict is always `not-applicable`, a non-empty ledger gets the same `wv_close_announce` composition.
 - `wave-close.sh` gains `--if-complete`. `--if-terminal <PHASE>` is kept as an accepted alias with the same meaning, its argument ignored, so nothing that calls it breaks. Bare `wave-close.sh` is unchanged: a person may close a wave at any point, and section 5.4 then records the honest verdict. Both forms take the wave lock before reading the state that authorises the close, then re-read it, check it is the same active wave (id and start time) they first saw, decide completeness and delivery, and write, all under that one lock; a wave changed while they waited is not closed (the bare form says so and exits 1).
 - Full mode therefore closes when `VB`, `COMMIT`, `CL` and `CCP` are all done; demo closes when `TEET` is done, as before.
 

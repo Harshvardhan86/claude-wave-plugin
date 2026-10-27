@@ -19,6 +19,21 @@ Numbered ACs, each with:
 - **Trigger** — exact user action or system event
 - **Observable** — a measurement (computed style value, network response, DOM mutation, screenshot pixel) that proves the behaviour
 - **Negative case** — what the AC *rejects*; what would make it fail
+- **Data states** — for every criterion that asserts on a user-visible surface, what it claims in each of the three pinned data states below
+
+## The data-state matrix
+
+Every criterion that asserts on a user-visible surface must hold in three pinned data states:
+
+- **empty** — no records at all.
+- **partial** — only records that existed before this wave, none of the new kind. *This is what every installation looks like on the day of the deploy.*
+- **full** — records in every value the wave introduces.
+
+Write the three outcomes on one `**Data states:**` line per such criterion. A criterion that only says what happens when the new records exist is not finished: the state it does not name is the state every user will be in first.
+
+Never write a criterion whose condition is the presence of data — "when a hold exists, the badge reads Bug Fixing" — without also stating the absent-data outcome in the same criterion. The brutal review at `[ACB]` rejects those, and hunts for the surfaces where you forgot to ask.
+
+If the wave ran `[UIA]`, read `.wave/uia.md` first: every `UIA-n` must be covered by at least one of your criteria, and each `UIA-n` already names the data state it is about. If the wave ran `[BEN]`, read `.wave/ben.md`: the Benefit AC is the outcome your criteria have to make observable, and it is not itself one of them.
 
 ## Required ACs for any UI wave
 
@@ -52,11 +67,14 @@ If the app has *no* existing pattern for a needed visual state:
 ## AC-1 — <one-line summary>
 **Trigger:** <action>
 **Observable:** <measurement>
+**Data states:** empty → <outcome>; partial → <outcome>; full → <outcome>
 **Test pseudocode:** `<one line>`
 **Rejects:** <what failure looks like>
 
 ## AC-2 — ...
 ```
+
+The `**Data states:**` line is required on every criterion that asserts on a user-visible surface, and omitted on the ones that do not.
 
 6. Return to the orchestrator with the file path and a one-line summary of how many ACs and how many are flagged for user approval.
 
@@ -64,4 +82,5 @@ If the app has *no* existing pattern for a needed visual state:
 
 - Could a junior dev write a Playwright test from each AC without further questions? If no, rewrite.
 - Does any AC pass on a feature that's visually broken? If yes, rewrite — that's the DOM-presence trap.
+- Does every AC that asserts on a user-visible surface carry a `**Data states:**` line naming all three states, and does any of them read "when X exists, …" without saying what happens when X does not? If so, rewrite — the partial state is the deploy-day default.
 - Did you invent any color/token? If yes, flag for user approval before returning.

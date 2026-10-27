@@ -164,6 +164,15 @@ the one command that sets it:
 records the answer in `.wave/approvals/scope.md`. An explicit `false` is fine; a
 silent skip is impossible.
 
+> **Superseded in part by [`2026-09-18-benefit-contract-phases.md`](2026-09-18-benefit-contract-phases.md).**
+> That document's section 3 adds a fourth scope flag, `vocabulary`, alongside the
+> three below, and a `delivery` field written at the close (its section 5.4); the
+> schema stays 1 and an absent flag still reads as false. Its section 9 replaces
+> the terminal-phase rule stated in the next paragraph with **wave complete**.
+> The statement that a `TDE-RED` dispatch is the first thing denied over an
+> unanswered flag is superseded too: in full mode `vocabulary` and
+> `behaviour_change` are now required before the wave's first dispatch.
+
 Wave lifetime: `status` is `active` until the active mode's terminal phase
 (`AD` in full, `TEET` in demo) is marked `done`, or `scripts/wave-close.sh`
 runs; either sets `status: "closed"` and `ended`. Every hook exits 0
@@ -221,6 +230,16 @@ which tag role its role name belongs to. For the tier comparison, `scanner` and
 `writer` both resolve to the row's `executor` column.
 
 ## 6. Phase table (`hooks/phases.tsv`)
+
+> **Superseded in part by [`2026-09-18-benefit-contract-phases.md`](2026-09-18-benefit-contract-phases.md).**
+> That document's section 2 adds five rows — `UIA`, `BEN`, `ES`, `BF-ES`,
+> `BEN-CLOSE` — so the full-mode row list below, and the counts "26 rows × 3 role
+> cells = 78 tier cells", are now 31 rows and 93 cells, and `AC`, `SEA` and the
+> tail rows have new `after` values. The `condition` vocabulary below gains
+> `vocabulary`, `behaviour_change` and `done:<CODE>`, and is closed by a data test
+> (its section 7.2). A `findings:<CODE>` row whose scan does not run in the wave
+> reports its condition unmet rather than pending (its section 7.1). Demo-mode
+> rows are unchanged.
 
 Columns (12): `code`, `modes`, `when`, `condition`, `after`, `fanout`, `lead`,
 `executor`, `reviewer`, `artifact`, `marker`, `findings`.
@@ -496,6 +515,18 @@ the PreToolUse JSON shape with exit 0; warn mode emits additional context.
 Default denial prevents unbounded waits while permitting a bounded foreground
 wait and main-session monitoring. Remedy: bound loops, keep bare sleeps at or
 under 300 seconds, and leave Monitor to the main session.
+
+> **Superseded in part by [`2026-09-18-benefit-contract-phases.md`](2026-09-18-benefit-contract-phases.md).**
+> Its section 9 replaces "the mode's terminal phase is done" below, and in
+> section 9's scorecard paragraph, with **wave complete**: every `when=phase` row
+> of the active mode settled, `anytime` rows never counting, so an `AD` stop no
+> longer closes a wave. The inventory still runs immediately before the close,
+> which only the closing `SubagentStop` takes, when the wave becomes complete.
+> The close-time composition below is replaced too: that call announces
+> `W-LEFTOVER`, `W-UNDELIVERED` and `W-SCORECARD` in that order once the state
+> reads `closed`, and in full and demo mode a `Stop` never closes or announces —
+> on a complete but unclosed wave it prints only `W-STATE` naming
+> `scripts/wave-close.sh`. Solo keeps its ledger-based Stop pointer.
 
 **8.10 Leftovers (`W-LEFTOVER`).** Inventory at the closing `SubagentStop`,
 immediately before `wv_close_if_terminal` (and also when that terminal role's

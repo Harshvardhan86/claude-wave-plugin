@@ -1,12 +1,12 @@
 # wave-orchestrator
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![the host CLI Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![the host CLI Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
 
 > Run your coding agent like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
 
 ![A complete wave run — 17 phases, 4h 56m, 483.2k tokens, all checks green](assets/wave-run-output.png)
 
-*A real `/wave-start` run end-to-end: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
+*A real `/wave-start` run end-to-end, recorded on 0.2.x: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
 
 The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin optimises for *time-to-shippable*.
 
@@ -39,7 +39,7 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 |                              | wave-orchestrator            | Superpowers              | Vanilla host CLI    |
 |------------------------------|------------------------------|--------------------------|---------------------|
 | Workflow philosophy          | Evidence-first verification  | Brainstorm → plan → execute | One-shot prompts |
-| Phases per feature           | 17 base + 2 conditional      | 7 stages                 | None                |
+| Phases per feature           | 31 rows: 18 always, 13 conditional | 7 stages           | None                |
 | TDD enforcement              | Hooks gate RED → GREEN order and evidence-file markers | Recommended              | None                |
 | Visual verification gates    | ✅ Computed-style assertions | ❌                       | ❌                  |
 | Sub-agent isolation          | ✅ Per-phase, lean context   | ✅                       | ❌                  |
@@ -80,7 +80,7 @@ After installation you should see two new slash commands available:
 - `/wave-start`
 - `/wave-checkpoint`
 
-…and six skills registered: `wave-orchestrator`, `ac-writer`, `design-reviewer`, `red-tests`, `green-impl`, `teet-verify`.
+…and seven skills registered: `wave-orchestrator`, `benefit-contract`, `ac-writer`, `design-reviewer`, `red-tests`, `green-impl`, `teet-verify`.
 
 ### Manual install (no marketplace)
 
@@ -118,7 +118,9 @@ Once you've shipped two or three waves with `--demo` successfully, drop the flag
 /wave-start "implement the new payment flow"
 ```
 
-This invokes the canonical pipeline: 17 base phases plus `[DR]` (auto-engaged for UI waves) and optional `[CR]` (opt-in via `cr_enabled`). Brutal AC, Silent Error Analysis, Brutal SEA, Dependency Audit, Output Alignment, Brutalised E2E, version bump, commit, cleanup, checkpoint, dashboard — all dispatched as separate Agents with proper model-tier routing.
+This invokes the canonical pipeline: 31 phase rows, 18 of which run in every full wave and 13 of which depend on what the wave is — `[UIA]` and `[ES]` on a wave that introduces new vocabulary, `[BEN]` and `[BEN-CLOSE]` on a wave that changes existing behaviour, `[DR]` on a wave that does either, `[CR]` when the code-review gate is opted in, and each `[BF-*]` row when the scan before it found something. Benefit contract, user-intent criteria, Brutal AC, Empty-State Scan, Silent Error Analysis, Brutal SEA, Dependency Audit, Output Alignment, Brutalised E2E, benefit verdict, version bump, commit, cleanup, checkpoint, dashboard — all dispatched as separate Agents with proper model-tier routing.
+
+Before that first dispatch the command asks whether the wave introduces new vocabulary and whether it changes existing behaviour. Both answers are required: they decide four of the conditional rows, and an unanswered scope flag is never read as "no".
 
 If context fills before completion, `/wave-checkpoint` writes resume state to `.wave/checkpoints/`. A fresh session picks up exactly where you left off.
 
@@ -126,17 +128,18 @@ If context fills before completion, `/wave-checkpoint` writes resume state to `.
 
 ### The full v2 framework (`framework/`)
 
-This plugin **vendors the complete Wave Execution Framework v2** — refined over months of production engineering work where bugs cost real money. 17 base phases plus two conditional gates: `[DR]` Design Review at Phase 1.5 (mandatory whenever the wave ships UI — web, mobile, Storybook, CLI-TUI) and `[CR]` Code Review at Phase 3.5 (optional, opt-in). Maximum surface per wave: 19 phases. Model-routed across three tiers (advisor, executor, mechanical), with hook-enforced invariants and worktree isolation for writing dispatches.
+This plugin **vendors the complete Wave Execution Framework v2** — refined over months of production engineering work where bugs cost real money. A table of 31 phase rows: 18 run in every full wave, 7 are the `[BF-*]` fix rows that run only when the scan before them reported findings, and 6 depend on the wave's scope — `[UIA]` at 0.5 and `[ES]` at 4.2 (new vocabulary), `[BEN]` at 0.8 and `[BEN-CLOSE]` at 12.5 (changed behaviour), `[DR]` Design Review at 1.5 (UI **or** changed behaviour) and `[CR]` Code Review at 3.5 (optional, opt-in). Maximum surface per wave: 31 phases; the smallest full wave runs 18. Model-routed across three tiers (advisor, executor, mechanical), with hook-enforced invariants and worktree isolation for writing dispatches.
 
 ### Demo on-ramps (`skills/`)
 
-For first-time users, small features, and live-demo segments, the plugin ships **five polished entry skills** plus the orchestrator:
+For first-time users, small features, and live-demo segments, the plugin ships **six polished entry skills** plus the orchestrator:
 
 | Skill | Phase | Owns |
 | --- | --- | --- |
 | `wave-orchestrator` | Router | Full/demo dispatch and hand-off gates; solo mode for direct tasks |
-| `ac-writer` | 1. Acceptance Criteria | Brutal, testable ACs grounded in real visual vocabulary |
-| `design-reviewer` | UI: pre-RED gate (matches Phase 1.5) | Component API audit, per-route mockup, visual ACs |
+| `benefit-contract` | 0.8 Benefit Contract | The one-sentence Benefit AC, the authority census, the integration count |
+| `ac-writer` | 1. Acceptance Criteria | Brutal, testable ACs grounded in real visual vocabulary, each with its data-state matrix |
+| `design-reviewer` | UI **or** behaviour change: pre-RED gate (matches Phase 1.5) | Component API audit, per-route mockup, visual ACs |
 | `red-tests` | RED | Failing tests *first*, prove they fail before any code is written |
 | `green-impl` | GREEN | Minimum implementation, verify-before-scan: live stack + tests + screenshot |
 | `teet-verify` | TEET | True end-to-end with computed-style assertions, not `toBeVisible()` lies |
@@ -145,7 +148,7 @@ These run as `/wave-start --demo "<feature>"`. The recommended starting point.
 
 ### Commands (`commands/`)
 
-- `/wave-start <feature>` — runs the full v2 pipeline (17 base + conditional `[DR]` and `[CR]` gates)
+- `/wave-start <feature>` — runs the full v2 pipeline (31 rows; 18 always, 13 conditional)
 - `/wave-start --demo <feature>` — runs the trimmed 5-phase entry subset
 - `/wave-start --solo <feature>` — runs a direct task with explicit models, commit guard,
   PreCompact checkpoint and token ledger
@@ -210,6 +213,49 @@ v0.2.1 adds these enforced contracts:
 - **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and gate Monitor by identity only — a subagent's Monitor call is denied, its command is never inspected, and the main session may Monitor.
 - **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; a leftover close prints W-LEFTOVER instead of the W-SCORECARD pointer, which the leftover warning itself carries; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
+v0.3.0 adds these enforced contracts:
+
+- **Five conditional phase rows.** `[UIA]` user-intent criteria (0.5) and `[ES]`
+  empty-state scan (4.2) run when the wave introduces new vocabulary; `[BEN]` the
+  benefit contract (0.8) runs when it changes existing behaviour; `[BF-ES]` (4.3)
+  runs when `[ES]` found something; `[BEN-CLOSE]` the benefit verdict (12.5) runs
+  when `[BEN]` ran. All five are full-mode only; demo keeps its five phases.
+- **Two scope answers before the first dispatch.** A full-mode wave answers
+  `vocabulary` and `behaviour-change` before anything is dispatched, because
+  `[AC]` now follows `[UIA]` and `[BEN]`. `ui` and `cr` may still wait until
+  `[TDE-RED]`. An unanswered flag is never read as `false`.
+- **A wave closes when it is complete,** not when its dashboard runs: every
+  `when=phase` row of the mode is done, or skipped by mode or by a condition
+  answered false. An unanswered condition, a done scan whose findings file is
+  missing or cannot be measured, and a failed, artifact-missing or redo row are
+  not settled. `anytime` rows never count, and only a `when=phase` row's stop
+  triggers the close, so an `AD` stop never closes a wave. Full mode closes on
+  `VB`, `COMMIT`, `CL` and `CCP`; demo on `TEET`.
+- **One close-time announcement.** The closing SubagentStop announces only after
+  it reads the state back as closed: `W-LEFTOVER` when leftovers were found and
+  not warned before (it names the scorecard), then `W-UNDELIVERED` when the
+  verdict calls for it, then `W-SCORECARD` unless `W-LEFTOVER` already pointed
+  there. A verdict never goes out without a pointer in the same call, and each
+  warning fires at most once per wave. A close that fails gets `W-STATE` alone,
+  marks nothing, and the next closing stop retries.
+- **A Stop never closes a wave.** In full and demo mode a Stop on a wave that is
+  complete but still active refreshes the leftover inventory and prints only
+  `W-STATE` naming `scripts/wave-close.sh`, on every Stop until the wave is
+  closed. Solo has no close: a non-empty ledger still gets the once-per-wave
+  pointer.
+- **W-UNDELIVERED:** the close records a delivery verdict — `delivered`,
+  `undelivered`, `unverified` or `not-applicable` — read from `.wave/ben-close.md`,
+  and warns once for the two that are not a pass. It is `not-applicable` in solo
+  and in demo, where `[BEN]` does not run. The verdict never blocks the close;
+  `scripts/wave-scorecard.sh` prints it under `## Delivery`. A hard block would
+  only invite weakening the Benefit AC to get out of it.
+- **`wave-close.sh` decides under the lock.** It re-reads the state under the
+  wave lock and closes only the active wave it first saw; the bare form exits 1
+  when the wave changed or closed while it waited.
+- **One attribution-trailer pattern.** The commit guard and the installed
+  `commit-msg` hook read the same `WV_TRAILER_ERE` from `scripts/hooks/lib.sh`,
+  so both refuse the same five trailer forms.
+
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
 `/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
 advised: the host CLI cannot block compaction through this hook. Start a fresh
@@ -245,7 +291,7 @@ through one injectable source (`WV_NOW`, pinned once per run by
 It must be run at a pin far past the fixtures' own timestamps — a wall-clock-dependent
 case reds there and nowhere else, months before the calendar would find it, with no
 commit to blame. The clean-clone check covers the committed tree. `mutants-all.sh` runs
-every mutation driver under `tests/tools/` — one per hook script plus the 78
+every mutation driver under `tests/tools/` — one per hook script plus the 93
 phase-table tier cells — and fails on any surviving mutant or failed restore; a
 green suite over a rule no mutant can break has proved nothing about that rule.
 `reason-corpus.sh` drives every rule id in `hooks/reasons.tsv` to its positive
@@ -296,6 +342,10 @@ wave-orchestrator/
 ├── CONTRIBUTING.md                              # PR / issue norms
 ├── .gitignore
 │
+├── docs/
+│   ├── design/                                  # implementation contracts
+│   └── releases/                                # per-release notes
+│
 ├── framework/                                   # full Wave Execution Framework v2
 │   ├── SKILL.md                                 # canonical pipeline + 10 invariants
 │   └── references/                              # 12 load-on-demand reference docs
@@ -314,6 +364,7 @@ wave-orchestrator/
 │
 ├── skills/                                      # demo on-ramps + orchestrator
 │   ├── wave-orchestrator/SKILL.md
+│   ├── benefit-contract/SKILL.md
 │   ├── ac-writer/SKILL.md
 │   ├── design-reviewer/SKILL.md
 │   ├── red-tests/SKILL.md
@@ -379,8 +430,9 @@ This plugin is in early public release. If you're shipping with `wave-orchestrat
 
 ## Status
 
-**v0.2.1** — background-task completion checks, bounded-wait enforcement and
-leftover inventories alongside phase gates, token accounting and recovery checkpoints. See the contract and declared bounds above.
+**v0.3.0** — a benefit contract and its close-time verdict, user-intent criteria,
+an empty-state scan, and a wave that closes when its work is finished rather than
+when its dashboard runs. See the contract and declared bounds above.
 Issues and PRs are welcome.
 
 ## Contributing

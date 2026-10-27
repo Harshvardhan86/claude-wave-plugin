@@ -1,6 +1,6 @@
 ---
 name: wave-orchestrator
-description: Use when shipping a feature end-to-end. Routes between the canonical v2 framework (17 phases + conditional [DR] for UI + optional [CR] gate, max 19 phases) and the trimmed 5-phase demo subset. Invoked by /wave-start and /wave-start --demo. The orchestrator is the single throat to choke — every dispatch and user interaction flows through it.
+description: Use when shipping a feature end-to-end. Routes between the canonical v2 framework (31 phase rows, 18 always and 13 conditional) and the trimmed 5-phase demo subset. Invoked by /wave-start.
 ---
 
 # Wave Orchestrator
@@ -13,7 +13,9 @@ The `/wave-start` command tells you which mode to run:
 
 ### Default mode — full v2 framework
 
-When invoked without `--demo`, you execute the **canonical pipeline** specified in `framework/SKILL.md`: 17 base phases plus the conditional `[DR]` Design Review at Phase 1.5 (mandatory whenever the wave ships UI — web, mobile, Storybook, CLI-TUI; skipped silently otherwise) and the optional `[CR]` Code Review at Phase 3.5 (opt-in via the orchestrator's `cr_enabled` flag). Maximum surface per wave: 19 phases.
+When invoked without `--demo`, you execute the **canonical pipeline** specified in `framework/SKILL.md`: a table of 31 rows, 18 of which run in every full-mode wave and 13 of which are conditional. The conditional ones are `[UIA]` at 0.5 and `[ES]` at 4.2 (the wave introduces new vocabulary), `[BEN]` at 0.8 (the wave changes existing behaviour), `[DR]` Design Review at 1.5 (the wave ships UI — web, mobile, Storybook, CLI-TUI — **or** changes existing behaviour; skipped silently only when it does neither), `[CR]` Code Review at 3.5 (opt-in via the orchestrator's `cr_enabled` flag), `[BEN-CLOSE]` at 12.5 (`[BEN]` ran), and the seven `[BF-*]` rows (the scan before each reported findings). Maximum surface per wave: 31 phases.
+
+Before your first dispatch, `vocabulary` and `behaviour-change` must be answered. `[AC]` names `[UIA]` and `[BEN]` as predecessors, and an unanswered flag on a predecessor denies the successor, so a full-mode wave with either flag still `unknown` can dispatch nothing at all. `ui` and `cr` may wait until `[TDE-RED]`.
 
 Before dispatching anything:
 
@@ -106,10 +108,13 @@ The contract below defines the shipped enforcement, including the solo-mode exce
 and the broader DR trigger for UI **or behaviour-changing** waves.
 
 `/wave-start` initialises `.wave/state.json` through `scripts/wave-init.sh` before
-any dispatch. Full/demo scope answers go through `scripts/wave-set.sh
-ui|behaviour-change|cr true|false` and are recorded in `.wave/approvals/scope.md`.
-All three flags must be known before `TDE-RED`. `.wave/` is local recovery state,
-excluded through `.git/info/exclude`.
+any dispatch, passing the `vocabulary` and `behaviour-change` answers as flags.
+The `ui` and `cr` answers, and any correction to the first two, go through
+`scripts/wave-set.sh ui|behaviour-change|cr|vocabulary true|false` and are
+recorded in `.wave/approvals/scope.md`. In full mode `vocabulary` and
+`behaviour_change` must be known before the first dispatch; `ui` and `cr` must be
+known before `TDE-RED`. An unanswered flag is never read as `false`. `.wave/` is
+local recovery state, excluded through `.git/info/exclude`.
 
 - **Full** checks the full phase table: tag, role, explicit model and minimum tier,
   scope, conditional phases, predecessor order, artifacts, approvals, rounds,
@@ -148,25 +153,28 @@ no other agent of that phase remains active. A marker is a line-matching regex.
 
 | Phase | Artifact | Marker |
 |---|---|---|
+| UIA | `.wave/uia.md` | `^UIA-[0-9]+` |
+| BEN | `.wave/ben.md` | `^BEN-VERIFIED red=[1-9][0-9]* authorities=[1-9][0-9]*$` |
 | AC | `.wave/ac.md` | `^AC-[0-9]+` |
 | ACB | `.wave/acb.md` | `^ACB-VERIFIED` |
 | DR | `.wave/dr.md` | `^DR-VERIFIED` |
 | TDE-RED | `.wave/red.md` | `^RED-VERIFIED failing=[1-9][0-9]*$` |
 | TDE-GREEN | `.wave/green.md` | `^GREEN-VERIFIED passing=[1-9][0-9]* failing=0$` |
 | CR | `.wave/cr.md` | `^CR-VERIFIED` |
-| BC / SEA / DS / BSEA | `.wave/findings/<PHASE>.md` | `^FINDINGS: [0-9]+$` |
+| BC / ES / SEA / DS / BSEA | `.wave/findings/<PHASE>.md` | `^FINDINGS: [0-9]+$` |
 | BF-`<X>` | `.wave/bf-<X>.md` | `^BF-VERIFIED` |
 | OA | `.wave/oa.md` | `^ALIGNMENT: [0-9]+%$` |
 | TEET-TC | `.wave/teet-tc.md` | `^TEET-TC-VERIFIED$` |
 | TEET | `.wave/teet.md` | `^TEET-VERIFIED$` |
 | BTEET | `.wave/bteet.md` | `^BTEET-VERIFIED$` |
 | BTEET-X | `.wave/bteet-x.md` | `^BTEET-X-VERIFIED$` |
+| BEN-CLOSE | `.wave/ben-close.md` | `^BENEFIT: (DELIVERED\|UNDELIVERED)$` |
 | CCP | `.wave/checkpoints/<ts>-ccp.md` | exists |
 | VB, COMMIT, CL, AD | — | — |
 
 TEET and BTEET also produce `.wave/findings/TEET.md` and
-`.wave/findings/BTEET.md`, with `^FINDINGS: [0-9]+$`. The six BF rows are
-`BF-BC`, `BF-SEA`, `BF-DS`, `BF-BSEA`, `BF-TEET` and `BF-BTEET`.
+`.wave/findings/BTEET.md`, with `^FINDINGS: [0-9]+$`. The seven BF rows are
+`BF-BC`, `BF-ES`, `BF-SEA`, `BF-DS`, `BF-BSEA`, `BF-TEET` and `BF-BTEET`.
 UI GREEN additionally needs a non-empty `.wave/screenshots/green-<name>.png`.
 A `*-precompact.md` checkpoint does not satisfy CCP. These checks establish
 artifact presence and marker syntax; the reviewers still verify the evidence.
@@ -174,8 +182,12 @@ artifact presence and marker syntax; the reviewers still verify the evidence.
 Order follows each row's `after`, not file order. Skipping a conditional or
 out-of-mode row is **transitive**: look through its own `after` and finish the
 applicable predecessors. Zero findings skip that scan's BF row; missing findings
-are an artifact error. `VB`, `COMMIT`, `CL` and `CCP` share the predecessor set
-`BTEET-X,BF-BTEET`. `AD` is `anytime`, exempt from order, rounds and budgets.
+are an artifact error. A scan that does not run in this wave leaves its BF row
+nothing to fix, so that row reports its condition unmet rather than waiting for
+ever. `UIA` has no predecessors; `BEN` follows `UIA`; `AC` follows both. `SEA`
+follows `BF-ES`. `BEN-CLOSE` follows `BTEET-X,BF-BTEET`, and `VB`, `COMMIT`,
+`CL` and `CCP` share the predecessor set `BEN-CLOSE`. `AD` is `anytime`, exempt
+from order, rounds and budgets, and an `AD` stop never closes a wave.
 
 **Approvals.** Record the user's decision before creating the corresponding file;
 paths and phase codes are case-sensitive:
@@ -184,7 +196,8 @@ paths and phase codes are case-sensitive:
   `.wave/dr.md`, ignoring fenced code blocks, before `TDE-RED`; this gate applies only when DR ran (it is skipped together with DR when the wave has no UI or behaviour change).
 - `.wave/approvals/green-visual.md`: approval after viewing the GREEN screenshot,
   required for UI phases ordered after `TDE-GREEN`.
-- `.wave/approvals/bf-<X>.md`: the selected strategy before a `BF-<X>` dispatch.
+- `.wave/approvals/bf-<X>.md`: the selected strategy before a `BF-<X>` dispatch,
+  `bf-ES.md` included.
 - `.wave/approvals/rerun-<PHASE>-<role>.md`: approval before a third round of the
   same phase and role. A bare `rerun-<PHASE>.md` does **not** satisfy the rule.
 - `.wave/approvals/budget-<PHASE>.md`: approval to exceed twice the phase budget.
@@ -223,6 +236,16 @@ approved exceptions into the checkpoint text when a committable record is needed
 - **W-POLL:** full/demo Bash denies lexical unbounded waits and bare sleeps over 300 seconds; inspect the `-c` argument of bash/sh/dash/ksh/zsh recursively through depth 3, strip other quoted spans, and gate Monitor by identity only — a subagent's Monitor call is denied, its command is never inspected, and the main session may Monitor.
 - **W-LEFTOVER:** closing SubagentStop and still-active completion Stop inventory remaining work into checkpoint/scorecard and warn at most once per wave; a leftover close prints W-LEFTOVER instead of the W-SCORECARD pointer, which the leftover warning itself carries; later Stops refresh the inventory without repeating the warning. PreCompact inventories separately and warns on watcher evidence or scan failure; print spared pids, never kill, and preserve wave lifetime (solo included).
 
+**v0.3.0 adds these enforced contracts:**
+
+- **Five conditional rows.** `[UIA]` (0.5) and `[ES]` (4.2) on `vocabulary`; `[BEN]` (0.8) on `behaviour_change`; `[BF-ES]` (4.3) when `[ES]` reported findings; `[BEN-CLOSE]` (12.5) when `[BEN]` ran. All five are full-mode only. Demo keeps its five phases and its gates unchanged.
+- **Two scope answers before the first dispatch.** `vocabulary` and `behaviour_change` gate `[AC]` through its predecessors, so a full-mode wave with either unknown is denied `W-SCOPE` on every phase dispatch until it is answered. The prompt reminder agrees with the gate: an unanswered row is reported as required and not yet allowed, never as skipped.
+- **Wave complete replaces terminal phase.** A wave closes when every `when=phase` row of its mode is settled — done, or skipped by mode or by a condition answered false. An unanswered condition, a done scan whose findings file is missing or unmeasurable, and a `failed`, `artifact-missing` or `redo` row are not settled. `anytime` rows never count and only a `when=phase` row's stop triggers the close, so an `AD` stop never closes a wave. Full mode closes on `VB`, `COMMIT`, `CL` and `CCP`; demo on `TEET`.
+- **One close-time announcement.** The closing `SubagentStop` announces only after it reads the state back as `closed`: `W-LEFTOVER` (when leftovers were found and not warned before; it names the scorecard), then `W-UNDELIVERED` (when the verdict calls for it), then `W-SCORECARD` unless `W-LEFTOVER` already pointed there. A verdict never goes out without a same-call pointer; each warning fires at most once per wave. A failed close gets `W-STATE` alone, marks nothing, and the next closing stop retries.
+- **A Stop never closes a wave.** In full/demo, a `Stop` on a complete but still-active wave refreshes the leftover inventory and prints only `W-STATE` naming `scripts/wave-close.sh`, every time, until the wave is closed. Solo keeps its once-per-wave pointer on a non-empty ledger.
+- **W-UNDELIVERED:** the close records a `delivery` verdict from `.wave/ben-close.md` — `delivered`, `undelivered`, `unverified` or `not-applicable` (always in solo and demo, where `[BEN]` does not run) — and warns once for `undelivered` and `unverified`, in the same call as a scorecard pointer. Nothing unanswered or missing reads as a pass. The verdict never blocks the close; the scorecard prints it under `## Delivery`.
+- **`wave-close.sh` decides under the lock** and closes only the active wave it first saw; the bare form exits 1 when the wave changed or closed while it waited.
+
 **Declared bounds.** A `Bash` source write is not gated by the edit rule. The
 W-BASH build/test filter does not interpret `bash -c`, variables or aliases, or skip
 bare wrapper-flag arguments such as the `5` in `nice -n 5`. W-POLL still inspects
@@ -242,10 +265,12 @@ approval. Unreadable accounting cannot justify a deny.
 
 `scripts/wave-scorecard.sh` writes `.wave/scorecard.md` with phase/role/model spend,
 budget ratios and rework, plus GREEN output tokens per changed line and its
-passing-test count.
-The Stop hook's terminal-phase pointer is intended to appear once (`AD` full,
-`TEET` demo), not on every turn. Close a wave manually with `scripts/wave-close.sh`;
-solo has no terminal phase. PreCompact writes a checkpoint from state and ledger;
+passing-test count, and a `## Delivery` section under the title whenever the wave
+recorded a verdict.
+The scorecard pointer appears once, from the call that closes the wave (in solo,
+the first `Stop` with a ledger), not on every turn. If a `Stop` reports the wave
+complete but not closed, close it with `scripts/wave-close.sh`; that bare form
+also closes a wave manually at any point. Solo never closes automatically. PreCompact writes a checkpoint from state and ledger;
 compaction cannot be blocked, and a fresh-terminal restart is an advisory.
 
 **Responding to a deny.** A reason has the form `[W-RULE] <observed problem>;

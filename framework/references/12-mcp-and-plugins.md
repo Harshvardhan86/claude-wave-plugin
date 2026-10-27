@@ -51,10 +51,13 @@ The orchestrator passes a `ToolSearch` select string to each dispatch's prompt s
 
 | Phase | `ToolSearch` select string |
 |-------|---------------------------|
+| `[UIA]` | `select:Read,Grep` |
+| `[BEN]` | `select:Read,Grep,Edit,Write,Bash` (the benefit test is written and run here) |
 | `[AC]`, `[ACB]`, `[OA]` | `select:Read,Grep,WebFetch,WebSearch` |
 | `[TDE-RED]`, `[TDE-GREEN]` | `select:Edit,Write,Bash,Read,Grep,TaskUpdate` |
 | `[CR]` | `select:mcp__coderabbit__*` (plugin-provided) |
-| `[BC]`, `[SEA]`, `[BSEA]` | `select:Read,Grep,Bash,NotebookRead` |
+| `[BC]`, `[ES]`, `[SEA]`, `[BSEA]` | `select:Read,Grep,Bash,NotebookRead` |
+| `[BEN-CLOSE]` | `select:Read,Grep,Bash` |
 | `[DS]` | `select:Read,Grep,Bash,WebFetch` (CVE lookups) |
 | `[TEET]`, `[BTEET-X]` (UI in scope) | `select:Bash,mcp__plugin_playwright_playwright__*,Monitor` |
 | `[TEET]`, `[BTEET-X]` (no UI) | `select:Bash,Monitor` |

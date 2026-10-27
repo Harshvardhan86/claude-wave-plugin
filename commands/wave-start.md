@@ -1,5 +1,5 @@
 ---
-description: Start a new wave. Default runs the canonical v2 framework (17 phases + conditional [DR] for UI waves at 1.5 + optional [CR] gate at 3.5, max 19). Pass --demo for the trimmed 5-phase subset (AC → DR → RED → GREEN → TEET) for live demos and small UI features, or --solo for a directly-driven task with only the cheap invariants enforced.
+description: Start a new wave. Default runs the canonical v2 framework (31 phase rows: 18 always, 13 conditional — [UIA]/[ES] on new vocabulary, [BEN]/[BEN-CLOSE] on changed behaviour, [DR] at 1.5 on UI or changed behaviour, the optional [CR] gate at 3.5, and each [BF-*] row on findings; max 31). Pass --demo for the trimmed 5-phase subset (AC → DR → RED → GREEN → TEET) for live demos and small UI features, or --solo for a directly-driven task with only the cheap invariants enforced.
 argument-hint: "[--demo|--solo] <feature description in quotes>"
 allowed-tools: "Bash(git:*), Bash(npm:*), Bash(pnpm:*), Bash(yarn:*), Bash(npx:*), Bash(curl:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/wave-init.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/wave-set.sh:*)"
 ---
@@ -25,7 +25,7 @@ The user invoked `/wave-start` with arguments: **$ARGUMENTS**
 
 If the feature description is empty, refuse and remind the user of the syntax:
 ```
-/wave-start "<feature description>"           # full v2 framework (17 base phases + conditional [DR]/[CR] gates)
+/wave-start "<feature description>"           # full v2 framework (31 phase rows: 18 always + 13 conditional)
 /wave-start --demo "<feature description>"    # trimmed 5-phase demo subset
 /wave-start --solo "<feature description>"    # directly-driven task, cheap invariants only
 ```
