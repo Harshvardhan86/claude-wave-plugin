@@ -8,7 +8,7 @@ phase, tier, budget, path and reason data live in `hooks/*.tsv`.
 
 ## 11.1 Registration and real hook schema
 
-Claude Code auto-loads a plugin's `hooks/hooks.json`. **Do not add a `hooks` field
+The host CLI auto-loads a plugin's `hooks/hooks.json`. **Do not add a `hooks` field
 to `.claude-plugin/plugin.json`.** Duplicate registration can make the client
 report `Duplicate hooks file detected` / `Hook load failed` and drop all plugin
 hooks. Manifest validation does not catch that failure; verify an actual load.
@@ -100,7 +100,7 @@ PreToolUse.tool_use_id → PostToolUse.tool_response.agentId → SubagentStop.ag
 ```
 
 The requested tier is checked before dispatch. At launch, a lower resolved tier
-warns. At stop, the modal tier of assistant turns with output tokens is compared
+warns. At stop, the modal tier of model-reply turns with output tokens is compared
 with the requirement; a downgrade records taint and warns, including on dependent
 dispatches, but does not block them. Unknown models warn and allow.
 
@@ -256,7 +256,7 @@ are phase **and role** scoped: `rerun-<PHASE>.md` alone does not count.
 ## 11.5 Ledger, checkpoints and commit guard
 
 `SubagentStop` appends one record per agent to `.wave/ledger.jsonl`, including
-failed hand-offs. It sums transcript assistant usage into input, output,
+failed hand-offs. It sums transcript reply usage into input, output,
 cache-read and cache-creation tokens, with requested/resolved models, phase,
 role, turns, stop time and tier verification. Missing transcripts or oversized
 ones are noted; absent usage fields count as zero. The transcript reader has a
@@ -292,7 +292,7 @@ Git inspection uses stdin `cwd`, including inside worktree subagents.
 `wave-init.sh` also installs `.git/hooks/commit-msg` to inspect the final message
 from a file, template, heredoc or editor. It never overwrites an existing hook:
 it reports the conflict and records `skipped-existing` in state. The installed
-Git hook is separate from Claude Code event hooks and currently checks messages
+Git hook is separate from host CLI event hooks and currently checks messages
 even after a wave closes; it does not consult `enforce`.
 
 ## 11.6 Escape hatch and lifecycle

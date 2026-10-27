@@ -101,8 +101,8 @@ first_label=$(printf '%s' "$first_row" | awk -F'\t' '{print $2}')
 has_readme=$(command grep -c '^README.md$' hooks/orchestrator-writable.tsv || echo 0)
 [ "$has_readme" -gt 0 ] || fail "orchestrator-writable.tsv should contain README.md"
 
-# AC-353: reasons.tsv stays at 37 rules in this task (rule 38 is a later task).
+# AC-353: reasons.tsv is 38 rules (W-UNDELIVERED is rule 38).
 rule_count=$(command grep -v '^#' hooks/reasons.tsv | command grep -v '^rule_id' | wc -l)
-[ "$rule_count" = "37" ] || fail "reasons.tsv should have 37 rules, got $rule_count"
+[ "$rule_count" = "38" ] || fail "reasons.tsv should have 38 rules, got $rule_count"
 
 exit $rc

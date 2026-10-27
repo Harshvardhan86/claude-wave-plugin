@@ -1,0 +1,66 @@
+{
+  "script": "subagent-stop.sh",
+  "note": "the leftover variant of undelivered-close-unverified: the closing SubagentStop closes a behaviour-changing wave with no .wave/ben-close.md (verdict UNVERIFIED) and an outstanding leftover nobody was warned of. stderr carries W-LEFTOVER (queued this call; it names the scorecard, so it is the pointer) then W-UNDELIVERED with the unverified explanation, and no W-SCORECARD; stdout stays empty. The markers are asserted by undelivered-close-unverified-markers.",
+  "seed": {
+    "state": "state/full-closing-cl-bc.json",
+    "files": {
+      ".wave/findings/BC.md": "FINDINGS: 0\n",
+      ".wave/findings/ES.md": "FINDINGS: 0\n",
+      ".wave/findings/SEA.md": "FINDINGS: 0\n",
+      ".wave/findings/DS.md": "FINDINGS: 0\n",
+      ".wave/findings/BSEA.md": "FINDINGS: 0\n",
+      ".wave/findings/TEET.md": "FINDINGS: 0\n",
+      ".wave/findings/BTEET.md": "FINDINGS: 0\n",
+      ".wave/ledger.jsonl": "{\"agent\":\"a0\",\"phase\":\"CCP\",\"role\":\"executor\",\"output\":1}\n"
+    }
+  },
+  "stdin": {
+    "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
+    "transcript_path": "/tmp/wave-plugin-tests/transcript.jsonl",
+    "cwd": ".",
+    "prompt_id": "c1f033ea-e4ee-4474-88ec-3913700ae39d",
+    "permission_mode": "bypassPermissions",
+    "agent_id": "a1",
+    "agent_type": "general-purpose",
+    "hook_event_name": "SubagentStop",
+    "stop_hook_active": false,
+    "last_assistant_message": "done",
+    "background_tasks": [
+      {
+        "id": "a1",
+        "type": "subagent",
+        "status": "running",
+        "description": "probe echo",
+        "agent_type": "general-purpose"
+      },
+      {
+        "id": "lo-shell",
+        "type": "shell",
+        "status": "running"
+      }
+    ],
+    "session_crons": [
+      {
+        "id": "lo-cron"
+      }
+    ]
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "allow",
+    "stderr_rules": [
+      "W-LEFTOVER",
+      "W-UNDELIVERED"
+    ],
+    "stderr_contains": [
+      "lo-shell",
+      "lo-cron",
+      "[W-UNDELIVERED] wave delivery is unverified: ",
+      "never checked at close",
+      "no verdict line in .wave/ben-close.md",
+      "scripts/wave-scorecard.sh writes .wave/scorecard.md",
+      "remedy: run the BEN-CLOSE phase before closing"
+    ],
+    "state_assert": ".status == \"closed\" and .delivery == \"unverified\""
+  }
+}

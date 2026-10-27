@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/tools/mutants-subagent-stop.sh [--keep]
+# tests/tools/mutants-subagent-stop.sh [--keep] [--mutant <label>]
 #
 # The mutation control for `scripts/hooks/subagent-stop.sh`: proves the
 # stop/marker/taint/ledger/lock/lean suite is not vacuous by breaking one
@@ -29,7 +29,7 @@
 #                     "<PHASE>/<role>"
 #   7. drainremoved   the ledger spool is never drained on a stop that
 #                     appends nothing of its own
-#   8. terminalskip   the terminal-phase wave close is never called
+#   8. terminalskip   the wave-complete close is never called
 #   9. blockoncekey   the block-once key is the stop_hook_active FLAG again
 #                     rather than the `active[<id>].blocked` record
 #  10. leanoneshot    the lean-return block stops being a one-shot
@@ -51,13 +51,14 @@
 #  19. settlewaitsmissing  a transcript path that names no file is waited on for
 #                     the whole cap again
 #  20. settlefastloose    the mtime fast path settles without checking that an
-#                     assistant turn is actually readable
+#                     reply turn is actually readable
 #
 # Exit status: 0 only when every mutant was applied, every mutant was killed,
 # and the final restore matches the pristine hash.
 #
 #   bash tests/tools/mutants-subagent-stop.sh
 #   bash tests/tools/mutants-subagent-stop.sh --keep   # keep the temp root
+#   bash tests/tools/mutants-subagent-stop.sh --mutant terminalskip   # one row only
 #
 # Deliberately `set -u`, never `set -e`: a mutant whose run fails must reach the
 # table rather than abort the sweep.
@@ -67,7 +68,23 @@ set -u
 WV_TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WV_REPO_ROOT="$(cd "$WV_TOOLS_DIR/../.." && pwd)"
 WV_KEEP=0
-[ "${1:-}" = "--keep" ] && WV_KEEP=1
+WV_ONLY_MUTANT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --keep) WV_KEEP=1; shift ;;
+    --mutant)
+      [ $# -ge 2 ] || {
+        printf 'mutants-subagent-stop.sh: --mutant needs a label\n' >&2
+        exit 1
+      }
+      WV_ONLY_MUTANT="$2"; shift 2 ;;
+    *)
+      printf 'mutants-subagent-stop.sh: unknown argument: %s\n' "$1" >&2
+      printf 'usage: bash tests/tools/mutants-subagent-stop.sh [--keep] [--mutant <label>]\n' >&2
+      exit 1
+      ;;
+  esac
+done
 
 for tool in jq git python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -77,6 +94,11 @@ for tool in jq git python3; do
 done
 
 WV_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wave-mutants-stop.XXXXXX")" || exit 1
+# The harness keeps the scratch directory of every RED run, and every killed
+# mutant is a red run: each run gets TMPDIR inside this temp root, removed
+# after the run (kept with --keep) and with the root on exit
+# (tests/cases/_selfcheck/data-mutant-scratch.sh).
+WV_SCRATCH="$WV_TMP/scratch"
 WV_TREE="$WV_TMP/tree"
 WV_LOGS="$WV_TMP/logs"
 mkdir -p "$WV_TREE" "$WV_LOGS" || exit 1
@@ -85,6 +107,7 @@ cleanup() {
   if [ "$WV_KEEP" = "1" ]; then
     printf 'temp root kept at %s\n' "$WV_TMP"
   else
+    chmod -R u+rwX "$WV_TMP" 2>/dev/null
     rm -rf "$WV_TMP"
   fi
 }
@@ -165,6 +188,9 @@ wv_run_mutant() {
   # wv_run_mutant <label> <body-function> <target-relative-path> <filter>...
   local label="$1" body="$2" target="$3"
   shift 3
+  if [ -n "$WV_ONLY_MUTANT" ] && [ "$label" != "$WV_ONLY_MUTANT" ]; then
+    return
+  fi
   wv_select_target "$target"
   wv_total=$((wv_total + 1))
 
@@ -189,7 +215,9 @@ wv_run_mutant() {
   local f
   for f in "$@"; do args+=(--filter "$f"); done
   local log="$WV_LOGS/$label.log"
-  ( cd "$WV_TREE" && bash tests/run.sh "${args[@]}" ) > "$log" 2>&1
+  mkdir -p "$WV_SCRATCH"
+  ( cd "$WV_TREE" && TMPDIR="$WV_SCRATCH" bash tests/run.sh "${args[@]}" ) > "$log" 2>&1
+  if [ "$WV_KEEP" != "1" ]; then chmod -R u+rwX "$WV_SCRATCH" 2>/dev/null; rm -rf "$WV_SCRATCH"; fi
 
   local summary total
   summary="$(command grep -m1 '^total=' "$log")"
@@ -303,26 +331,19 @@ s = s.replace(old, "", 1)
 PY
 }
 
-# --- 8. the terminal-phase close is never called --------------------------
-# Re-anchored on the post-inventory call site: leftover collection now runs
-# before case "$emit_rule", so the close is the bare done-block below.
+# --- 8. the wave-complete close is never called -----------------------------
+# Re-anchored deliberately: the closer helper
+# was renamed wv_close_if_terminal -> wv_close_if_complete and lost its unused
+# phase argument, so the call is now the bare `    wv_close_if_complete`
+# line inside `if [ "$status_new" = "done" ] && wv_wave_complete; then`.
+# Same intent: skip the closer so a complete wave stays active. The label is
+# kept so earlier logs still line up. Killer: stop-227-dash-artifact (the last
+# of VB/COMMIT/CL/CCP must close the wave); run it alone with
+# `--mutant terminalskip`.
 wv_body_terminalskip() { cat <<'PY'
-old = '''  if [ -n "$verdict_rule" ]; then
-    return 0
-  fi
-
-  if [ "$status_new" = "done" ]; then
-    wv_close_if_terminal "$WV_STOP_PHASE"
-  fi'''
-new = '''  if [ -n "$verdict_rule" ]; then
-    return 0
-  fi
-
-  if [ "$status_new" = "done" ] && false; then
-    wv_close_if_terminal "$WV_STOP_PHASE"
-  fi'''
-assert old in s, "anchor missing: the terminal close"
-s = s.replace(old, new, 1)
+old = '    wv_close_if_complete\n'
+assert old in s, "anchor missing: the wave-complete close"
+s = s.replace(old, '    :\n', 1)
 PY
 }
 
@@ -410,7 +431,7 @@ s = s.replace(old, "", 1)
 PY
 }
 
-# --- 20. the mtime fast path stops checking for an assistant turn ----------
+# --- 20. the mtime fast path stops checking for a reply turn ----------
 wv_body_settlefastloose() { cat <<'PY'
 old = '''      if [ -n "$size" ] && [ "$size" != "0" ] && wv_ts_quiet_for_one_interval "$path"; then
         assistants="$(command grep -acE '"type"[[:space:]]*:[[:space:]]*"assistant"' "$path" 2>/dev/null)"
@@ -614,5 +635,10 @@ for rel in "$WV_HOOK_REL" "$WV_LIB_REL" scripts/hooks/post-bash.sh scripts/hooks
   fi
 done
 printf 'mutants=%s survived=%s restored=%s\n' "$wv_total" "$wv_survived" "$wv_restored"
+
+if [ -n "$WV_ONLY_MUTANT" ] && [ "$wv_total" -eq 0 ]; then
+  printf 'mutants-subagent-stop.sh: no mutant named %s\n' "$WV_ONLY_MUTANT" >&2
+  exit 1
+fi
 
 [ "$wv_survived" -eq 0 ] && [ "$wv_restored" = "yes" ]

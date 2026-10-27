@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # tests/e2e.sh — the real headless load proof (spec section 12, AC-378/379)
 # PLUS seven real headless-session scenarios that prove the hooks
-# actually fire and decide inside the real `claude` harness, not only when
+# actually fire and decide inside the real host-CLI harness, not only when
 # fed by tests/run.sh's fixture-driven cases.
 #
 # AC coverage note (the original seven "End to end" scenarios,
 # AC-380..387): AC-380/381/382/383/385 are each a dedicated scenario below
 # (a/b/c/e/f). AC-386 ("a real trailer-bearing commit refused") is a plain
 # `git commit -F file` against the installed `.git/hooks/commit-msg` — no
-# `claude` session is involved in that mechanism at all, and it is already
+# host-CLI session is involved in that mechanism at all, and it is already
 # covered, unit-fixture style, by tests/cases/commitmsg-313-trailer-refused.sh
 # (which this file does not duplicate). AC-384 (the additionalContext-vs-
 # deny channel probe for `enforce:"warn"`) is NOT covered by a live session
@@ -32,14 +32,14 @@
 # field in .claude-plugin/plugin.json produces (Global Constraint 1) —
 # that mode was hit org-wide on 2026-09-09 with another plugin, and the
 # published docs are silent on it. This script is the only thing that
-# would catch a regression: it runs real headless `claude` sessions with
+# would catch a regression: it runs real headless host-CLI sessions with
 # this repo loaded as a --plugin-dir and inspects both the client's
 # --debug-file log (the load proof) and the session transcripts under the
 # account's `projects/` directory (the scenarios).
 #
 # Skips itself LOUDLY with exit 3 — never a silent pass — in two cases:
-#   1. `claude` is not on PATH.
-#   2. `claude` refuses non-interactive auth (the exact error is printed).
+#   1. the host CLI is not on PATH.
+#   2. the host CLI refuses non-interactive auth (the exact error is printed).
 # Both print a banner naming every assertion that was not run, so a reader
 # can tell "this box cannot run the proof" from "the proof failed".
 #
@@ -252,7 +252,7 @@ fi
 
 # ===========================================================================
 # The seven real dispatch/edit/background-wait scenarios. Each drives its own
-# headless `claude -p` session, with this repo as a --plugin-dir, against a
+# headless host-CLI session, with this repo as a --plugin-dir, against a
 # FRESH scratch git project under mktemp (never the load-proof's own $proj),
 # and asserts against BOTH the session's --output-format json result AND the
 # session transcript located via its session_id.
@@ -349,8 +349,8 @@ wv_e2e_run_session_no_bypass() {
 wv_e2e_find_transcript() {
   # wv_e2e_find_transcript <session-id> -> the transcript .jsonl path on
   # stdout, or empty. Searched across both locations this box is known to
-  # use (a nested claude session's own CLAUDE_CONFIG_DIR is not honoured by
-  # a further-nested nohup'd `claude -p`, measured while building this
+  # use (a nested session's own CLAUDE_CONFIG_DIR is not honoured by
+  # a further-nested nohup'd headless run, measured while building this
   # file: the account's projects/ dir was NOT where these scratch sessions'
   # transcripts landed — the default $HOME/.claude/projects/ was), so both
   # roots are always searched rather than assumed.
@@ -521,7 +521,7 @@ wv_e2e_scenario_b() {
 # SubagentStop arriving before the client had flushed the stopping agent's own
 # transcript (measured at roughly one live run in five while this file was written).
 # The hook fixes that — scripts/hooks/subagent-stop.sh now waits, bounded
-# at 12 x 200 ms, for the transcript to hold a complete assistant line and to stop
+# at 12 x 200 ms, for the transcript to hold a complete model-reply line and to stop
 # growing before reading it, and marks the ledger line transcript_incomplete if it
 # cannot confirm — and tests/cases/stop-181-transcript-settle.sh drives that exact
 # race deterministically with a background writer.
@@ -884,7 +884,7 @@ wv_e2e_scenario_g() {
     wv_sc_fail "$name" "expected exactly one background sleep 20 call, found ${count:-unreadable} in $child"
     return
   fi
-  # Count feedback records, not assistant paraphrases or prompt text. The prompt
+  # Count feedback records, not model paraphrases or prompt text. The prompt
   # contains no rule token. A durable latch alone cannot prove message delivery.
   count="$(jq -s '[.[] | select(.type == "user" or .type == "system") |
     select(any(.. | strings; contains("[W-BGWAIT]")))] | length' "$child" 2>/dev/null)"

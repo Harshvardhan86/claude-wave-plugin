@@ -1,8 +1,8 @@
-# claude-wave-plugin
+# wave-orchestrator
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/LICENSE) [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CHANGELOG.md) [![the host CLI Plugin](https://img.shields.io/badge/Claude_Code-plugin-7C3AED.svg)](https://docs.claude.com/en/docs/claude-code/plugins) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Harshvardhan86/claude-wave-plugin/blob/main/CONTRIBUTING.md)
 
-> Run Claude Code like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
+> Run your coding agent like an engineering org. Wave-based execution with dedicated sub-agents per phase, computed-style visual verification, no "tsc passes" lies.
 
 ![A complete wave run — 17 phases, 4h 56m, 483.2k tokens, all checks green](assets/wave-run-output.png)
 
@@ -36,7 +36,7 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 
 ## How is this different?
 
-|                              | claude-wave-plugin           | Superpowers              | Vanilla Claude Code |
+|                              | wave-orchestrator            | Superpowers              | Vanilla host CLI    |
 |------------------------------|------------------------------|--------------------------|---------------------|
 | Workflow philosophy          | Evidence-first verification  | Brainstorm → plan → execute | One-shot prompts |
 | Phases per feature           | 17 base + 2 conditional      | 7 stages                 | None                |
@@ -46,19 +46,19 @@ The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin opt
 | Auto-compact recovery        | ✅ Checkpoint resume          | ❌                       | ❌                  |
 | Best for                     | Production codebases where bugs cost money | Greenfield features, creative flow | Prototypes |
 
-Both `claude-wave-plugin` and Superpowers are serious frameworks built by people shipping real code with Claude Code. They optimise for different problems. If you're brainstorming a new product feature, Superpowers' creative flow is excellent. If you're shipping into a production codebase where "the agent said it's done" is not acceptable evidence, this plugin is for you.
+Both `wave-orchestrator` and Superpowers are serious frameworks built by people shipping real code with the host CLI. They optimise for different problems. If you're brainstorming a new product feature, Superpowers' creative flow is excellent. If you're shipping into a production codebase where "the agent said it's done" is not acceptable evidence, this plugin is for you.
 
 ## Why this exists
 
-Most Claude Code workflows are one-shot: type a prompt, get a diff, ship it. That works for prototypes. It produces piles of fake-done features in production codebases — features whose tests pass but whose pages render blank, whose configs validate but whose runtime never reads them, whose `data-theme="dark"` attribute gets set on `<html>` while the screenshot stays light.
+Most single-agent workflows are one-shot: type a prompt, get a diff, ship it. That works for prototypes. It produces piles of fake-done features in production codebases — features whose tests pass but whose pages render blank, whose configs validate but whose runtime never reads them, whose `data-theme="dark"` attribute gets set on `<html>` while the screenshot stays light.
 
-Wave-based execution treats Claude Code as an **orchestration layer**, not an autocomplete. Every phase of shipping a feature gets its own dedicated sub-agent with lean context — and the orchestrator gates each hand-off on real evidence (live stack screenshots, computed-style assertions, true end-to-end runs), not on "build clean".
+Wave-based execution treats the host CLI as an **orchestration layer**, not an autocomplete. Every phase of shipping a feature gets its own dedicated sub-agent with lean context — and the orchestrator gates each hand-off on real evidence (live stack screenshots, computed-style assertions, true end-to-end runs), not on "build clean".
 
 This plugin packages that workflow.
 
 ## Prerequisites
 
-- **Claude Code** installed and authenticated. See the [official docs](https://docs.claude.com/en/docs/claude-code/overview).
+- **The host CLI** installed and authenticated. See its official documentation.
 - A project to run waves against (any language / stack).
 - For hook enforcement: Bash, Git, `jq`, `flock`, `realpath` and standard shell utilities.
   Missing hook prerequisites warn and allow; install them for the gates to operate.
@@ -72,7 +72,7 @@ This plugin packages that workflow.
 /plugins marketplace add https://github.com/Harshvardhan86/claude-wave-plugin
 
 # Then install the plugin
-/plugins install claude-wave-plugin
+/plugins install wave-orchestrator
 ```
 
 After installation you should see two new slash commands available:
@@ -88,10 +88,10 @@ If you'd rather install directly:
 
 ```bash
 git clone https://github.com/Harshvardhan86/claude-wave-plugin.git \
-  ~/.claude/plugins/local/claude-wave-plugin
+  ~/.claude/plugins/local/wave-orchestrator
 ```
 
-Restart Claude Code. The plugin should be picked up automatically.
+Restart the host CLI. The plugin should be picked up automatically.
 
 ## Quickstart — your first wave
 
@@ -118,7 +118,7 @@ Once you've shipped two or three waves with `--demo` successfully, drop the flag
 /wave-start "implement the new payment flow"
 ```
 
-This invokes the canonical pipeline: 17 base phases plus `[DR]` (auto-engaged for UI waves) and optional `[CR]` (opt-in via `cr_enabled`). Brutal AC, Silent Error Analysis, Brutal SEA, Dependency Audit, Output Alignment, Brutalised E2E, version bump, commit, cleanup, checkpoint, dashboard — all dispatched as separate Agents with proper Opus / Sonnet / Haiku model routing.
+This invokes the canonical pipeline: 17 base phases plus `[DR]` (auto-engaged for UI waves) and optional `[CR]` (opt-in via `cr_enabled`). Brutal AC, Silent Error Analysis, Brutal SEA, Dependency Audit, Output Alignment, Brutalised E2E, version bump, commit, cleanup, checkpoint, dashboard — all dispatched as separate Agents with proper model-tier routing.
 
 If context fills before completion, `/wave-checkpoint` writes resume state to `.wave/checkpoints/`. A fresh session picks up exactly where you left off.
 
@@ -126,7 +126,7 @@ If context fills before completion, `/wave-checkpoint` writes resume state to `.
 
 ### The full v2 framework (`framework/`)
 
-This plugin **vendors the complete Wave Execution Framework v2** — refined over months of production engineering work where bugs cost real money. 17 base phases plus two conditional gates: `[DR]` Design Review at Phase 1.5 (mandatory whenever the wave ships UI — web, mobile, Storybook, CLI-TUI) and `[CR]` Code Review at Phase 3.5 (optional, opt-in). Maximum surface per wave: 19 phases. Model-routed across Opus / Sonnet / Haiku, with hook-enforced invariants and worktree isolation for writing dispatches.
+This plugin **vendors the complete Wave Execution Framework v2** — refined over months of production engineering work where bugs cost real money. 17 base phases plus two conditional gates: `[DR]` Design Review at Phase 1.5 (mandatory whenever the wave ships UI — web, mobile, Storybook, CLI-TUI) and `[CR]` Code Review at Phase 3.5 (optional, opt-in). Maximum surface per wave: 19 phases. Model-routed across three tiers (advisor, executor, mechanical), with hook-enforced invariants and worktree isolation for writing dispatches.
 
 ### Demo on-ramps (`skills/`)
 
@@ -212,7 +212,7 @@ v0.2.1 adds these enforced contracts:
 
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
 `/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
-advised: Claude Code cannot block compaction through this hook. Start a fresh
+advised: the host CLI cannot block compaction through this hook. Start a fresh
 terminal from the recorded resume instructions.
 
 These gates check evidence files and markers, not the truth of test results.
@@ -286,7 +286,7 @@ Each rule was learned from a specific incident, not from a blog post.
 ## Repository structure
 
 ```
-claude-wave-plugin/
+wave-orchestrator/
 ├── .claude-plugin/
 │   ├── plugin.json                              # plugin manifest (no hooks field)
 │   └── marketplace.json                         # marketplace listing
@@ -362,20 +362,20 @@ claude-wave-plugin/
 ## Listed on
 
 - [Flowy](https://www.flowy.sh/listings/harshvardhan86-claude-wave-plugin) — plugin directory entry listing skills, commands, and repo
-- [Vibed Lab Plugins](https://plugins.vibed-lab.com/plugin/harshvardhan86-claude-wave-plugin) — curated Claude Code plugin directory
+- [Vibed Lab Plugins](https://plugins.vibed-lab.com/plugin/harshvardhan86-claude-wave-plugin) — curated plugin directory
 - [MCP Market](https://mcpmarket.com/tools/skills/wave-orchestrator) — lists all seven skills individually, e.g. ac-writer as "Brutal Acceptance Criteria Writer"
 - [Skills Directory](https://www.skillsdirectory.com/skills?author=Harshvardhan86) — all seven skills listed with `npx skills add` install commands
 - [SkillsMP](https://skillsmp.com/creators/harshvardhan86) — creator page listing the plugin's seven skills
-- [Claude Code Insights](https://zhoux77899.github.io/claude-code-insights/) — daily-updated tracker of active Claude Code repositories
+- [Code Insights](https://zhoux77899.github.io/claude-code-insights/) — daily-updated tracker of active agent-CLI plugin repositories
 
 ## Used in production by
 
-This plugin is in early public release. If you're shipping with `claude-wave-plugin` in a real engineering org, [open an issue](https://github.com/Harshvardhan86/claude-wave-plugin/issues/new) or DM [@Anim1986](https://x.com/Anim1986) — I'll add your team here and would love to hear what's working, what's not, and what's missing.
+This plugin is in early public release. If you're shipping with `wave-orchestrator` in a real engineering org, [open an issue](https://github.com/Harshvardhan86/claude-wave-plugin/issues/new) or DM [@Anim1986](https://x.com/Anim1986) — I'll add your team here and would love to hear what's working, what's not, and what's missing.
 
 ## Talks & writing
 
-- 🎤 **[Beyond Vibe Coding — Claude Builders Delhi NCR, May 2026](https://www.linkedin.com/posts/harshvardhan-chouhan_claude-delhi-event-recap-ugcPost-7459117381680881664-tJ1q)** — the talk that introduced this framework. Recap with photos and the core thesis.
-- ✍️ *Coming soon:* TDD with sub-agents — the patterns from `claude-wave`. Acceptance criteria, evidence-first verification, brutal silent-error scans.
+- 🎤 **[Beyond Vibe Coding — Delhi NCR builders meetup, May 2026](https://www.linkedin.com/posts/harshvardhan-chouhan_claude-delhi-event-recap-ugcPost-7459117381680881664-tJ1q)** — the talk that introduced this framework. Recap with photos and the core thesis.
+- ✍️ *Coming soon:* TDD with sub-agents — the patterns from this plugin. Acceptance criteria, evidence-first verification, brutal silent-error scans.
 
 ## Status
 

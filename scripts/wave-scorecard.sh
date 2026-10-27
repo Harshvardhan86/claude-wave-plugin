@@ -75,8 +75,11 @@ wave_dir="$WV_ROOT/.wave"
 ledger="$wave_dir/ledger.jsonl"
 state_file="$wave_dir/state.json"
 
+wv_sc_delivery="$(jq -r 'if has("delivery") then (.delivery|tostring) else empty end' "$state_file" 2>/dev/null)"
+[ "$wv_sc_delivery" = "null" ] && wv_sc_delivery=""
+
 lo_section="$(wv_lo_latest_section "$wave_dir")"
-if [ ! -s "$ledger" ] && [ -z "$lo_section" ]; then
+if [ ! -s "$ledger" ] && [ -z "$lo_section" ] && [ -z "$wv_sc_delivery" ]; then
   printf 'wave-scorecard.sh: no ledger at %s; nothing has been dispatched yet.\n' "$ledger"
   exit 0
 fi
@@ -173,6 +176,46 @@ wv_wave_id="$(jq -r '.wave // "unknown"' "$state_file" 2>/dev/null)"
 [ -n "$wv_wave_id" ] && [ "$wv_wave_id" != "null" ] || wv_wave_id="unknown"
 
 wv_sc_append "# Wave $wv_wave_id scorecard"
+if [ -n "$wv_sc_delivery" ]; then
+  wv_sc_append ""
+  wv_sc_append "## Delivery"
+  wv_sc_append ""
+  case "$wv_sc_delivery" in
+    undelivered)
+      wv_sc_append "- undelivered. Reasons from .wave/ben-close.md:"
+      if [ -f "$wave_dir/ben-close.md" ]; then
+        wv_sc_reasons="$(awk '
+          BEGIN { go=0; n=0 }
+          go && n<20 { print "- " $0; n++ }
+          /^BENEFIT: (DELIVERED|UNDELIVERED)$/ && !go { go=1 }
+        ' "$wave_dir/ben-close.md")"
+        # Each quoted line is capped at 200 characters of reason text (an
+        # ellipsis marks the cut) as well as the 20-line cap above, so one
+        # runaway line cannot swamp the document. awk has already prefixed
+        # "- ", which is not counted.
+        while IFS= read -r line; do
+          [ -n "$line" ] || continue
+          if [ "${#line}" -gt 202 ]; then
+            line="${line:0:202}…"
+          fi
+          wv_sc_append "$line"
+        done <<<"$wv_sc_reasons"
+      fi
+      ;;
+    unverified)
+      wv_sc_append "- unverified: the benefit was never checked at close."
+      ;;
+    delivered)
+      wv_sc_append "- delivered."
+      ;;
+    not-applicable)
+      wv_sc_append "- not-applicable: this wave did not require a benefit contract."
+      ;;
+    *)
+      wv_sc_append "- $wv_sc_delivery"
+      ;;
+  esac
+fi
 wv_sc_append ""
 wv_sc_append "| Phase | Role | Model | Output Tokens | Budget | Ratio | Rework |"
 wv_sc_append "|---|---|---|---|---|---|---|"

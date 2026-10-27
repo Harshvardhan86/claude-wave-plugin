@@ -1,9 +1,10 @@
 {
   "script": "stop.sh",
+  "note": "solo mode with behaviour_change true and no ben-close.md, a non-empty ledger, an outstanding leftover: Stop prints W-LEFTOVER once (it names the scorecard, so it is this call's pointer: no W-SCORECARD) and no W-UNDELIVERED (a solo verdict is not-applicable). Negative control for W-UNDELIVERED inside the leftover family. lo_base for tests/fixtures/leftover-case.sh. A full/demo Stop cannot carry W-LEFTOVER: a complete wave that is not closed gets W-STATE only (a Stop never closes a wave); the closing SubagentStop composition is leftover-435.",
   "seed": {
-    "state": "state/full-all-done.json",
+    "state": "state/solo-bc.json",
     "files": {
-      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"CCP\",\"role\":\"executor\",\"output\":100}\n"
     }
   },
   "stdin": {
@@ -22,12 +23,14 @@
     "decision": "warn",
     "rule": "W-LEFTOVER",
     "reason_template": "W-LEFTOVER",
+    "negative_control_for": "W-UNDELIVERED",
     "reason_contains": [
       "b2",
       "remedy:"
     ],
     "stdout_absent": [
-      "W-SCORECARD"
+      "W-SCORECARD",
+      "W-UNDELIVERED"
     ]
   }
 }

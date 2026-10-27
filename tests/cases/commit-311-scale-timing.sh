@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/commit-311-scale-timing.sh - AC-311.
 #
-# A 1 MB single-line command carrying exactly one `Co-Authored-By: Claude`
+# A 1 MB single-line command carrying exactly one attribution
 # trailer denies within 2 seconds (no windowed/quadratic scan blowing up on
 # a huge command); and separately, a command whose JSON-encoded string
 # carries a NUL byte decides correctly (bash cannot hold an embedded NUL in

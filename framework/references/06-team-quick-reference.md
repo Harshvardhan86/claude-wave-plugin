@@ -6,7 +6,7 @@ Every team names its **dispatch pattern** (SDT / SDT-seq / PDT from [`01-archite
 
 | Team | Topology | Members | Pattern | Models | Agent flags | Activated |
 |------|----------|---------|---------|--------|-------------|-----------|
-| Orchestrator | — | 1 (singleton) | main session | Opus 4.7 (1M ctx) | `effort: xhigh` | Session start |
+| Orchestrator | — | 1 (singleton) | main session | Opus tier (long context) | `effort: xhigh` | Session start |
 | Permission Team | P | 3 (Lead + Executor + Reviewer) | SDT | Sonnet | — | Session start, ONCE |
 | Dashboard Team | P | 3 (Lead + Executor + Reviewer) | SDT | Haiku | `run_in_background: true` | Continuous background |
 | Checkpoint Team | P | 3 (Lead + Executor + Reviewer) | SDT | Sonnet | — | Each wave end + `PreCompact` hook |

@@ -1,0 +1,20 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.stderr_rules beside a real expect.rule: stderr_rules is exclusive with rule BY KEY PRESENCE, so this is a harness error even though stderr carries exactly the declared list. No decision field, so the single-rule shape check never runs and nothing but the exclusivity check can reject it. harness_fails inverts.",
+  "seed": {
+    "state": "state/example-active.json"
+  },
+  "stdin": {
+    "hook_event_name": "SubagentStop",
+    "last_assistant_message": "SELFCHECK_STDERR_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "rule": "W-FAKE",
+    "stderr_rules": [
+      "W-FAKE",
+      "W-FAKE2"
+    ],
+    "harness_fails": true
+  }
+}

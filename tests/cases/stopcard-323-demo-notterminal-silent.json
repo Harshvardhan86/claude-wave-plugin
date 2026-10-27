@@ -1,7 +1,7 @@
 {
   "script": "stop.sh",
   "ac": "AC-323",
-  "note": "demo mode, non-empty ledger, TEET not done -> silent",
+  "note": "demo mode, non-empty ledger, wave not complete (TEET not done) -> silent",
   "seed": {
     "state": "state/demo-through-green.json",
     "files": {

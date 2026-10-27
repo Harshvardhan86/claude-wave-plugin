@@ -25,6 +25,8 @@ the whole tree.
     "exit": 0,
     "decision": "deny|block|warn|allow|silent",
     "rule": "W-TAG",
+    "rules": ["W-TAG", "W-OTHER"],
+    "stderr_rules": ["W-TAG", "W-OTHER"],
     "reason_template": "W-TAG",
     "reason_contains": ["substring the rendered reason must carry"],
     "stdout_absent": ["substring stdout must not carry"],
@@ -92,7 +94,51 @@ present (a case does not need to assert every field).
     state/ledger side effect rather than an stdout shape; assert that kind
     with `assert_state` / `assert_ledger_lines` instead of `assert_warn`.
 - **`expect.rule`** — the rule id (`W-...`) the rendered reason must carry.
-  Declaring this makes the case the **positive** case for that rule id.
+  Declaring this makes the case the **positive** case for that rule id. With a
+  `deny`/`block`/`warn` decision the reason must start with `[<rule>] ` AND
+  carry exactly one `W-` token in total.
+- **`expect.rules`** — for a hook call that queues SEVERAL warnings into its one
+  JSON object (on a stdout warn channel; the close-time W-LEFTOVER /
+  W-UNDELIVERED / W-SCORECARD composition is written by the closing SubagentStop
+  to stderr, see `stderr_rules`): the exact ORDERED list of `W-` rule tokens the WHOLE reason (for
+  a warn, the whole `additionalContext`) must carry. Both the count and the order
+  are asserted — every `W-[A-Z0-9-]+` token in the text is extracted, the same
+  way the single-token check counts them, and the list must equal this one — and
+  the reason must start with `[<first rule>] `. With a `deny`/`block`/`warn`
+  decision the shape check takes the first rule of the list. Every id in the list
+  counts as a **positive** case for coverage. A case declares `rule` OR `rules`,
+  never both, and the two are exclusive by KEY PRESENCE: `"rule": ""` or
+  `"rule": null` beside `rules` is still both keys. A case declaring both, or a
+  `rules` that is not a non-empty array of `W-` ids, fails as a harness error.
+  Self-checks: `_selfcheck-rules-order` (right order, passes) and the inverted
+  `_selfcheck-rules-wrong-order` / `_selfcheck-rules-short` /
+  `_selfcheck-rules-and-rule` / `_selfcheck-rules-and-rule-empty` /
+  `_selfcheck-rules-and-rule-null` (reversed list, a list missing a rendered
+  token, both keys declared with a real, an empty and a null `rule` — each must be
+  rejected; the three both-keys cases carry no `decision`, so the exclusivity
+  check is the only assertion that can reject them).
+- **`expect.stderr_rules`** — the same exact ORDERED list, read from **stderr**:
+  the only warning channel `SubagentStop` and `PreCompact` have, so this is how a
+  case asserts the close-time composition the closing `SubagentStop` writes
+  there (one warning per line). Count and order are asserted with the same token
+  regex, stderr must start with `[<first rule>] `, and it never falls back to
+  stdout. Independent of `decision`. A case declares exactly ONE of `rule`,
+  `rules` and `stderr_rules`: `stderr_rules` is exclusive with `rule` and with
+  `rules` by KEY PRESENCE, as those two are with each other (`"rule": ""` or
+  `"rule": null` beside `stderr_rules` is still both keys), and a case declaring
+  both is a harness error.
+  Every id in the list counts as a **positive** case for coverage, and
+  `tests/tools/reason-corpus.sh` drives each listed id on its own line of the
+  text. A `stderr_rules` that is not a non-empty array of `W-` ids is a harness
+  error. Self-checks: `_selfcheck-stderr-rules-order` (passes) and the inverted
+  `_selfcheck-stderr-rules-wrong-order` / `_selfcheck-stderr-rules-stdout-only`
+  (reversed list; the right list but on stdout only — both must be rejected),
+  plus the inverted exclusivity checks `_selfcheck-stderr-rules-and-rule` /
+  `_selfcheck-stderr-rules-and-rule-empty` / `_selfcheck-stderr-rules-and-rule-null`
+  / `_selfcheck-stderr-rules-and-rules` (a real, an empty and a null `rule`, and a
+  `rules` list, beside a correct `stderr_rules`). None carries a `decision`, and
+  the `rules` one drives a fake-hook trigger that writes the list on both
+  channels, so the exclusivity check is the only assertion that can reject them.
 - **`expect.negative_control_for`** — the rule id this case proves does
   *not* fire on a neighbouring, otherwise-similar input (paired with
   `expect.decision: "allow"` or `"silent"`). Declaring this makes the case
@@ -228,5 +274,27 @@ test cases incrementally without blocking other work.
 **A suite that cannot run at all — the whole file, not one case — is
 reported `SKIPPED`, never counted as a pass.** This applies repo-wide: for
 example `tests/e2e.sh` (added in a later task) is documented to skip itself
-loudly when `claude` is not on `PATH`; a `SKIPPED` suite must never be
+loudly when the host CLI is not on `PATH`; a `SKIPPED` suite must never be
 reported or logged as if it had passed.
+
+**Scratch directory.** Each run creates `${TMPDIR:-/tmp}/wave-plugin-tests.XXXXXX`
+(`WV_RUN_TMP`). The process that created it removes it on exit when it ended
+green; after any failure, or with `WV_KEEP_TMP=1`, it is kept and its path is
+printed so the case logs inside stay readable. A case file run standalone does
+the same for its own directory, an interrupted run is cleaned like a green one,
+and a `WV_RUN_TMP` supplied by the caller is never removed
+(`tests/cases/_selfcheck/data-scratch-cleanup.sh`). A killed mutant is a red
+run by design, so every `tests/tools/mutants-*.sh` driver runs the harness with
+`TMPDIR` inside its own temp root and removes it after each run (kept with
+`--keep`): a mutation sweep leaves no scratch behind
+(`tests/cases/_selfcheck/data-mutant-scratch.sh`).
+
+**Case cleanups compose; never `trap ... EXIT` in a case.** bash keeps one
+EXIT trap per process, so a case that installs its own replaces the scratch
+cleanup and, run standalone, leaks its run directory. Register a cleanup with
+`wv_on_exit '<command>'` (tests/lib/assert.sh) instead: handlers run in
+registration order, each sees the original exit status in `$?`, the scratch
+cleanup runs after them, and the process keeps the status it was exiting
+with. `_selfcheck/data-scratch-cleanup.sh` runs a real case that registers
+its own cleanup (`data-reasons.sh`) standalone, green and red, and refuses
+any case file that still installs an EXIT trap.

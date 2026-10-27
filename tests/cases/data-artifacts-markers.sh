@@ -133,7 +133,7 @@ row_count=$((row_count - 1))
 # ---- mutation proof: corrupt one artifact/marker cell in a temp copy ----
 
 tmp_phases="$(mktemp "${TMPDIR:-/tmp}/phases-am-mutated.XXXXXX.tsv")"
-trap 'rm -f "$tmp_phases"' EXIT
+wv_on_exit 'rm -f "$tmp_phases"'
 
 # BC's marker is ^FINDINGS: [0-9]+$; corrupt it to a marker that would never
 # match a real findings file.

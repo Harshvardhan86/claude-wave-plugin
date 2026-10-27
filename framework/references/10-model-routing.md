@@ -8,7 +8,7 @@ Opus holds every position where bad judgement causes rework — planning, criter
 
 | Role type | Model | Why |
 |-----------|-------|-----|
-| Orchestrator (main session) | **Opus 4.7 (1M ctx), effort: xhigh** | Long-horizon planning + routing user decisions + holding all wave summaries. 1M ctx prevents mid-mission compaction. |
+| Orchestrator (main session) | **Opus tier (long context), effort: xhigh** | Long-horizon planning + routing user decisions + holding all wave summaries. long context prevents mid-mission compaction. |
 | Team Lead — reasoning-heavy (AC, ACB, OA, TEET-TC, BTEET, Bug Fix) | **Opus** | Decomposition, criteria authoring, options presentation — judgement tasks. |
 | Team Lead — execution-heavy (TDD-RED, TDD-GREEN, TEET, BTEET-X, SEA, DS, Cleanup, Checkpoint, Permission) | **Sonnet** | Coordinates mechanical work; doesn't need to author novel judgement. |
 | Executor — writing code / tests / fixes | **Sonnet** | Clean implementation at 1/5 Opus cost. |

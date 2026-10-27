@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>QR generator — claude-wave-plugin</title>
+    <title>QR generator — wave-orchestrator</title>
     <style>
       * { box-sizing: border-box; }
       body {
@@ -58,7 +58,7 @@
     </style>
   </head>
   <body>
-    <h1>QR generator — claude-wave-plugin</h1>
+    <h1>QR generator — wave-orchestrator</h1>
     <p class="subtitle">Paste your repo URL, generate the QR for the closing slide. Save as PNG, embed.</p>
 
     <label for="url">Repo URL</label>
@@ -141,7 +141,7 @@
         const canvas = canvasWrap.querySelector("canvas");
         if (!canvas) return;
         const a = document.createElement("a");
-        a.download = "claude-wave-plugin-qr.png";
+        a.download = "wave-orchestrator-qr.png";
         a.href = canvas.toDataURL("image/png");
         a.click();
       });

@@ -1,11 +1,11 @@
 {
   "script": "stop.sh",
   "ac": "AC-322",
-  "note": "AD done but .wave/.scorecard-printed already exists -> silent, printed once per wave (negative control for W-SCORECARD)",
+  "note": "solo mode (no close exists there), a non-empty ledger, and .wave/.scorecard-printed already present -> silent: the pointer is printed once per wave (negative control for W-SCORECARD). A full/demo wave cannot be the subject here: complete-but-not-closed gets W-STATE at Stop (a Stop never closes a wave) and a closed wave is silent for every reason.",
   "seed": {
-    "state": "state/full-all-done.json",
+    "state": "state/solo.json",
     "files": {
-      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n",
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"CCP\",\"role\":\"executor\",\"output\":100}\n",
       ".wave/.scorecard-printed": ""
     }
   },

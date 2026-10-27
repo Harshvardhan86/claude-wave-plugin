@@ -1,4 +1,4 @@
-# Contributing to claude-wave-plugin
+# Contributing to wave-orchestrator
 
 Thanks for taking a look. Contributions are welcome — especially:
 
@@ -14,7 +14,7 @@ Open a GitHub issue with:
 - A clear title naming the affected skill, phase, or reference file
 - The wave goal and the dispatch that produced the issue
 - Expected vs actual artifact — paste the relevant `.wave/<phase>.md` excerpt
-- Your environment: Claude Code version, OS, the project's stack
+- Your environment: host CLI version, OS, the project's stack
 
 ## Submitting a pull request
 
@@ -38,4 +38,4 @@ Open a GitHub issue with:
 - Changes that soften the invariants (lean context, strict TDD, fresh-eyes hardening, user-decides-on-bugs)
 - New phases without a clear gate definition and hand-off contract
 - Examples that endorse one specific design system over another (keep on-ramps stack-agnostic)
-- Co-authored trailers naming AI assistants
+- Co-authored trailers naming AI tools

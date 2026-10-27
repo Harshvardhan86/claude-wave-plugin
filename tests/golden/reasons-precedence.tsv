@@ -65,3 +65,23 @@ precedence	rule_id	band
 35	W-REMINDER	advisory
 36	W-LEFTOVER	advisory
 37	W-SCORECARD	advisory
+38	W-UNDELIVERED	advisory
+#
+# Two different orders, kept apart:
+#
+# REGISTRATION PRECEDENCE (the numbers above). W-UNDELIVERED is registered
+# at the end of the advisory band because it names an outcome of a close
+# that already happened, never a dispatch that can be refused. It is a
+# warning, not a block: an undelivered wave can still be committed. This
+# number ranks rules against each other; it does not decide the order in
+# which close-time warnings are written.
+#
+# CLOSE-TIME QUEUE ORDER (lib.sh wv_close_announce). The announcer for a
+# full or demo wave is the SubagentStop that closes it; it writes, one per
+# line on stderr: W-LEFTOVER (leftovers not warned of before; it names the
+# scorecard, so it is that call's pointer), then W-UNDELIVERED (an
+# undelivered or unverified verdict), then W-SCORECARD (the pointer, unless
+# W-LEFTOVER already carried it). So on a clean close the verdict comes
+# BEFORE the scorecard pointer, the reverse of 37/38 above. A full or demo
+# Stop never closes a wave and writes neither the verdict nor the pointer;
+# a solo Stop has no verdict and writes only W-LEFTOVER or W-SCORECARD.

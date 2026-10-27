@@ -25,10 +25,10 @@ v0.1.0 ships zero hooks. `plugin.json` has no `hooks` entry and there is no
 
 `framework/references/11-hooks-and-automation.md` also documents a hook syntax
 (`"if"`, `"decision": "block-on-nonzero"`, `claude invoke-agent`, `TaskCreated`
-handlers with `${task.id}`) that Claude Code does not have. It is replaced by the
+handlers with `${task.id}`) that the host CLI does not have. It is replaced by the
 real schema in this change.
 
-## 2. Verified platform facts (Claude Code 2.1.266, probed 2026-09-09)
+## 2. Verified platform facts (host CLI 2.1.266, probed 2026-09-09)
 
 These were measured with a throwaway probe plugin in headless sessions, not
 taken from memory. The design depends on every one of them. Raw probe logs are
@@ -345,7 +345,7 @@ Cross-checks:
   `resolved_model: "unknown"` and a `W-RESOLVE-UNKNOWN` warning. Above the
   request → nothing. A `PostToolUse` hook cannot deny and never tries.
 - At `SubagentStop`, the agent transcript is streamed and the **modal tier of
-  `assistant` turns with `usage.output_tokens > 0`** is compared with the
+  model-reply turns with `usage.output_tokens > 0`** is compared with the
   requirement, reconciled against `resolvedModel`. Below it, the phase records
   `tier_ok: false` and `tainted: true`, one warning is emitted, and dependent
   dispatches carry a `W-TAINT` warning — **but are allowed**. A single
@@ -353,7 +353,7 @@ Cross-checks:
   answers a prompt with a small model) and by platform quota fallback; a
   platform-side downgrade is recorded, not punished, because the remedy of a
   gate here would be paid rework on a correct wave. A transcript with no
-  `assistant` line, or lines with no `message.model`, records
+  model-reply line, or lines with no `message.model`, records
   `tier_verified: false` and `tier_ok: null` — unverifiable is not taint.
 - `subagent_type: "fork"` is denied during a full/demo wave (`W-FORK`): a fork
   inherits the orchestrator's entire context, which defeats §9's lean-context
@@ -581,7 +581,7 @@ Scorecard: `scripts/wave-scorecard.sh` renders the ledger as a table (phase,
 role, model, output tokens, budget, ratio, rework count) plus, for `TDE-GREEN`,
 output tokens per changed line (`git diff --shortstat <base_sha>`) and the
 passing-test count from `green.md`. The `Stop` hook fires at the end of every
-assistant turn, so it prints the scorecard path **only** once the active mode's
+reply turn, so it prints the scorecard path **only** once the active mode's
 terminal phase (`AD` full, `TEET` demo) is `done`, and writes
 `.wave/.scorecard-printed` so it prints once.
 
@@ -608,9 +608,8 @@ change.
   (`git -C dir commit`, `cd x && git commit`, extra spaces): denies when a
   staged path matches a row of `hooks/planning-paths.tsv` (`W-COMMIT-DOC`) or
   when the message text carries an attribution trailer
-  (`Co-Authored-By: .*(Claude|Anthropic)`, `Generated with .*Claude Code`,
-  `claude.ai/code/session`) (`W-COMMIT-TRAILER`). Functional mentions in code
-  or in a message ("fix the claude-config parser", "bump the vendor SDK") are
+  (the five trailer forms defined once as `WV_TRAILER_ERE` in `scripts/hooks/lib.sh`, shared with the installed commit-msg hook) (`W-COMMIT-TRAILER`). Functional mentions in code
+  or in a message ("fix the config parser", "bump the vendor SDK") are
   not touched, and `--amend --no-edit` is judged on `git log -1 --format=%B`.
   Git is run as `git -C "<stdin cwd>"` — never `CLAUDE_PROJECT_DIR` — so the
   guard inspects the index the commit will actually use, including inside a
@@ -835,7 +834,7 @@ Changed (minimal):
 | F5 | New `when` column with `anytime`; `AD` is `anytime` and exempt from `after`, the round ceiling and budgets. |
 | F6 | New principle 3 in §3 (a hook that could not read its input has measured nothing): `jq`/`flock` guards, a positive parse marker gating every deny, no `set -e`, no `exit 2` on error paths. |
 | F7 | `flock` a dedicated never-replaced `.wave/lock` held across the whole read-modify-write including the rename; `-w 10`; timeout warns; ledger appended under the same lock; duplicate `agent_id` named as the tell of a lost lock. |
-| F8 | The transcript tier check is a **warning**, judged on the modal tier of assistant turns with output tokens, reconciled with `resolvedModel`. `tainted` no longer gates a dependent dispatch. |
+| F8 | The transcript tier check is a **warning**, judged on the modal tier of model-reply turns with output tokens, reconciled with `resolvedModel`. `tainted` no longer gates a dependent dispatch. |
 | F9 | `ui`, `behaviour_change` and `cr_enabled` start `"unknown"`; `TDE-RED` is denied (`W-SCOPE`) while any is unknown, naming `scripts/wave-set.sh`. A silent DR skip is impossible. |
 | F10 | `wave-init.sh` appends `.wave/` to `.git/info/exclude`; `.wave/**` is the first row of `hooks/planning-paths.tsv`. |
 | F11 | Tag enum stays the five values (a closed grammar is testable); `hooks/roles.tsv` maps the framework's role names onto them and the deny reason quotes it; `scanner` and `writer` resolve to the `executor` tier cell. |

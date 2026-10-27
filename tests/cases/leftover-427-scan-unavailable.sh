@@ -9,12 +9,12 @@ source "$WV_TESTS_DIR/fixtures/leftover-case.sh"
 
 WV_PROJECT="$(mkproj)"
 sleep 1000 & probe_pid=$!
-trap 'kill "$probe_pid" 2>/dev/null; wait 2>/dev/null' EXIT
+wv_on_exit 'kill "$probe_pid" 2>/dev/null; wait 2>/dev/null'
 shim="$WV_RUN_TMP/$name-bin"
 mkdir -p "$shim"
 printf '%s\n' '#!/usr/bin/env bash' 'set -u' 'exit 1' > "$shim/readlink"
 chmod +x "$shim/readlink"
-lo_case '.stdin.background_tasks = []'
+lo_case '.stdin.background_tasks = [] | .seed.files[".wave/ben-close.md"] = "BENEFIT: DELIVERED\n"'
 jq --arg path "$shim:$PATH" '.env.PATH = $path' "$lo_c" > "$lo_c.tmp" && mv "$lo_c.tmp" "$lo_c"
 lo_run stop.sh
 assert_warn W-LEFTOVER || rc=1
@@ -42,7 +42,7 @@ for arg in "\$@"; do [ "\$arg" = "/proc/$probe_pid/cwd" ] || args+=("\$arg"); do
 exec "$real_readlink" "\${args[@]}"
 EOF
 WV_PROJECT="$(mkproj)"
-lo_case '.stdin.background_tasks = []'
+lo_case '.stdin.background_tasks = [] | .seed.files[".wave/ben-close.md"] = "BENEFIT: DELIVERED\n"'
 jq --arg path "$shim:$PATH" '.env.PATH = $path' "$lo_c" > "$lo_c.tmp" && mv "$lo_c.tmp" "$lo_c"
 lo_run stop.sh
 assert_warn W-SCORECARD || rc=1

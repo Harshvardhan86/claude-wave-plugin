@@ -1,7 +1,7 @@
 # Measured field names for hook stdin payloads.
 #
 # SOURCE OF TRUTH: this list is transcribed field-for-field from two probe
-# logs captured against a live Claude Code session (2.1.266, 2026-09-09) and
+# logs captured against a live host-CLI session (2.1.266, 2026-09-09) and
 # kept outside this repo:
 #   ~/WAVE_PLUGIN_ANALYSIS/probe-hooks.log
 #   ~/WAVE_PLUGIN_ANALYSIS/probe2-worktree-stopblock.log

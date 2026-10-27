@@ -1,0 +1,15 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "a case declaring BOTH expect.rule and expect.rules (here with a correct list) is a harness error: the two are exclusive by KEY PRESENCE. No decision field, so the single-rule-token check (which would reject the two rendered tokens on its own) never runs and the exclusivity check is the only assertion that can reject it. harness_fails inverts.",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "last_assistant_message": "SELFCHECK_WARN_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "rule": "W-FAKE",
+    "rules": ["W-FAKE", "W-FAKE2"],
+    "harness_fails": true
+  }
+}

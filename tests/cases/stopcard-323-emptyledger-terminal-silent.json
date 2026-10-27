@@ -1,9 +1,9 @@
 {
   "script": "stop.sh",
   "ac": "AC-323",
-  "note": "demo mode, TEET done, but an empty ledger -> silent, nothing to score",
+  "note": "an empty ledger, nothing to score -> silent, no marker. Solo mode, where a ledger is the whole eligibility signal; the demo form of this case (complete demo wave, empty ledger) now gets W-STATE at Stop because the wave is not closed (a Stop never closes a wave), and its close-time pointer rule is covered by undelivered-close-matrix.",
   "seed": {
-    "state": "state/demo-teet-done.json",
+    "state": "state/solo.json",
     "files": {
       ".wave/ledger.jsonl": ""
     }
@@ -14,6 +14,10 @@
     "session_crons": []
   },
   "expect": {
-    "decision": "silent"
+    "exit": 0,
+    "decision": "silent",
+    "files_absent": [
+      ".wave/.scorecard-printed"
+    ]
   }
 }

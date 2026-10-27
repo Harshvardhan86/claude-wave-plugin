@@ -10,7 +10,7 @@
 # note:"no transcript".
 #
 # AND NEITHER PAYS THE SETTLE CAP. The bounded settle
-# waits for a transcript to hold a complete assistant turn and stop
+# waits for a transcript to hold a complete model-reply turn and stop
 # growing; applied to a path that names no file it burned the whole 2.4s cap on
 # every stale path and then marked the ledger line transcript_incomplete — saying
 # the file was unreadable when the finding is that there is no file. A missing file
@@ -62,8 +62,8 @@ drive() {
   printf '%s' "$(lline)" | jq -e 'has("transcript_incomplete") | not' >/dev/null 2>&1 || \
     fail "$1: an ABSENT transcript is not an unreadable one — note:\"no transcript\" already says it, and transcript_incomplete would claim the file could not be read; got $(lline)"
   case "${WV_LAST_STDERR:-}" in
-    *'held no complete assistant turn'*)
-      fail "$1: the warning claims the file \"held no complete assistant turn\" when there is no file: '${WV_LAST_STDERR}'" ;;
+    *'held no complete model-reply turn'*)
+      fail "$1: the warning claims the file \"held no complete model-reply turn\" when there is no file: '${WV_LAST_STDERR}'" ;;
   esac
   return 0
 }

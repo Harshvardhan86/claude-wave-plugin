@@ -1,0 +1,19 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.rules, WRONG order: the same run as _selfcheck-rules-order with the list reversed and no decision field, so the ordered-list check is the only assertion that can reject it (coverage for both ids is satisfied by the right-order case and _selfcheck-rules-order-neg). harness_fails inverts: PASS means the harness caught the wrong order.",
+  "seed": {
+    "state": "state/example-active.json"
+  },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "last_assistant_message": "SELFCHECK_WARN_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "rules": [
+      "W-FAKE2",
+      "W-FAKE"
+    ],
+    "harness_fails": true
+  }
+}

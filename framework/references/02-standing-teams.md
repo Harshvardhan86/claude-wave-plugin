@@ -6,7 +6,7 @@ These teams persist across ALL waves. Instantiated once at session start and rem
 
 | Standing team | Topology | Pattern (see `01-architecture.md` §1.4) | Model(s) |
 |---------------|----------|-----------------------------------------|----------|
-| Orchestrator | — | Main session (singleton) | **Opus 4.7 (1M context)** |
+| Orchestrator | — | Main session (singleton) | **Opus tier (long context)** |
 | Permission Team | P | SDT | Sonnet |
 | Dashboard Team | P | SDT, `run_in_background: true` | Haiku |
 | Checkpoint Team | P | SDT | Sonnet |
@@ -16,7 +16,7 @@ These teams persist across ALL waves. Instantiated once at session start and rem
 
 ## 2.1 Orchestrator (L3 — Singleton)
 
-**Model:** Opus 4.7 with 1M context window. `effort: xhigh` for deep reasoning.
+**Model:** the Opus tier with a long context window. `effort: xhigh` for deep reasoning.
 
 **Superpower:** Wave sequencing, conflict resolution, user decision routing.
 

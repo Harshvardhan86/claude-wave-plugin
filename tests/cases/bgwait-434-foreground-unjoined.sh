@@ -67,8 +67,8 @@ assert_ledger_line '.agent == "a1" and .phase == "AD" and .role == "executor"
                     and .requested == "haiku" and .tier_ok == true' || rc=1
 
 # post-agent.sh after the stop must not reopen a stopped record.
-# AD is terminal, so the wave may already be closed; seed a still-active
-# copy of the stopped row and run PostToolUse(Agent) against it.
+# AD is anytime and does not close the wave; seed a still-active copy of
+# the stopped row and run PostToolUse(Agent) against it.
 WV_PROJECT="$(mkproj)"
 st="$WV_RUN_TMP/$name-stopped.json"
 jq '.active.a1 = {phase:"AD",role:"executor",requested_model:"haiku",
@@ -140,7 +140,7 @@ assert_ledger_line '.phase == "untagged" and .role == "unknown"' || rc=1
 # out-of-root sidecar path (wv_rel leaves a path outside the project unchanged).
 WV_PROJECT="$(mkproj)"
 stfile="$WV_TESTS_DIR/fixtures/state/bgwait-ad-unjoined.json"
-sidecar_dir="$WV_RUN_TMP/claude-accounts/proharsh/projects/-tmp-wave-plugin-e2e-scenario-I2/49194d68-d614-4504-8f34-520d3adeb949/subagents"
+sidecar_dir="$WV_RUN_TMP/host-accounts/acct1/projects/-tmp-wave-plugin-e2e-scenario-I2/49194d68-d614-4504-8f34-520d3adeb949/subagents"
 mkdir -p "$sidecar_dir"
 printf '%s' "$meta" > "$sidecar_dir/agent-a1.meta.json"
 cp "$WV_TESTS_DIR/fixtures/transcripts/all-haiku.jsonl" "$sidecar_dir/agent-a1.jsonl" || exit 1
@@ -165,7 +165,7 @@ case "$wstate" in
   *) fail "I2: recovered W-STATE must name the sidecar without its path: $wstate" ;;
 esac
 case "$wstate" in
-  *'claude-accounts'*|*"$sidecar_dir"*)
+  *'host-accounts'*|*"$sidecar_dir"*)
     fail "I2: recovered W-STATE interpolated the out-of-root path: $wstate"
     ;;
 esac
@@ -177,7 +177,7 @@ WV_PROJECT="$(mkproj)"
 stfile="$WV_TESTS_DIR/fixtures/state/bgwait-ad-unjoined.json"
 long_model="$(printf 'x%.0s' {1..200})"
 long_meta="$(printf '%s' "$meta" | jq -c --arg m "$long_model" '.model = $m')"
-sidecar_dir="$WV_RUN_TMP/claude-accounts/proharsh/projects/-tmp-wave-plugin-e2e-scenario-I2b/49194d68-d614-4504-8f34-520d3adeb949/subagents"
+sidecar_dir="$WV_RUN_TMP/host-accounts/acct1/projects/-tmp-wave-plugin-e2e-scenario-I2b/49194d68-d614-4504-8f34-520d3adeb949/subagents"
 mkdir -p "$sidecar_dir"
 printf '%s' "$long_meta" > "$sidecar_dir/agent-a1.meta.json"
 cp "$WV_TESTS_DIR/fixtures/transcripts/all-haiku.jsonl" "$sidecar_dir/agent-a1.jsonl" || exit 1

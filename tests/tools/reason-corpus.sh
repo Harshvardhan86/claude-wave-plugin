@@ -144,6 +144,24 @@ while IFS= read -r f; do
         ;;
     esac
   fi
+  # A case that declares an ordered list (`expect.rules` on stdout,
+  # `expect.stderr_rules` on stderr) is a positive for EVERY id it lists: a
+  # close-time composition queues several warnings into one hook call, and
+  # under that contract some ids (W-UNDELIVERED) are never emitted alone. The
+  # drive below measures each id on its OWN line of that text, not the whole.
+  # Harness-inverted cases (harness_fails) are not positives.
+  if [ "$(jq -r '.expect.harness_fails // false' "$f" 2>/dev/null)" != "true" ]; then
+    while IFS= read -r rr; do
+      [ -n "$rr" ] || continue
+      case "$rr" in W-*) ;; *) continue ;; esac
+      case "${WV_POS[$rr]:-}" in
+        *"$f"*) continue ;;
+      esac
+      WV_POSN["$rr"]=$(( ${WV_POSN[$rr]:-0} + 1 ))
+      WV_POS["$rr"]="${WV_POS[$rr]:-}$f
+"
+    done < <(jq -r '((.expect.rules // []) + (.expect.stderr_rules // [])) | if type == "array" then .[] | tostring else empty end' "$f" 2>/dev/null)
+  fi
   [ -n "$nid" ] && WV_NEG["$nid"]=$(( ${WV_NEG[$nid]:-0} + 1 ))
 done < <(find "$WV_CORPUS_ROOT/tests/cases" -type f -name '*.json' | sort)
 
@@ -314,7 +332,7 @@ for rid in "${WV_IDS[@]}"; do
   neg="${WV_NEG[$rid]:-0}"
   first="$(printf '%s' "${WV_POS[$rid]:-}" | head -n1)"
   printf '%-20s %-4s %-9s %-9s %s\n' "$rid" "${WV_PREC[$rid]}" "$pos" "$neg" "$(basename "${first:-<none>}")"
-  [ "$pos" -gt 0 ] || wv_finding "index: $rid has no positive case declaring expect.rule with a deny/block/warn decision"
+  [ "$pos" -gt 0 ] || wv_finding "index: $rid has no positive case (expect.rule with a deny/block/warn decision, or an expect.rules / expect.stderr_rules list naming it)"
   [ "$neg" -gt 0 ] || wv_finding "index: $rid has no negative control (expect.negative_control_for)"
 done
 
@@ -654,6 +672,33 @@ for rid in "${WV_IDS[@]}"; do
   fi
 
   cn="$(basename "$case_file" .json)"
+  # A composition case (expect.rules / expect.stderr_rules listing this id):
+  # its text is several queued warnings, one per line. This id is measured on
+  # the ONE line that is its own — every check below then applies to that line
+  # exactly as to a single-rule reason. No line, or two, is a finding.
+  wv_multi_chan="$(jq -r --arg r "$rid" '
+      if ((.expect.stderr_rules // []) | index($r)) != null then "stderr"
+      elif ((.expect.rules // []) | index($r)) != null then "stdout"
+      else "" end' "$case_file" 2>/dev/null)"
+  if [ -n "$wv_multi_chan" ] && [ "$(jq -r '.expect.rule // empty' "$case_file" 2>/dev/null)" != "$rid" ]; then
+    if [ "$wv_multi_chan" = "stderr" ]; then wv_multi_text="${WV_LAST_STDERR:-}"; else wv_multi_text="$(_wv_reason_text)"; fi
+    wv_own_lines=0
+    wv_own_first=""
+    while IFS= read -r wv_line; do
+      case "$wv_line" in
+        "[$rid] "*)
+          wv_own_lines=$((wv_own_lines + 1))
+          [ -n "$wv_own_first" ] || wv_own_first="$wv_line"
+          ;;
+      esac
+    done <<<"$wv_multi_text"
+    if [ "$wv_own_lines" != "1" ]; then
+      wv_id_verdict=BAD
+      wv_finding "drive: $rid ($cn): want exactly one $wv_multi_chan line starting '[$rid] ' in the composition, found $wv_own_lines: '$wv_multi_text'"
+      continue
+    fi
+    reason="$wv_own_first"
+  fi
   len="${#reason}"
   tokens="$(printf '%s' "$reason" | command grep -oE 'W-[A-Z0-9-]+' | wc -l | tr -d ' ')"
   own="$(printf '%s' "$reason" | command grep -oE 'W-[A-Z0-9-]+' | head -n1)"

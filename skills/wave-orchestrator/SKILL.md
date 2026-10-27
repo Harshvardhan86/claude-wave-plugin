@@ -69,7 +69,7 @@ Plus the rules baked into the demo on-ramps:
 12. **Visual vocabulary grounding.** Never invent a token the app doesn't already render. Audit compiled CSS, not theoretical class names.
 13. **Verify before scan.** Never run BC/SEA/BSEA scanners on un-verified GREEN. Live stack + screenshot first.
 14. **Permissions once, upfront.** Request all needed permissions at session start. Never again.
-15. **No AI traces.** Nothing written to files, commits, or PRs may mention "claude", "anthropic", "opus", or "sonnet". Strip Co-Authored-By trailers.
+15. **No AI traces.** Files, commit messages and PR descriptions stay generic: no vendor, model, assistant, private-project, machine, person or private-path names in prose, and no attribution trailer (a Co-Authored-By line naming an AI tool, a Generated-with line, or a session-URL line). The commit guard and the installed commit-msg hook enforce the trailer forms; the rest is review discipline. Functional mentions (the host CLI command, the plugin's own name, the model-tier routing vocabulary) are not traces.
 
 ## Phase hand-off contracts (demo mode)
 

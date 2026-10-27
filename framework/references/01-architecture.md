@@ -2,11 +2,11 @@
 
 ## 1.1 Organizational Hierarchy
 
-| Level | Role | Responsibility | Realization in Claude Code (v2) |
+| Level | Role | Responsibility | Realization in the host CLI (v2) |
 |-------|------|----------------|----------------------------------|
 | **L1** | Subagent | Atomic executor with ONE specific superpower. | A single `Agent` tool dispatch with an explicit `model`, optional `isolation: "worktree"`, optional `run_in_background: true`. |
 | **L2** | Agent Team | 2–5 subagents with a Team Lead who owns the outcome. Lead decomposes, delegates, reviews, reports unified result upstream. | **Prompt-scoped, not spawned.** Either one dispatch whose prompt carries Lead + Executor + Reviewer personas, **or** a sequence of dispatches the orchestrator fires (with only the prior output in context for fresh-eyes review). See §1.4. |
-| **L3** | Orchestrator | Singleton meta-coordinator. Sequences waves, routes decisions, manages global state. There is only ONE orchestrator per session. NEVER executes code or tests — only coordinates. | The main Claude Code session itself, running on **Opus 4.7 (1M context)**. Every `Agent` dispatch is its L1 action. |
+| **L3** | Orchestrator | Singleton meta-coordinator. Sequences waves, routes decisions, manages global state. There is only ONE orchestrator per session. NEVER executes code or tests — only coordinates. | The main host CLI session itself, running on **Opus tier (long context)**. Every `Agent` dispatch is its L1 action. |
 
 **Key distinction:**
 
@@ -14,7 +14,7 @@
 - Agent team **owns** an outcome.
 - Orchestrator **owns** the mission.
 
-**v2 platform note — no nested subagents.** Claude Code blocks L4 spawns from within a subagent. A "Team Lead" therefore cannot spawn its Executors from inside an Agent dispatch. The orchestrator is the only spawner. See §1.4 and [`09-platform-deltas.md`](09-platform-deltas.md).
+**v2 platform note — no nested subagents.** The host CLI blocks L4 spawns from within a subagent. A "Team Lead" therefore cannot spawn its Executors from inside an Agent dispatch. The orchestrator is the only spawner. See §1.4 and [`09-platform-deltas.md`](09-platform-deltas.md).
 
 ## 1.2 Agent Team Topologies
 

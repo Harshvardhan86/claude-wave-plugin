@@ -65,7 +65,7 @@ printf 'cells=%s\n' "$cells" >&2
 # catches it (finding 4: "do this for at least one tier cell") -----------
 
 tmp_phases="$(mktemp "${TMPDIR:-/tmp}/phases-mutated.XXXXXX.tsv")"
-trap 'rm -f "$tmp_phases"' EXIT
+wv_on_exit 'rm -f "$tmp_phases"'
 
 # ACB executor is `opus` (100%-Opus hardening phase); lower it to `sonnet`.
 awk -F'\t' 'BEGIN{OFS="\t"} $1=="ACB"{$8="sonnet"} {print}' "$PHASES" > "$tmp_phases"

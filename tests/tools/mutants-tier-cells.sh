@@ -57,6 +57,11 @@ for tool in jq git python3; do
 done
 
 WV_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wave-mutants-cells.XXXXXX")" || exit 1
+# The harness keeps the scratch directory of every RED run, and every killed
+# mutant is a red run: each run gets TMPDIR inside this temp root, removed
+# after the run (kept with --keep) and with the root on exit
+# (tests/cases/_selfcheck/data-mutant-scratch.sh).
+WV_SCRATCH="$WV_TMP/scratch"
 WV_TREE="$WV_TMP/tree"
 WV_LOGS="$WV_TMP/logs"
 mkdir -p "$WV_TREE" "$WV_LOGS" || exit 1
@@ -65,6 +70,7 @@ cleanup() {
   if [ "$WV_KEEP" = "1" ]; then
     printf 'temp root kept at %s\n' "$WV_TMP"
   else
+    chmod -R u+rwX "$WV_TMP" 2>/dev/null
     rm -rf "$WV_TMP"
   fi
 }
@@ -224,7 +230,9 @@ wv_run_cell() {
   touch "$WV_TREE/$WV_PHASES_REL" "$WV_TREE/$WV_GOLDEN_REL"
 
   local log="$WV_LOGS/$label.log"
-  ( cd "$WV_TREE" && bash tests/run.sh --filter "$filter" ) > "$log" 2>&1
+  mkdir -p "$WV_SCRATCH"
+  ( cd "$WV_TREE" && TMPDIR="$WV_SCRATCH" bash tests/run.sh --filter "$filter" ) > "$log" 2>&1
+  if [ "$WV_KEEP" != "1" ]; then chmod -R u+rwX "$WV_SCRATCH" 2>/dev/null; rm -rf "$WV_SCRATCH"; fi
 
   # A red counts only when the case that went red is one of THIS cell's own
   # cases. Coverage FAIL lines (the artefact every narrow --filter produces) and

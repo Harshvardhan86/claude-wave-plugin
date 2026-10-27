@@ -1,0 +1,23 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.stderr_rules beside expect.rules: the two lists are exclusive by key presence. The fake hook writes [W-FAKE] then [W-FAKE2] on BOTH stdout (warn JSON) and stderr, so each list on its own is satisfied and nothing but the exclusivity check can reject the case. No decision field. harness_fails inverts.",
+  "seed": {
+    "state": "state/example-active.json"
+  },
+  "stdin": {
+    "hook_event_name": "SubagentStop",
+    "last_assistant_message": "SELFCHECK_BOTH_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "rules": [
+      "W-FAKE",
+      "W-FAKE2"
+    ],
+    "stderr_rules": [
+      "W-FAKE",
+      "W-FAKE2"
+    ],
+    "harness_fails": true
+  }
+}

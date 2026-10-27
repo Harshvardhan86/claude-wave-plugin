@@ -3,7 +3,9 @@
 #
 # An existing state.json whose status is "active": wave-init.sh without
 # --force exits non-zero, names the existing state file and the close
-# command on stderr, and leaves the file byte-identical.
+# command (`scripts/wave-close.sh`, by path) on stderr, and leaves the file
+# byte-identical. This is how a person finds the close for a wave that ended
+# on a failed phase and so never closed itself.
 set -u
 
 # shellcheck source=tests/lib/assert.sh
@@ -35,8 +37,8 @@ case "$CLI_STDERR" in
   *) fail "stderr does not name the existing state file: '$CLI_STDERR'" ;;
 esac
 case "$CLI_STDERR" in
-  *"wave-close"*) : ;;
-  *) fail "stderr does not name the close command: '$CLI_STDERR'" ;;
+  *"scripts/wave-close.sh"*) : ;;
+  *) fail "stderr does not name the close command scripts/wave-close.sh: '$CLI_STDERR'" ;;
 esac
 
 after="$(cat "$state_file")"

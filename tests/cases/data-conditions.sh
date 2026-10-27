@@ -239,7 +239,7 @@ fi
 # ---- mutation proof -------------------------------------------------------
 
 tmp="$(mktemp "${TMPDIR:-/tmp}/phases-cond-mutated.XXXXXX.tsv")"
-trap 'rm -f "$tmp"' EXIT
+wv_on_exit 'rm -f "$tmp"'
 
 # Plant a keyword the closed set does not name.
 awk -F'\t' 'BEGIN{OFS="\t"} $1=="AC"{$4="bogus_keyword"} {print}' "$PHASES" > "$tmp"

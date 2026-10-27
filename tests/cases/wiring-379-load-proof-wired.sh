@@ -8,13 +8,13 @@
 # brief); that run is live (spawns a real model session) and its evidence is
 # quoted verbatim in the task report, run once by hand rather than on every
 # `tests/run.sh` invocation, so that the fast unit sweep this case lives in
-# stays fast and does not require live `claude` auth on every dev loop or
+# stays fast and does not require live host-CLI auth on every dev loop or
 # CI box.
 #
 # This case is the STATIC half: it proves tests/e2e.sh is actually built to
-# perform that proof (skip-guarded, invokes claude with the right flags,
+# perform that proof (skip-guarded, invokes the host CLI with the right flags,
 # fails closed on both banned strings) rather than merely existing. It runs
-# on every `tests/run.sh` invocation and does not itself spawn `claude`.
+# on every `tests/run.sh` invocation and does not itself spawn the host CLI.
 set -u
 
 # shellcheck source=tests/lib/assert.sh

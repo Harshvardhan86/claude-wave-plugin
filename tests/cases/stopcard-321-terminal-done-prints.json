@@ -1,11 +1,12 @@
 {
   "script": "stop.sh",
   "ac": "AC-321",
-  "note": "AD done + no scorecard-printed marker yet -> prints the scorecard pointer and writes the marker",
+  "note": "wave complete but NOT closed (the closing stop's close did not happen) and an UNDELIVERED verdict line: the Stop never closes a wave, so it prints W-STATE 'complete but not closed' naming scripts/wave-close.sh and nothing else: no verdict, no scorecard pointer, no marker (a Stop never closes a wave). Negative control for W-UNDELIVERED: the verdict is due, yet a Stop never gives it.",
   "seed": {
     "state": "state/full-all-done.json",
     "files": {
-      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"CCP\",\"role\":\"executor\",\"output\":100}\n",
+      ".wave/ben-close.md": "BENEFIT: UNDELIVERED\norphan readers: 0\n"
     }
   },
   "stdin": {
@@ -14,10 +15,26 @@
     "session_crons": []
   },
   "expect": {
+    "exit": 0,
     "decision": "warn",
-    "rule": "W-SCORECARD",
+    "rule": "W-STATE",
+    "reason_template": "W-STATE",
+    "negative_control_for": "W-UNDELIVERED",
     "reason_contains": [
-      "wave-scorecard.sh"
+      "is complete but not closed",
+      "scripts/wave-close.sh",
+      "remedy:"
+    ],
+    "stdout_absent": [
+      "W-SCORECARD",
+      "W-UNDELIVERED",
+      "W-LEFTOVER"
+    ],
+    "state_assert": ".status == \"active\" and (has(\"delivery\") | not)",
+    "files_absent": [
+      ".wave/.scorecard-printed",
+      ".wave/.undelivered-warned",
+      ".wave/.leftover-warned"
     ]
   }
 }

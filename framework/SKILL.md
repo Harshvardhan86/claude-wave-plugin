@@ -8,10 +8,10 @@ effort: xhigh
 
 A multi-wave, multi-team engineering execution framework. Work is decomposed into waves; each wave runs a strict 17-phase pipeline plus two conditional gates: `[DR]` Design Review at Phase 1.5 (**mandatory** when the wave ships UI — web, mobile, Storybook, or CLI-TUI) and `[CR]` Code Review at Phase 3.5 (optional, opt-in). Maximum surface per wave: 19 phases. Enforced by specialized subagent teams (Stream-Aligned, Quality Gate, Platform, Enabling). **The orchestrator is the single point of coordination and the single throat to choke.**
 
-v2 preserves every phase, invariant, and cardinal rule from v1 and adds three changes that realize the framework against the current (2026) Claude Code / Agent SDK primitives:
+v2 preserves every phase, invariant, and cardinal rule from v1 and adds three changes that realize the framework against the current (2026) host CLI / agent SDK primitives:
 
 1. **Model routing.** Every dispatch specifies its model on the `Agent` tool. Opus = advisory (plan, critique, decide). Sonnet = executor (write code, run tests, scan, fix). Haiku = mechanical (dashboard render, version bump). See [`references/10-model-routing.md`](references/10-model-routing.md).
-2. **Team-as-dispatch-pattern.** Nested subagents are not supported in Claude Code, so v2 re-expresses every L2 "team" as either a single Agent dispatch carrying Lead + Executor + Reviewer personas, or a sequence of dispatches the orchestrator coordinates. Fresh-eyes hardening (`[ACB]`, `[BSEA]`, `[BTEET]`) is enforced by *separate* dispatches with only the prior output in context. See [`references/01-architecture.md`](references/01-architecture.md).
+2. **Team-as-dispatch-pattern.** Nested subagents are not supported in the host CLI, so v2 re-expresses every L2 "team" as either a single Agent dispatch carrying Lead + Executor + Reviewer personas, or a sequence of dispatches the orchestrator coordinates. Fresh-eyes hardening (`[ACB]`, `[BSEA]`, `[BTEET]`) is enforced by *separate* dispatches with only the prior output in context. See [`references/01-architecture.md`](references/01-architecture.md).
 3. **Native platform primitives.** `isolation: "worktree"` on writing dispatches; `run_in_background` for Dashboard and long Playwright runs; `PreCompact` / `PostToolUse` / `PreToolUse` hooks to enforce invariants; `TaskCreate` replaces `tasks/todo.md`; `ToolSearch` gates the per-phase tool surface. See [`references/09-platform-deltas.md`](references/09-platform-deltas.md), [`references/11-hooks-and-automation.md`](references/11-hooks-and-automation.md), [`references/12-mcp-and-plugins.md`](references/12-mcp-and-plugins.md).
 
 ## When to use
@@ -99,7 +99,7 @@ Invariants 6, 7 are now **hook-enforced** in v2; see [`references/11-hooks-and-a
 | [`references/06-team-quick-reference.md`](references/06-team-quick-reference.md) | Spinning up a new team and needing membership / topology / model |
 | [`references/07-invariant-rules.md`](references/07-invariant-rules.md) | Pressure to skip a step — re-read the invariants |
 | [`references/08-worktree-strategy.md`](references/08-worktree-strategy.md) | Multi-wave project with 3+ waves; isolating writes |
-| [`references/09-platform-deltas.md`](references/09-platform-deltas.md) | Confirming which Claude Code / Agent SDK primitives the framework assumes |
+| [`references/09-platform-deltas.md`](references/09-platform-deltas.md) | Confirming which host CLI / agent SDK primitives the framework assumes |
 | [`references/10-model-routing.md`](references/10-model-routing.md) | Choosing Opus / Sonnet / Haiku for a dispatch; escalation rules |
 | [`references/11-hooks-and-automation.md`](references/11-hooks-and-automation.md) | Wiring PreCompact / PostToolUse / PreToolUse / TaskCreated hooks into `settings.json` |
 | [`references/12-mcp-and-plugins.md`](references/12-mcp-and-plugins.md) | Playwright for UI TEET; CodeRabbit as optional CR gate; ToolSearch scoping |

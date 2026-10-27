@@ -245,9 +245,10 @@ if [ -n "$hook_rel" ]; then
   else
     mkdir -p "$(dirname "$hook_file")"
     hook_tmp="$(mktemp "$(dirname "$hook_file")/.commit-msg.XXXXXX")"
-    cat > "$hook_tmp" <<'WV_COMMIT_MSG_HOOK'
+    {
+      cat <<'WV_COMMIT_MSG_HOOK_HEAD'
 #!/usr/bin/env bash
-# Installed by wave-init.sh (claude-wave-plugin). Refuses a commit message
+# Installed by wave-init.sh. Refuses a commit message
 # that carries an AI-attribution trailer. Uses `command grep`, never a bare
 # `grep` (Global Constraint 7): a wrapped searcher can decline the message
 # file and print nothing where real grep prints 0, which must never read as
@@ -255,14 +256,18 @@ if [ -n "$hook_rel" ]; then
 set -u
 msg_file="${1:-}"
 [ -n "$msg_file" ] && [ -r "$msg_file" ] || exit 0
-pattern='Co-Authored-By:.*(Claude|Anthropic)|Generated with.*Claude Code|claude\.ai/code/session'
+WV_COMMIT_MSG_HOOK_HEAD
+      # The pattern is the shared WV_TRAILER_ERE from lib.sh, baked in verbatim.
+      printf "pattern='%s'\n" "$WV_TRAILER_ERE"
+      cat <<'WV_COMMIT_MSG_HOOK_TAIL'
 offending="$(command grep -nE "$pattern" -- "$msg_file" 2>/dev/null)"
 if [ -n "$offending" ]; then
   printf 'commit-msg: this message carries an AI-attribution trailer, which is not allowed:\n%s\n' "$offending" >&2
   exit 1
 fi
 exit 0
-WV_COMMIT_MSG_HOOK
+WV_COMMIT_MSG_HOOK_TAIL
+    } > "$hook_tmp"
     mv -f "$hook_tmp" "$hook_file"
     chmod +x "$hook_file"
     printf 'wave-init.sh: installed %s\n' "$hook_file" >&2

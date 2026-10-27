@@ -1,9 +1,10 @@
 {
   "script": "stop.sh",
+  "note": "a non-empty ledger but the wave is not complete -> silent, no leftover or scorecard or undelivered warning",
   "seed": {
     "state": "state/valid-full.json",
     "files": {
-      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AC\",\"role\":\"lead\",\"output\":100}\n"
     }
   },
   "stdin": {
@@ -17,7 +18,8 @@
     "negative_control_for": "W-SCORECARD",
     "stdout_absent": [
       "W-LEFTOVER",
-      "W-SCORECARD"
+      "W-SCORECARD",
+      "W-UNDELIVERED"
     ]
   }
 }

@@ -4,24 +4,24 @@
 #
 # The defect (progress ledger line 181, measured ~1 in 5 live runs while building
 # tests/e2e.sh scenario (c)): SubagentStop fires and subagent-stop.sh reads the
-# subagent's OWN transcript before the client has flushed its assistant turn(s).
+# subagent's OWN transcript before the client has flushed its model-reply turn(s).
 # `jq` over an empty-but-existing file returns a well-formed zero header, so the
 # hook records `turns:0`, `tier_ok:null`, `tier_verified:false` for an agent that
 # demonstrably ran on the right model — a correct wave scored as an unverifiable
 # one, and (because `tainted` is keyed on tier_ok == false, not null) silently.
 #
 # It is driven here with a BACKGROUND WRITER rather than by hoping: the
-# transcript file is created empty, a writer appends one complete assistant turn
+# transcript file is created empty, a writer appends one complete model-reply turn
 # 600 ms after the hook starts, and the hook must still read that turn. 600 ms is
 # comfortably past one settle sample (200 ms) and comfortably inside the cap
 # (~2.4 s), so the case fails against a hook that reads immediately and passes
-# against one that waits for the file to hold a complete assistant turn and stop
+# against one that waits for the file to hold a complete model-reply turn and stop
 # growing. No `sleep` in the assertion path decides anything: every step asserts
 # the CONTENT the hook recorded, never a duration.
 #
 # Four steps, because a settle that always waits the cap would be as wrong as one
 # that never waits:
-#   late      the assistant turn lands 600 ms in     -> it IS counted (the race)
+#   late      the reply turn lands 600 ms in     -> it IS counted (the race)
 #   prompt    a complete transcript is there already -> counted, and the case
 #                                                       proves the settle did not
 #                                                       need the writer
@@ -73,7 +73,7 @@ drive() {
   case "$mode" in
     late)
       # The file exists and is EMPTY when the hook starts, exactly as the live
-      # race presents it, and gains its one complete assistant turn 600 ms in.
+      # race presents it, and gains its one complete model-reply turn 600 ms in.
       : > "$tr"
       ( sleep 0.6; printf '%s\n' "$WV_ASSISTANT_LINE" >> "$tr" ) &
       writer_pid=$!
@@ -101,7 +101,7 @@ drive() {
 if drive late late; then
   assert_allow || fail "late: a late transcript must never block"
   printf '%s' "$(lline)" | jq -e '.turns == 1 and .input == 11 and .output == 13' >/dev/null 2>&1 || \
-    fail "late: the assistant turn that landed 600 ms after the hook started was not counted; ledger line is $(lline)"
+    fail "late: the reply turn that landed 600 ms after the hook started was not counted; ledger line is $(lline)"
   printf '%s' "$(lline)" | jq -e '.tier_ok == true and .tier_verified == true' >/dev/null 2>&1 || \
     fail "late: the tier must be verified against the turn that landed late; ledger line is $(lline)"
   printf '%s' "$(lline)" | jq -e 'has("transcript_incomplete") | not' >/dev/null 2>&1 || \

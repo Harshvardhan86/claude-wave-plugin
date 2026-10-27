@@ -14,9 +14,74 @@ WV_TESTS_DIR="$WV_REPO_ROOT/tests"
 
 # Root scratch dir for the whole `tests/run.sh` invocation. A `.sh` case
 # invoked directly (outside run.sh) gets its own so it still works standalone.
+#
+# Scratch hygiene: the process that CREATES the directory owns it and removes
+# it from an EXIT trap when it ended green (exit status 0) and WV_KEEP_TMP is
+# unset. On any failure, or with WV_KEEP_TMP=1, the directory is kept and its
+# path printed so the case logs inside it stay readable. An interrupt (INT /
+# TERM) exits through the same trap and is cleaned like a green run. A
+# WV_RUN_TMP supplied by the caller (run.sh exports it to every case it runs)
+# is never owned and never removed. The ownership marker is deliberately NOT
+# exported, so a child process never inherits it.
+#
+# ONE EXIT TRAP, MANY CLEANUPS. bash keeps a single EXIT trap per process, so
+# a case that wrote its own `trap '...' EXIT` silently replaced the scratch
+# cleanup and, run standalone, leaked its run directory. A case registers its
+# own cleanup with `wv_on_exit '<command>'` instead: the handlers form an
+# append-only list run in registration order, each seeing the original exit
+# status in $?, then the scratch cleanup runs last (so a case can still kill
+# a process whose cwd is inside the scratch directory first), and the
+# process exits with the status it was exiting with. A handler that fails
+# changes nothing. Never `trap ... EXIT` in a case.
+WV_EXIT_HANDLERS=()
+WV_EXIT_TRAP_SET=0
+_wv_exit_dispatch() {
+  local status=$? h
+  for h in "${WV_EXIT_HANDLERS[@]}"; do
+    ( exit "$status" )
+    eval "$h"
+  done
+  ( exit "$status" )
+  wv_scratch_cleanup
+  exit "$status"
+}
+wv_on_exit() {
+  # wv_on_exit '<command>' — appends <command> to this process's EXIT
+  # handlers (see above). The dispatcher is installed on first use, so a
+  # script that sources this file with a WV_RUN_TMP it does not own and
+  # never registers anything keeps whatever EXIT trap it set itself.
+  WV_EXIT_HANDLERS+=("$1")
+  if [ "$WV_EXIT_TRAP_SET" != "1" ]; then
+    trap _wv_exit_dispatch EXIT
+    WV_EXIT_TRAP_SET=1
+  fi
+}
+wv_scratch_cleanup() { return 0; }
+WV_RUN_TMP_OWNED=0
 if [ -z "${WV_RUN_TMP:-}" ]; then
   WV_RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wave-plugin-tests.XXXXXX")"
   export WV_RUN_TMP
+  WV_RUN_TMP_OWNED=1
+  WV_RUN_TMP_OWNER_PID=$BASHPID
+  WV_RUN_TMP_INTERRUPTED=0
+  wv_scratch_cleanup() {
+    local status=$?
+    [ "$WV_RUN_TMP_OWNED" = "1" ] && [ "$BASHPID" = "$WV_RUN_TMP_OWNER_PID" ] || return 0
+    if [ "${WV_KEEP_TMP:-}" = "1" ] || { [ "$status" != "0" ] && [ "$WV_RUN_TMP_INTERRUPTED" != "1" ]; }; then
+      printf 'tests: scratch directory kept at %s\n' "$WV_RUN_TMP" >&2
+      return 0
+    fi
+    case "$WV_RUN_TMP" in
+      */wave-plugin-tests.*)
+        chmod -R u+rwX "$WV_RUN_TMP" 2>/dev/null
+        rm -rf "$WV_RUN_TMP" 2>/dev/null ;;
+    esac
+    return 0
+  }
+  trap 'WV_RUN_TMP_INTERRUPTED=1; exit 130' INT
+  trap 'WV_RUN_TMP_INTERRUPTED=1; exit 143' TERM
+  trap _wv_exit_dispatch EXIT
+  WV_EXIT_TRAP_SET=1
 fi
 mkdir -p "$WV_RUN_TMP/logs"
 
@@ -389,6 +454,39 @@ assert_single_rule_token() {
   _wv_die_diff "single_rule_token: want exactly 1 W- token, found $n in '$reason'"
 }
 
+assert_rule_tokens() {
+  # assert_rule_tokens "<W-A W-B ...>" — the rendered reason (for a warn, the
+  # WHOLE additionalContext, which may carry several queued warnings) must
+  # carry exactly these W- tokens, in exactly this order, and must start with
+  # "[<first>] ". Same token regex as assert_single_rule_token, so a stray
+  # W- id anywhere in the text (a remedy quoting another rule) counts and
+  # fails the list rather than slipping past it.
+  _wv_rule_tokens_in rule_tokens "$1" "$(_wv_reason_text)"
+}
+
+assert_stderr_rule_tokens() {
+  # assert_stderr_rule_tokens "<W-A W-B ...>" — the same exact, ordered check
+  # over STDERR: the only channel SubagentStop and PreCompact warnings have
+  # (they carry no additionalContext), so it is where a close-time
+  # composition on those events is read. Every queued warning is one line.
+  _wv_rule_tokens_in stderr_rule_tokens "$1" "${WV_LAST_STDERR:-}"
+}
+
+_wv_rule_tokens_in() {
+  # _wv_rule_tokens_in <label> "<want list>" <text>
+  local label="$1" want="$2" reason="$3" got
+  [ -n "$want" ] || { _wv_die_diff "$label: the expected list is empty"; return 1; }
+  got="$(printf '%s' "$reason" | command grep -oE 'W-[A-Z0-9-]+' | tr '\n' ' ' | sed -E 's/ +$//')"
+  if [ "$got" != "$want" ]; then
+    _wv_die_diff "$label: want exactly [$want] in this order, found [$got] in '$reason'"
+    return 1
+  fi
+  case "$reason" in
+    "[${want%% *}] "*) return 0 ;;
+    *) _wv_die_diff "$label: reason does not start with [${want%% *}] : '$reason'" ;;
+  esac
+}
+
 assert_reason_matches_template() {
   # Structural check only (starts with "[<rule>] ", non-empty remedy tail).
   # Byte-exact comparison against hooks/reasons.tsv is reason-corpus.sh's job.
@@ -584,7 +682,7 @@ _wv_thirteen_seed_files() {
     stop.sh)
       # tests/cases/stopcard-321-terminal-done-prints.json
       mkdir -p "$WV_PROJECT/.wave"
-      printf '{"agent":"a1","phase":"AD","role":"executor","output":100}\n' \
+      printf '{"agent":"a1","phase":"CCP","role":"executor","output":100}\n' \
         > "$WV_PROJECT/.wave/ledger.jsonl"
       ;;
     session-start.sh)
