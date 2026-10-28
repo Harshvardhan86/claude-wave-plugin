@@ -95,8 +95,10 @@ seen_wave="$WV_WAVE"
 seen_started="$(printf '%s' "$WV_STATE" | jq -r '.started // ""' 2>/dev/null)"
 
 if ! wv_lock_acquire; then
+  # wv_die exits without flushing the warning queue, so the reason is in the
+  # message itself (tests/cases/complete-close-lock-busy.sh).
   wv_warn W-STATE "$(wv_lock_detail), so nothing was recorded and the state was left untouched"
-  wv_die "could not write $WV_STATE_FILE"
+  wv_die "could not write $WV_STATE_FILE: $(wv_lock_detail); nothing was closed, re-run once it is free"
 fi
 
 # Everything from here to the write is decided under the lock.

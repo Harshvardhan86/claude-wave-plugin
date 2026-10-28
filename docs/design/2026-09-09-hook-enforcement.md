@@ -592,6 +592,39 @@ as `0`. Extra keys appear only where this document names them (`warn`,
 recorded even when the phase fails its artifact check. Above a stated transcript
 byte cap the sum is skipped with `note: "transcript too large"`.
 
+Since v0.3.0 the ledger line may also carry these optional keys, named here so
+the closed key set includes them:
+
+- `resolved_from` — present only with the value `"transcript"`: `resolved` is
+  the model the agent's own transcript records, filled at `SubagentStop`
+  because the launch record had none (a foreground dispatch, whose stop runs
+  before `post-agent.sh`). **Absent** means `resolved` is the launch's
+  `tool_response` model as `post-agent.sh` recorded it, or `"unknown"` when no
+  source could name it.
+- `downgraded` — `true` or `false` when a requested and a resolved tier were
+  both readable and compared (by `subagent-stop.sh` for a transcript id, by
+  `post-agent.sh` for a `tool_response` id); absent when no comparison was
+  made. It is sticky: once a record says `true`, no later hook or later
+  equal-tier answer sets it back to `false`.
+- `transcript_incomplete` — `true` when the bounded transcript-settle wait in
+  `subagent-stop.sh` expired before the file was seen settled (no longer
+  growing) with at least one model-reply line, so the token sum and the tier
+  read from it are unconfirmed. **Absent** means only that the flag was not
+  raised, which includes no transcript path, a path naming no file, and a
+  transcript over the size cap (whose sum is skipped); it is not a statement
+  that the transcript was complete, and no acknowledgement from the client is
+  read.
+- `bg_orphaned` — the background task ids the agent left running (section 4).
+
+`post-agent.sh` never writes or reconciles a ledger line; the ledger is
+append-only and `subagent-stop.sh` owns it. When `post-agent.sh` runs after the
+stop and learns a model from `tool_response`, it updates `state.active[<id>]`
+only: a readable id replaces `resolved_model` and drops `resolved_from`; when
+that id differs from the transcript fill, the fill is kept beside it as
+**`transcript_model`**, so the record shows that the two sources disagree while
+the ledger line keeps the transcript one. An unreadable id (`"unknown"`) never
+replaces a fill. `downgraded` on the record follows the same sticky rule.
+
 `hooks/budgets.tsv` gives an **output-token** budget per phase (output is the
 work produced; cache reads are cheap and would hide waste). The effective budget
 is the row's value × the phase's `fanout`, and it is a **per-phase total**

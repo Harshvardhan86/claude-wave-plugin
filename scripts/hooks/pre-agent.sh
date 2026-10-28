@@ -663,6 +663,21 @@ wv_row_applies() {
   esac
 }
 
+wv_flag_said() {
+  # wv_flag_said <value> -> how a W-COND remedy names a flag that reads as
+  # false: "false in .wave/state.json" for an answer, and "absent from
+  # .wave/state.json (the wave was started before the plugin asked it)" for a
+  # missing key (wv_state_read maps an absent key to "", and also a present
+  # empty string, which no supported writer produces), so an upgraded wave is
+  # never told it answered a question nobody asked it. Wording only: the
+  # legacy decision itself is lib.sh wv_row_superseded, on the key.
+  if [ -z "$1" ]; then
+    printf 'absent from .wave/state.json (the wave was started before the plugin asked it)'
+  else
+    printf 'false in .wave/state.json'
+  fi
+}
+
 wv_condition_met() {
   # wv_condition_met <code> — the row's `condition` cell, evaluated against the
   # wave state and, for `findings:<CODE>`, against `.wave/findings/<CODE>.md`.
@@ -715,13 +730,13 @@ wv_condition_met() {
     vocabulary)
       [ "$WV_VOCAB" = "true" ] && return 0
       wv_unanswered_scope "$WV_VOCAB" vocabulary && return 2
-      WV_COND_DETAIL="state.vocabulary is false in .wave/state.json, so this wave declares no new user-visible vocabulary; run \`scripts/wave-set.sh vocabulary true\` if that is wrong"
+      WV_COND_DETAIL="state.vocabulary is $(wv_flag_said "$WV_VOCAB"), so this wave declares no new user-visible vocabulary; run \`scripts/wave-set.sh vocabulary true\` if that is wrong"
       return 1
       ;;
     behaviour_change)
       [ "$WV_BC" = "true" ] && return 0
       wv_unanswered_scope "$WV_BC" behaviour_change && return 2
-      WV_COND_DETAIL="state.behaviour_change is false in .wave/state.json, so this wave declares no behaviour change; run \`scripts/wave-set.sh behaviour-change true\` if that is wrong"
+      WV_COND_DETAIL="state.behaviour_change is $(wv_flag_said "$WV_BC"), so this wave declares no behaviour change; run \`scripts/wave-set.sh behaviour-change true\` if that is wrong"
       return 1
       ;;
     done:*)
@@ -732,8 +747,21 @@ wv_condition_met() {
       wv_row_applies "$src"
       case "$?" in
         2) return 2 ;;
+        0)
+          # The source runs in this wave and has not run yet. In a wave this
+          # plugin started, that is the future: the row waits for it (pending,
+          # so the order rule names the source). Only a source the wave
+          # predates and has already passed is a skip (lib.sh
+          # wv_row_superseded, the legacy discriminator completeness uses too).
+          if ! wv_row_superseded "$src"; then
+            WV_COND_PENDING="$src"
+            return 3
+          fi
+          WV_COND_DETAIL="nothing to run for $code: $src is not required, because this wave was started before the plugin added it (state.json has no vocabulary key) and already ran a phase after it; dispatch the next phase"
+          return 1
+          ;;
       esac
-      WV_COND_DETAIL="phase $src is not done, so there is no completed $src for $code to close"
+      WV_COND_DETAIL="nothing to run for $code: $src does not run in this wave, so there is no completed $src to close; dispatch the next phase, or answer the flag $src reads with scripts/wave-set.sh if that is wrong"
       return 1
       ;;
     findings:*)
@@ -1512,9 +1540,10 @@ wv_main() {
 
   # 10. Scope: TDE-RED still demands ui/cr answers, because those flags only
   #     affect TDE-RED's predecessor set. vocabulary and behaviour_change are
-  #     demanded earlier: AC names UIA and BEN, and an unanswered predecessor
-  #     is W-SCOPE, so a full-mode wave cannot dispatch any phase row until
-  #     those two are answered. ui and cr may still wait until TDE-RED.
+  #     demanded earlier, by the rows that read them: UIA reads vocabulary, BEN
+  #     reads behaviour_change, and AC names both, so an unanswered predecessor
+  #     makes AC and everything after it W-SCOPE until both are answered. UIA
+  #     itself needs only vocabulary. ui and cr may still wait until TDE-RED.
   if [ "$WV_TAG_PHASE" = "TDE-RED" ] && ! wv_scope_ready; then
     wv_rule_deny W-SCOPE "$WV_SCOPE_FLAG" "$WV_SCOPE_ARG"
     return 0
@@ -1534,6 +1563,7 @@ wv_main() {
   # reorder and not a relaxation — status 2 still denies, and still cannot be
   # skipped through.
   local deferred_rule=""
+  local own_pending=""
   local -a deferred_args=()
   wv_condition_met "$WV_TAG_PHASE"
   case "$?" in
@@ -1544,6 +1574,9 @@ wv_main() {
     2)
       deferred_rule="$WV_COND_RULE"
       deferred_args=("${WV_COND_ARGS[@]}")
+      ;;
+    3)
+      own_pending="$WV_COND_PENDING"
       ;;
   esac
   # 0 (met) and 3 (its own scan has not run yet) both fall through: for 3 the
@@ -1572,6 +1605,13 @@ wv_main() {
   # dispatch is refused for.
   if [ -n "$deferred_rule" ]; then
     wv_rule_deny "$deferred_rule" "${deferred_args[@]+"${deferred_args[@]}"}"
+    return 0
+  fi
+  # This row's own condition waits on a phase its `after` does not name (a
+  # `done:` source, BEN for BEN-CLOSE): that phase is the predecessor to run
+  # first. A pending `findings:` scan is always in `after`, so it never gets here.
+  if [ -n "$own_pending" ]; then
+    wv_rule_deny W-ORDER "$own_pending" "$WV_TAG_PHASE" "$own_pending$(wv_required_because "$own_pending")"
     return 0
   fi
 

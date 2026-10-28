@@ -15,7 +15,7 @@ The `/wave-start` command tells you which mode to run:
 
 When invoked without `--demo`, you execute the **canonical pipeline** specified in `framework/SKILL.md`: a table of 31 rows, 18 of which run in every full-mode wave and 13 of which are conditional. The conditional ones are `[UIA]` at 0.5 and `[ES]` at 4.2 (the wave introduces new vocabulary), `[BEN]` at 0.8 (the wave changes existing behaviour), `[DR]` Design Review at 1.5 (the wave ships UI — web, mobile, Storybook, CLI-TUI — **or** changes existing behaviour; skipped silently only when it does neither), `[CR]` Code Review at 3.5 (opt-in via the orchestrator's `cr_enabled` flag), `[BEN-CLOSE]` at 12.5 (`[BEN]` ran), and the seven `[BF-*]` rows (the scan before each reported findings). Maximum surface per wave: 31 phases.
 
-Before your first dispatch, `vocabulary` and `behaviour-change` must be answered. `[AC]` names `[UIA]` and `[BEN]` as predecessors, and an unanswered flag on a predecessor denies the successor, so a full-mode wave with either flag still `unknown` can dispatch nothing at all. `ui` and `cr` may wait until `[TDE-RED]`.
+Answer `vocabulary` and `behaviour-change` before your first dispatch: that is the command's policy, and `/wave-start` asks both before it creates the wave. The gate enforces each flag where it is read: `[UIA]` needs the `vocabulary` answer, `[BEN]` needs the `behaviour-change` answer (and `[UIA]` settled), and `[AC]` names both rows as predecessors, so **both answers are required before `[AC]`** and therefore before everything after it. An unanswered flag is denied `W-SCOPE`, never skipped. `ui` and `cr` may wait until `[TDE-RED]`.
 
 Before dispatching anything:
 
@@ -111,9 +111,12 @@ and the broader DR trigger for UI **or behaviour-changing** waves.
 any dispatch, passing the `vocabulary` and `behaviour-change` answers as flags.
 The `ui` and `cr` answers, and any correction to the first two, go through
 `scripts/wave-set.sh ui|behaviour-change|cr|vocabulary true|false` and are
-recorded in `.wave/approvals/scope.md`. In full mode `vocabulary` and
-`behaviour_change` must be known before the first dispatch; `ui` and `cr` must be
-known before `TDE-RED`. An unanswered flag is never read as `false`. `.wave/` is
+recorded in `.wave/approvals/scope.md`. In full mode, asking `vocabulary` and
+`behaviour_change` before init and the first dispatch is the command's policy;
+the gate enforces each where it is read: `[UIA]` needs only `vocabulary`, `[BEN]`
+needs `behaviour_change`, and `[AC]` names both rows, so both are required
+before `[AC]`. `ui` and `cr` must be known before `TDE-RED`. An unanswered flag
+is never read as `false`. `.wave/` is
 local recovery state, excluded through `.git/info/exclude`.
 
 - **Full** checks the full phase table: tag, role, explicit model and minimum tier,
@@ -239,7 +242,7 @@ approved exceptions into the checkpoint text when a committable record is needed
 **v0.3.0 adds these enforced contracts:**
 
 - **Five conditional rows.** `[UIA]` (0.5) and `[ES]` (4.2) on `vocabulary`; `[BEN]` (0.8) on `behaviour_change`; `[BF-ES]` (4.3) when `[ES]` reported findings; `[BEN-CLOSE]` (12.5) when `[BEN]` ran. All five are full-mode only. Demo keeps its five phases and its gates unchanged.
-- **Two scope answers before the first dispatch.** `vocabulary` and `behaviour_change` gate `[AC]` through its predecessors, so a full-mode wave with either unknown is denied `W-SCOPE` on every phase dispatch until it is answered. The prompt reminder agrees with the gate: an unanswered row is reported as required and not yet allowed, never as skipped.
+- **Two scope answers before `[AC]`.** `vocabulary` and `behaviour_change` gate `[AC]` through its predecessors `[UIA]` and `[BEN]`, so with either unknown `[AC]` and every later row are denied `W-SCOPE` until it is answered; `[UIA]` alone needs only `vocabulary`. `/wave-start` asks both before the wave exists (command policy); the gate enforces them per row. The prompt reminder agrees with the gate: an unanswered row is reported as required and not yet allowed, never as skipped.
 - **Wave complete replaces terminal phase.** A wave closes when every `when=phase` row of its mode is settled — done, or skipped by mode or by a condition answered false. An unanswered condition, a done scan whose findings file is missing or unmeasurable, and a `failed`, `artifact-missing` or `redo` row are not settled. `anytime` rows never count and only a `when=phase` row's stop triggers the close, so an `AD` stop never closes a wave. Full mode closes on `VB`, `COMMIT`, `CL` and `CCP`; demo on `TEET`.
 - **One close-time announcement.** The closing `SubagentStop` announces only after it reads the state back as `closed`: `W-LEFTOVER` (when leftovers were found and not warned before; it names the scorecard), then `W-UNDELIVERED` (when the verdict calls for it), then `W-SCORECARD` unless `W-LEFTOVER` already pointed there. A verdict never goes out without a same-call pointer; each warning fires at most once per wave. A failed close gets `W-STATE` alone, marks nothing, and the next closing stop retries.
 - **A Stop never closes a wave.** In full/demo, a `Stop` on a complete but still-active wave refreshes the leftover inventory and prints only `W-STATE` naming `scripts/wave-close.sh`, every time, until the wave is closed. Solo keeps its once-per-wave pointer on a non-empty ledger.

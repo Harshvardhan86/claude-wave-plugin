@@ -1,6 +1,6 @@
 {
   "ac": "AC-192",
-  "note": "tool_response is a JSON-encoded string TRUNCATED mid-object (mirrors the probe log's own 300-byte truncation) that still contains \"resolvedModel\":\"claude-haiku-4-5-20251001\" intact before the cut: neither the object path nor fromjson can read it, so the third fallback (command grep -o) extracts agentId and resolvedModel, and warn(W-DOWNGRADE) fires because haiku is below the requested sonnet.",
+  "note": "tool_response is a JSON-encoded string TRUNCATED mid-object (mirrors the probe log's own 300-byte truncation) that still contains \"resolvedModel\":\"claude-haiku-4-5-20251001\" intact before the cut: neither the object path nor fromjson can read it, so the third fallback (command grep -o) extracts agentId and resolvedModel, and warn(W-DOWNGRADE) fires because haiku is below the requested sonnet. The record also carries downgraded:true, the durable flag the later stopped status does not replace.",
   "script": "post-agent.sh",
   "seed": {
     "state": "state/full-all-done.json"
@@ -29,6 +29,6 @@
     "rule": "W-DOWNGRADE",
     "reason_template": "W-DOWNGRADE",
     "reason_contains": ["sonnet", "claude-haiku-4-5-20251001"],
-    "state_assert": ".active[\"a6a129f2ae0850db1\"] == {\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested_model\":\"sonnet\",\"resolved_model\":\"claude-haiku-4-5-20251001\",\"tool_use_id\":\"toolu_01RXAwe6jcU5LBKHd9geD6sE\",\"status\":\"downgraded\"}"
+    "state_assert": ".active[\"a6a129f2ae0850db1\"] == {\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested_model\":\"sonnet\",\"resolved_model\":\"claude-haiku-4-5-20251001\",\"tool_use_id\":\"toolu_01RXAwe6jcU5LBKHd9geD6sE\",\"status\":\"downgraded\",\"downgraded\":true}"
   }
 }

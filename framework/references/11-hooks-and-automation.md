@@ -145,12 +145,17 @@ A row's `condition` is one of `always`, `ui|behaviour_change`, `cr`, `vocabulary
 or `done:<CODE>` (that row's ledger status is `done`). An unanswered scope flag
 is neither met nor skipped: the row is required and not yet allowed, and the
 dispatch is denied `W-SCOPE` naming the flag. Because `AC` names `UIA` and `BEN`
-as predecessors, a full-mode wave can dispatch nothing until `vocabulary` and
-`behaviour_change` are answered; `ui` and `cr` are still only needed by
+as predecessors, `AC` and everything after it wait until `vocabulary` and
+`behaviour_change` are both answered (`UIA` itself needs only `vocabulary`;
+`/wave-start` asks both up front); `ui` and `cr` are still only needed by
 `TDE-RED`. A demo wave is unaffected — a full-only predecessor is skipped on
 mode before its condition is read. A `findings:` or `done:` row whose source row
 does not run in this wave is not left pending: the condition reports not met,
-naming the source, so the rows after it stay reachable.
+naming the source, so the rows after it stay reachable. A `done:` row whose
+source does run but has not yet run waits for it (`W-ORDER` names the source),
+unless the wave predates the source row and is already past it (no `vocabulary`
+key in `state.json`, no entry for the source, a successor done): then the source
+is superseded and the `done:` row is skipped.
 
 Solo keeps only the explicit-model rule, commit guard, PreCompact checkpoint
 and ledger. It has no required tag, prompt caps, order, tier, orchestrator-only
@@ -316,8 +321,37 @@ refuse exactly the same five forms.
 Git inspection uses stdin `cwd`, including inside worktree subagents.
 
 `wave-init.sh` also installs `.git/hooks/commit-msg` to inspect the final message
-from a file, template, heredoc or editor. It never overwrites an existing hook:
-it reports the conflict and records `skipped-existing` in state. The installed
+from a file, template, heredoc or editor. The installed hook is versioned: its
+second line is `# wave-orchestrator-owned commit-msg hook; template <N>`. A hook
+carrying that line is regenerated to the current template on every
+`wave-init.sh` (state `upgraded` when it changed, `installed` when it was
+current), so an older install receives the current pattern. The unmarked hook
+0.2.0 and 0.2.1 installed is recognised by comparing the whole file with that
+exact template and is upgraded the same way only while it is unmodified. It
+never overwrites any other existing hook, including a changed 0.2.x hook: it
+reports the conflict and records `skipped-existing` in state. In a linked
+worktree the hook and the `.wave/` exclude go to the repository's common git
+directory. When the project sets `core.hooksPath` (to any value, an empty one
+included), nothing is written to that directory: state `skipped-hookspath`,
+the check is saved as `.wave/hooks/commit-msg`, and the notice says to call it
+from the project's own `commit-msg` hook (the printed path is shell-quoted).
+`installed` and `upgraded` are recorded only when the file now at the hook
+path is byte-identical to the intended template: it is rendered into a temp
+file with every command's status checked, compared with an independently
+rendered reference copy and checked with `bash -n`, made executable, moved into
+place and compared with the reference once more. When any step fails (an
+unwritable or missing hooks directory, or a render that differs from its
+reference, for example) the state is `install-failed`, the notice names the
+failed step, and the same `.wave/hooks/commit-msg` check is saved, verified the
+same way. The state field `commit_msg_check` records that check: `written`,
+`failed` (the notice then says it could not be written and verified, and prints
+no command to run it), or `none` when no check was needed. When the project is
+not a git repository, or is a bare one (no work tree, so no hook would ever
+run), no hook or check is written and nothing is written under a bare
+repository's git directory (no exclude line; only the wave's own `.wave/` state
+is created): state `not-a-repo` and a notice that the commit-msg guard was not
+installed because there is no work-tree repository (the session's commit guard
+still applies). The installed
 Git hook is separate from host CLI event hooks and currently checks messages
 even after a wave closes; it does not consult `enforce`.
 

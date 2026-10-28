@@ -969,6 +969,19 @@ p2_state p2-bfbteet-bc.json full false true false false '{}' '"1"' $(p2_through 
 jq '.phases |= del(.BEN, .UIA, ."BEN-CLOSE")' \
   "$WV_STATE_DIR/p2-bfbteet.json" > "$WV_STATE_DIR/p2-bfbteet-no-ben.json"
 printf 'wrote %s\n' "$WV_STATE_DIR/p2-bfbteet-no-ben.json"
+# The same AC-done/BEN-absent map with behaviour_change TRUE, in two
+# shapes. A 0.3.0 wave (the `vocabulary` key present) still owes BEN, so
+# done:BEN is pending and the tail waits for it. The legacy shape (no
+# `vocabulary` key: started before 0.3.0, the key 0.3.0 wave-init always
+# writes) has passed BEN's position, so BEN is superseded (lib.sh
+# wv_row_superseded) and the tail is unchanged. The phase map carries only
+# the rows the 0.2.x table had (no UIA, BEN, ES, BF-ES, BEN-CLOSE).
+jq '.phases |= del(.BEN, .UIA, .ES, ."BF-ES", ."BEN-CLOSE")' \
+  "$WV_STATE_DIR/p2-bfbteet-bc.json" > "$WV_STATE_DIR/p2-bfbteet-bc-no-ben.json"
+printf 'wrote %s\n' "$WV_STATE_DIR/p2-bfbteet-bc-no-ben.json"
+jq 'del(.vocabulary)' \
+  "$WV_STATE_DIR/p2-bfbteet-bc-no-ben.json" > "$WV_STATE_DIR/p2-bfbteet-bc-legacy.json"
+printf 'wrote %s\n' "$WV_STATE_DIR/p2-bfbteet-bc-legacy.json"
 
 # --- seed helpers ----------------------------------------------------------
 
@@ -1628,8 +1641,20 @@ mk name=order-commit-before-ben-close-deny ac=AC-v030-order \
   expect="$(exp_order 'BEN-CLOSE' 'BEN-CLOSE (required because BEN ran)')"
 
 mk name=order-commit-ben-not-done-allow ac=AC-v030-order \
-  note='through BF-BTEET but BEN never ran: COMMIT is allowed. done:BEN is not met, so BEN-CLOSE is skipped and the tail is unchanged (5.3). Negative control for the COMMIT-before-BEN-CLOSE W-ORDER.' \
+  note='behaviour_change false, through BF-BTEET, BEN never ran: COMMIT is allowed. BEN is skipped, done:BEN is not met, so BEN-CLOSE is skipped and the tail is unchanged (5.3). Negative control for the COMMIT-before-BEN-CLOSE W-ORDER. With behaviour_change true see the two cases below.' \
   state=state/p2-bfbteet-no-ben.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
+  seed="$(seedspec f:BTEET:0)" \
+  expect="$(exp_allow W-ORDER)"
+
+mk name=order-commit-ben-not-done-bc-deny ac=AC-v030-order \
+  note='a 0.3.0 wave (vocabulary key present), behaviour_change true, through BF-BTEET, BEN never ran: COMMIT is denied W-ORDER naming BEN. done:BEN is pending, not unmet, because BEN is still required.' \
+  state=state/p2-bfbteet-bc-no-ben.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
+  seed="$(seedspec f:BTEET:0)" \
+  expect="$(exp_order 'BEN;' 'BEN (required because state.behaviour_change is true)')"
+
+mk name=order-commit-ben-not-done-legacy-allow ac=AC-v030-order \
+  note='the same phase map in a wave started before 0.3.0 (no vocabulary key), behaviour_change true: COMMIT is allowed. AC, which names BEN in its after, is done and BEN has no entry, so BEN is superseded, BEN-CLOSE is skipped and the tail is unchanged. Negative control for the BEN W-ORDER above.' \
+  state=state/p2-bfbteet-bc-legacy.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
   seed="$(seedspec f:BTEET:0)" \
   expect="$(exp_allow W-ORDER)"
 

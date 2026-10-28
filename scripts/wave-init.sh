@@ -216,11 +216,33 @@ done
 # ---------------------------------------------------------------------------
 # .git/info/exclude — never .gitignore. Idempotent: running this twice must
 # leave exactly one `.wave/` line.
+#
+# Every `git rev-parse --git-path` result goes through wv_git_path_abs: git
+# prints a path RELATIVE to the directory it ran in from the main worktree
+# (`.git/info/exclude`) but an ABSOLUTE one from a linked worktree (the
+# repository's common directory), so joining it onto $root unconditionally
+# writes into a nested directory git never reads
+# (tests/cases/init-linked-worktree.sh).
 # ---------------------------------------------------------------------------
 
-exclude_rel="$(git -C "$root" rev-parse --git-path info/exclude 2>/dev/null)"
+wv_git_path_abs() {
+  # wv_git_path_abs <root> <git-path output> -> the path, absolute.
+  case "$2" in
+    /*) printf '%s' "$2" ;;
+    *) printf '%s/%s' "$1" "$2" ;;
+  esac
+}
+
+# A bare repository (no work tree) gets no exclude line either: nothing is
+# ever committed there, and init writes nothing under its git directory
+# (tests/cases/init-no-worktree.sh). A directory that is no repository at all
+# has no --git-path, so it takes neither branch.
+exclude_rel=""
+if [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]; then
+  exclude_rel="$(git -C "$root" rev-parse --git-path info/exclude 2>/dev/null)"
+fi
 if [ -n "$exclude_rel" ]; then
-  exclude_file="$root/$exclude_rel"
+  exclude_file="$(wv_git_path_abs "$root" "$exclude_rel")"
   mkdir -p "$(dirname "$exclude_file")"
   [ -e "$exclude_file" ] || : > "$exclude_file"
   if ! command grep -qxF '.wave/' "$exclude_file" 2>/dev/null; then
@@ -233,33 +255,68 @@ fi
 # 6. The repo-local commit-msg guard. .git/ is Write-tool-protected, hence a
 #    heredoc written by this already-running bash process rather than by an
 #    editor. Never overwrites a foreign hook (spec section 10 / AC-314).
+#
+#    THE TEMPLATE IS VERSIONED. Its second line is the owned marker
+#    `# wave-orchestrator-owned commit-msg hook; template <N>`. A hook that
+#    carries that exact line was written by this script and is regenerated to
+#    the current template (state "upgraded" when its bytes change, "installed"
+#    when it was already current), so a repository initialised by an older
+#    release receives the current WV_TRAILER_ERE. The hook 0.2.0 and 0.2.1
+#    installed predates the marker; it is recognised by its FULL CONTENT
+#    (wv_released_commit_msg_hook, compared byte for byte, never by a name
+#    mention) and, only while unmodified, upgraded the same way. Those bytes
+#    are an inert data file shipped with the plugin,
+#    hooks/released/commit-msg-0.2.1.hook (never executed, never sourced),
+#    pinned to the release by tests/cases/commitmsg-released-data-pin.sh; a
+#    plugin tree without it treats every unmarked hook as foreign. Any other
+#    existing hook is foreign and left byte-identical ("skipped-existing"),
+#    including that released template with any local change; the notice says
+#    how to refresh it (tests/cases/commitmsg-owned-hook-upgrade.sh). A write
+#    that fails at any step, or renders bytes that differ from the template,
+#    records "install-failed", never "installed"
+#    (tests/cases/init-hook-install-failed.sh,
+#    tests/cases/init-hook-render-fault.sh). Edits to
+#    an owned hook are not kept: delete its marker line to keep a customised
+#    hook.
 # ---------------------------------------------------------------------------
 
-commit_msg_hook="installed"
-hook_rel="$(git -C "$root" rev-parse --git-path hooks/commit-msg 2>/dev/null)"
-if [ -n "$hook_rel" ]; then
-  hook_file="$root/$hook_rel"
-  if [ -e "$hook_file" ]; then
-    commit_msg_hook="skipped-existing"
-    printf 'wave-init.sh: %s already exists and was left untouched; the PreToolUse(Bash) fast path remains the only guard for that hook chain\n' "$hook_file" >&2
-  else
-    mkdir -p "$(dirname "$hook_file")"
-    hook_tmp="$(mktemp "$(dirname "$hook_file")/.commit-msg.XXXXXX")"
-    {
-      cat <<'WV_COMMIT_MSG_HOOK_HEAD'
-#!/usr/bin/env bash
+WV_COMMIT_MSG_TEMPLATE=2
+WV_COMMIT_MSG_MARKER_ERE='^# wave-orchestrator-owned commit-msg hook; template [0-9]+$'
+
+WV_RELEASED_COMMIT_MSG_HOOK="$WV_SCRIPT_DIR/../hooks/released/commit-msg-0.2.1.hook"
+
+wv_released_commit_msg_hook() {
+  # The exact bytes the 0.2.0 and 0.2.1 wave-init.sh wrote (one unmarked
+  # template, identical in both releases), read as data: a hook equal to this
+  # is one this script installed and nobody has changed since. The caller
+  # checks the file is present first; an absent file matches nothing.
+  cat -- "$WV_RELEASED_COMMIT_MSG_HOOK" 2>/dev/null
+}
+
+wv_commit_msg_hook_render() {
+  # The current owned template on stdout. EVERY COMMAND'S STATUS PROPAGATES:
+  # the template is written by several commands, and a function's status is
+  # only its last command's, so without `|| return 1` on each an early one
+  # that fails is masked by a later one that succeeds and a hook missing its
+  # head reads as written (tests/cases/init-hook-render-fault.sh). Callers
+  # never trust this status alone: wv_render_checked also compares the bytes
+  # against an independently rendered reference.
+  printf '#!/usr/bin/env bash\n' || return 1
+  printf '# wave-orchestrator-owned commit-msg hook; template %s\n' "$WV_COMMIT_MSG_TEMPLATE" || return 1
+  cat <<'WV_COMMIT_MSG_HOOK_HEAD' || return 1
 # Installed by wave-init.sh. Refuses a commit message
 # that carries an AI-attribution trailer. Uses `command grep`, never a bare
 # `grep` (Global Constraint 7): a wrapped searcher can decline the message
 # file and print nothing where real grep prints 0, which must never read as
-# "no trailer found".
+# "no trailer found". wave-init.sh regenerates this file while the line
+# above is present; delete that line to keep local edits.
 set -u
 msg_file="${1:-}"
 [ -n "$msg_file" ] && [ -r "$msg_file" ] || exit 0
 WV_COMMIT_MSG_HOOK_HEAD
-      # The pattern is the shared WV_TRAILER_ERE from lib.sh, baked in verbatim.
-      printf "pattern='%s'\n" "$WV_TRAILER_ERE"
-      cat <<'WV_COMMIT_MSG_HOOK_TAIL'
+  # The pattern is the shared WV_TRAILER_ERE from lib.sh, baked in verbatim.
+  printf "pattern='%s'\n" "$WV_TRAILER_ERE" || return 1
+  cat <<'WV_COMMIT_MSG_HOOK_TAIL' || return 1
 offending="$(command grep -nE "$pattern" -- "$msg_file" 2>/dev/null)"
 if [ -n "$offending" ]; then
   printf 'commit-msg: this message carries an AI-attribution trailer, which is not allowed:\n%s\n' "$offending" >&2
@@ -267,10 +324,220 @@ if [ -n "$offending" ]; then
 fi
 exit 0
 WV_COMMIT_MSG_HOOK_TAIL
-    } > "$hook_tmp"
-    mv -f "$hook_tmp" "$hook_file"
-    chmod +x "$hook_file"
-    printf 'wave-init.sh: installed %s\n' "$hook_file" >&2
+  return 0
+}
+
+wv_render_fail=""
+wv_render_ref=""
+
+wv_render_checked() {
+  # wv_render_checked <file> — render the template into <file> and VERIFY it:
+  # every render command succeeded, the bytes equal a second, independent
+  # render into a reference file in .wave/ (cmp), and the result passes
+  # `bash -n`. On success the reference stays at $wv_render_ref so the caller
+  # can compare the file once more after moving it into place; the caller
+  # removes it (wv_render_ref_drop). On failure returns 1 with
+  # $wv_render_fail naming the step that failed, and no reference is kept.
+  local f="$1"
+  wv_render_fail=""
+  wv_render_ref_drop
+  if ! wv_commit_msg_hook_render > "$f" 2>/dev/null; then
+    wv_render_fail="cannot write $f"
+    return 1
+  fi
+  if ! wv_render_ref="$(mktemp "$wave_dir/.commit-msg-ref.XXXXXX" 2>/dev/null)" || [ -z "$wv_render_ref" ]; then
+    wv_render_ref=""
+    wv_render_fail="cannot create a reference copy of the template in $wave_dir"
+    return 1
+  fi
+  if ! wv_commit_msg_hook_render > "$wv_render_ref" 2>/dev/null; then
+    wv_render_fail="cannot write the reference copy of the template $wv_render_ref"
+    wv_render_ref_drop
+    return 1
+  fi
+  if ! cmp -s -- "$f" "$wv_render_ref"; then
+    wv_render_fail="the template rendered into $f differs from an independently rendered reference copy"
+    wv_render_ref_drop
+    return 1
+  fi
+  if ! bash -n "$f" 2>/dev/null; then
+    wv_render_fail="the template rendered into $f fails a bash syntax check"
+    wv_render_ref_drop
+    return 1
+  fi
+  return 0
+}
+
+wv_render_ref_drop() {
+  [ -n "$wv_render_ref" ] && rm -f "$wv_render_ref" 2>/dev/null
+  wv_render_ref=""
+  return 0
+}
+
+wv_sh_quote() {
+  # One POSIX-shell word for $1, single-quoted (an embedded ' becomes '\''),
+  # so a printed command stays one argument in sh and bash alike, whatever
+  # the path holds (tests/cases/init-hookspath-remedy.sh).
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+wv_render_wave_check() {
+  # Render the current check to .wave/hooks/commit-msg for a project hook
+  # manager to call, verified the way the hook itself is (wv_render_checked,
+  # then chmod, mv and a comparison of the moved file against the reference).
+  # Sets wave_check; returns non-zero, with $wave_check_fail naming the step,
+  # when it could not be written whole, verified and executable; a check that
+  # failed verification after the move is removed, never left in place.
+  local tmp=""
+  wave_check="$wave_dir/hooks/commit-msg"
+  wave_check_fail=""
+  if ! mkdir -p "$wave_dir/hooks" 2>/dev/null; then
+    wave_check_fail="cannot create $wave_dir/hooks"
+  elif ! tmp="$(mktemp "$wave_dir/hooks/.commit-msg.XXXXXX" 2>/dev/null)" || [ -z "$tmp" ]; then
+    tmp=""
+    wave_check_fail="cannot create a file in $wave_dir/hooks"
+  elif ! wv_render_checked "$tmp"; then
+    wave_check_fail="$wv_render_fail"
+  elif ! chmod +x "$tmp" 2>/dev/null; then
+    wave_check_fail="cannot make $tmp executable"
+  elif ! mv -f "$tmp" "$wave_check" 2>/dev/null; then
+    wave_check_fail="cannot move the check into place at $wave_check"
+  else
+    tmp=""
+    if ! cmp -s -- "$wave_check" "$wv_render_ref"; then
+      wave_check_fail="$wave_check differs from the reference copy after the move (removed)"
+      rm -f "$wave_check" 2>/dev/null
+    fi
+  fi
+  [ -n "$tmp" ] && rm -f "$tmp" 2>/dev/null
+  wv_render_ref_drop
+  [ -z "$wave_check_fail" ]
+}
+
+wv_wave_check_remedy() {
+  # The notice for a guard that is not installed; $1 is the reason, $2 what
+  # the remedy asks for before the command (the check path is shell-quoted).
+  # Sets commit_msg_check: "written" (verified) or "failed" (recorded in the
+  # state, so a failed fallback is not only a line of stderr).
+  if wv_render_wave_check; then
+    commit_msg_check="written"
+    printf 'wave-init.sh: %s, so the commit-msg guard is not installed. The PreToolUse(Bash) commit guard still refuses a trailer line in this session. remedy: %s: bash %s "$1"\n' "$1" "$2" "$(wv_sh_quote "$wave_check")" >&2
+  else
+    commit_msg_check="failed"
+    printf 'wave-init.sh: %s, so the commit-msg guard is not installed, and the fallback check %s could not be written and verified either (%s). The PreToolUse(Bash) commit guard still refuses a trailer line in this session; fix the cause and run scripts/wave-init.sh again\n' "$1" "$wave_check" "$wave_check_fail" >&2
+  fi
+}
+
+# A project that manages its hooks with core.hooksPath (any scope git reads:
+# system, global, local, worktree) keeps that directory to itself: nothing is
+# written there, nor into .git/hooks. The current check is rendered into
+# .wave/hooks/commit-msg instead so the project's hook manager can call it
+# (tests/cases/init-hookspath.sh); the PreToolUse(Bash) commit guard enforces
+# regardless. "Configured" is the EXIT STATUS of `git config --get`, never the
+# length of its value: an empty core.hooksPath is still read by git (it
+# resolves the hook to /commit-msg), so it takes this path too.
+#
+# A project that is not a git repository, or is a bare one (no work tree, so no
+# commit is made there and a hook would never run), gets no hook at all and the
+# state records "not-a-repo" (tests/cases/init-no-worktree.sh): a state never
+# claims an install that did not happen.
+commit_msg_hook="installed"
+commit_msg_check="none"
+hook_rel=""
+hooks_path_cfg="$(git -C "$root" config --get core.hooksPath 2>/dev/null)"
+hooks_path_rc=$?
+if [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then
+  commit_msg_hook="not-a-repo"
+  printf 'wave-init.sh: the commit-msg guard was not installed because there is no work-tree repository here. The PreToolUse(Bash) commit guard still refuses a trailer line in this session\n' >&2
+elif [ "$hooks_path_rc" = "0" ]; then
+  commit_msg_hook="skipped-hookspath"
+  wv_wave_check_remedy "the project sets core.hooksPath = $(wv_sh_quote "$hooks_path_cfg"); git runs hooks only from that directory, and it belongs to the project" \
+    "call the wave's commit-msg check from the project's own commit-msg hook"
+else
+  hook_rel="$(git -C "$root" rev-parse --git-path hooks/commit-msg 2>/dev/null)"
+fi
+if [ -n "$hook_rel" ]; then
+  hook_file="$(wv_git_path_abs "$root" "$hook_rel")"
+  hook_owned=0
+  released_present=0
+  [ -f "$WV_RELEASED_COMMIT_MSG_HOOK" ] && [ -s "$WV_RELEASED_COMMIT_MSG_HOOK" ] && released_present=1
+  if [ -e "$hook_file" ] && command grep -qE "$WV_COMMIT_MSG_MARKER_ERE" "$hook_file" 2>/dev/null; then
+    hook_owned=1
+  elif [ -f "$hook_file" ] && [ "$released_present" = "1" ] && wv_released_commit_msg_hook | cmp -s - "$hook_file"; then
+    hook_owned=1 # the unmodified released template
+  fi
+  if [ -e "$hook_file" ] && [ "$hook_owned" = "0" ] && [ "$released_present" = "0" ]; then
+    printf 'wave-init.sh: the released-hook data file %s is missing, so an unmarked %s cannot be recognised as an earlier install and is treated as foreign; reinstall the plugin to restore it\n' "$WV_RELEASED_COMMIT_MSG_HOOK" "$hook_file" >&2
+  fi
+  if [ -e "$hook_file" ] && [ "$hook_owned" = "0" ]; then
+    commit_msg_hook="skipped-existing"
+    printf 'wave-init.sh: %s already exists and was left untouched; the PreToolUse(Bash) fast path remains the only guard for that hook chain. If it is a hook an earlier wave-init.sh installed (its second line reads "# Installed by wave-init.sh") and later changed by hand, which is why it was not upgraded, remove it and the next scripts/wave-init.sh installs the current guard\n' "$hook_file" >&2
+  else
+    # EVERY STEP IS CHECKED, AND SO ARE THE BYTES. "installed" / "upgraded" is
+    # printed and recorded only when the file now at the hook path is
+    # byte-identical to the intended template: rendered into a temp file with
+    # every command's status checked, compared with an independently rendered
+    # reference and syntax-checked (wv_render_checked), made executable, moved
+    # into place, then compared with the reference once more. The first
+    # failure records "install-failed", names the failed step and renders the
+    # fallback check, itself verified the same way
+    # (tests/cases/init-hook-install-failed.sh,
+    # tests/cases/init-hook-render-fault.sh). An owned hook that is already
+    # current is compared against a verified render kept in .wave/, without a
+    # temp file in the hooks directory, so a read-only hooks directory does not
+    # turn a current hook into a failure.
+    hook_dir="$(dirname "$hook_file")"
+    hook_tmp=""
+    hook_fail=""
+    hook_changed=1
+    hook_cur=""
+    if [ "$hook_owned" = "1" ]; then
+      if ! hook_cur="$(mktemp "$wave_dir/.commit-msg-cur.XXXXXX" 2>/dev/null)" || [ -z "$hook_cur" ]; then
+        hook_cur=""
+        hook_fail="cannot create a file in $wave_dir to compare the existing hook with"
+      elif ! wv_render_checked "$hook_cur"; then
+        hook_fail="$wv_render_fail"
+      elif cmp -s -- "$hook_cur" "$hook_file"; then
+        chmod +x "$hook_file" 2>/dev/null || hook_fail="cannot make $hook_file executable"
+        hook_changed=0
+      fi
+      wv_render_ref_drop
+      [ -n "$hook_cur" ] && rm -f "$hook_cur" 2>/dev/null
+    fi
+    if [ -z "$hook_fail" ] && [ "$hook_changed" = "1" ]; then
+      if ! mkdir -p "$hook_dir" 2>/dev/null; then
+        hook_fail="cannot create the hooks directory $hook_dir"
+      elif ! hook_tmp="$(mktemp "$hook_dir/.commit-msg.XXXXXX" 2>/dev/null)" || [ -z "$hook_tmp" ]; then
+        hook_tmp=""
+        hook_fail="cannot create a file in the hooks directory $hook_dir"
+      elif ! wv_render_checked "$hook_tmp"; then
+        hook_fail="$wv_render_fail"
+      elif ! chmod +x "$hook_tmp" 2>/dev/null; then
+        hook_fail="cannot make $hook_tmp executable"
+      elif ! mv -f "$hook_tmp" "$hook_file" 2>/dev/null; then
+        hook_fail="cannot move the new hook into place at $hook_file"
+      else
+        hook_tmp=""
+        if ! cmp -s -- "$hook_file" "$wv_render_ref"; then
+          hook_fail="$hook_file differs from the reference copy of the template after the move (removed)"
+          rm -f "$hook_file" 2>/dev/null
+        fi
+      fi
+      [ -n "$hook_tmp" ] && rm -f "$hook_tmp" 2>/dev/null
+      wv_render_ref_drop
+    fi
+    if [ -n "$hook_fail" ]; then
+      commit_msg_hook="install-failed"
+      wv_wave_check_remedy "$hook_fail" \
+        "fix the cause and run scripts/wave-init.sh again, or call the wave's commit-msg check from a commit-msg hook git runs"
+    elif [ "$hook_changed" = "1" ]; then
+      if [ "$hook_owned" = "1" ]; then
+        commit_msg_hook="upgraded"
+        printf 'wave-init.sh: upgraded %s to commit-msg template %s\n' "$hook_file" "$WV_COMMIT_MSG_TEMPLATE" >&2
+      else
+        printf 'wave-init.sh: installed %s\n' "$hook_file" >&2
+      fi
+    fi
   fi
 fi
 
@@ -281,6 +548,15 @@ fi
 
 started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 base_sha="$(git -C "$root" rev-parse HEAD 2>/dev/null)"
+# The plugin release creating this wave, read as data from the manifest. An
+# additive field (schema stays 1): a state without it was created before
+# 0.3.0. A later release keys row exemptions on it (lib.sh wv_row_superseded),
+# so nothing but this script writes it and scripts/wave-set.sh refuses the key.
+created_by="$(jq -r '.version // empty' "$WV_SCRIPT_DIR/../.claude-plugin/plugin.json" 2>/dev/null)"
+case "$created_by" in
+  [0-9]*.[0-9]*.[0-9]*) case "$created_by" in *[!A-Za-z0-9.+-]*) created_by="unknown" ;; esac ;;
+  *) created_by="unknown" ;;
+esac
 
 state_tmp="$(mktemp "$wave_dir/.state-init.XXXXXX")"
 if ! jq -n \
@@ -295,6 +571,8 @@ if ! jq -n \
   --arg started "$started" \
   --arg base_sha "$base_sha" \
   --arg commit_msg_hook "$commit_msg_hook" \
+  --arg commit_msg_check "$commit_msg_check" \
+  --arg created_by "$created_by" \
   '{
     schema: 1,
     wave: $wave,
@@ -313,14 +591,31 @@ if ! jq -n \
     active: {},
     pending: {},
     rounds: {},
-    commit_msg_hook: $commit_msg_hook
+    commit_msg_hook: $commit_msg_hook,
+    commit_msg_check: $commit_msg_check,
+    created_by: $created_by
   }' > "$state_tmp"
 then
   rm -f "$state_tmp"
   wv_lock_release
   wv_die "could not build $state_file (jq failed)"
 fi
+# The once-per-wave close-time markers (scripts/hooks/lib.sh wv_close_announce,
+# scripts/hooks/subagent-stop.sh) live in this project's one .wave/ directory, so
+# they belong to the wave being replaced. Removed here, after the new state was
+# built and before it is installed, still under the lock: a refused init (any
+# wv_die above) leaves them in place, and a new wave starts with none, so its
+# verdict, scorecard pointer and leftover warning are announced again
+# (tests/cases/init-two-wave-markers.sh).
+rm -f "$wave_dir/.undelivered-warned" "$wave_dir/.scorecard-printed" "$wave_dir/.leftover-warned"
 mv -f "$state_tmp" "$state_file"
+# Every scope answer given here is recorded the way scripts/wave-set.sh records
+# one (`<ts> <key>=<value>`, with wave-set.sh's key), so .wave/approvals/scope.md
+# holds the answers /wave-start passes as flags too. "unknown" was not given.
+for wv_pair in "ui=$ui" "cr=$cr" "vocabulary=$vocabulary" "behaviour-change=$behaviour_change"; do
+  [ "${wv_pair#*=}" = "unknown" ] && continue
+  printf '%s %s\n' "$started" "$wv_pair" >> "$wave_dir/approvals/scope.md"
+done
 wv_lock_release
 
 printf 'wave-init.sh: wave %s started in %s mode at %s\n' "$wave_id" "$mode" "$state_file"

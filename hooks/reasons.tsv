@@ -37,4 +37,4 @@ W-SESSION	34	[W-SESSION] wave %s active, mode=%s, %s; last phase done: %s; tag: 
 W-REMINDER	35	[W-REMINDER] wave %s active, phase %s → %s. This session is the orchestrator: dispatch tagged Agents, read only .wave/ reports, no builds/tests/edits here; remedy: informational only, no action required.
 W-LEFTOVER	36	[W-LEFTOVER] leftovers at wave close: %s; remedy: stop or wait out each named task, cron and pid before the next wave — this hook never kills and nothing was signalled; `scripts/wave-scorecard.sh` and the newest file under .wave/checkpoints/ list them in full.
 W-SCORECARD	37	[W-SCORECARD] wave %s complete; remedy: run %s to view the ledger scorecard.
-W-UNDELIVERED	38	[W-UNDELIVERED] wave delivery is %s: %s; remedy: run the BEN-CLOSE phase before closing, or read the scorecard and decide — this label is not a block.
+W-UNDELIVERED	38	[W-UNDELIVERED] wave delivery is %s: %s; remedy: the wave is closed; read .wave/ben-close.md and the scorecard and decide, and next time run BEN-CLOSE before the tail — this label is not a block.

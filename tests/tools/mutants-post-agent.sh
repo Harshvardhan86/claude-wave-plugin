@@ -21,6 +21,9 @@
 #      and the command-grep fallback), collapsing the tolerant reader to the
 #      object shape only
 #   4. the PostToolUse event guard is dropped
+# Later rows (see their own comments at the foot of this file): the unperformed
+# downgrade check, and four for the foreground ordering, where SubagentStop has
+# already ledgered a transcript fill before this hook runs.
 #
 # Exit status: 0 only when every mutant was applied, every mutant was
 # killed, and the final restore matches the pristine hash.
@@ -267,6 +270,46 @@ wv_run_mutant joinkeywrong       wv_body_joinkeywrong       'launch-19*'
 wv_run_mutant stringpathremoved  wv_body_stringpathremoved  'launch-19*'
 wv_run_mutant eventguard         wv_body_eventguard         'postguard-*' 'launch-*'
 wv_run_mutant uncheckedquiet    wv_body_uncheckedquiet    'launch-193*'
+
+# The foreground ordering (SubagentStop already ran and ledgered a transcript
+# fill; this hook only ever writes state.active):
+#   postclearsdowngraded  an equal-tier tool_response clears a stop's downgraded
+#   postdowngradetwice    W-DOWNGRADE is reported again after the stop did
+#   postfilllost          an unreadable tool_response id erases the fill
+#   postdisagreehidden    a different tool_response id silently replaces the
+#                         fill (no transcript_model kept beside it)
+wv_body_postclearsdowngraded() { cat <<'PYBODY'
+old = 'false) filter="$filter | .active[$id_lit].downgraded = (\\$wasdg)" ;;'
+assert old in s, "anchor missing: the sticky downgraded merge"
+s = s.replace(old, 'false) filter="$filter | .active[$id_lit].downgraded = false" ;;', 1)
+PYBODY
+}
+wv_body_postdowngradetwice() { cat <<'PYBODY'
+old = "'((.active // {})[$id].downgraded // false) == true' 2>/dev/null)\" != \"true\" ]; then"
+assert old in s, "anchor missing: the once-only W-DOWNGRADE guard"
+s = s.replace(old, "'((.active // {})[$id].downgraded // false) == true' 2>/dev/null)\" != \"zzz-never\" ]; then", 1)
+PYBODY
+}
+wv_body_postfilllost() { cat <<'PYBODY'
+old = 'then .active[$id_lit] += {resolved_model: \\$old.resolved_model, resolved_from: \\"transcript\\"}'
+assert old in s, "anchor missing: the keep-the-fill branch"
+s = s.replace(old, 'then .', 1)
+PYBODY
+}
+wv_body_postdisagreehidden() { cat <<'PYBODY'
+old = 'then .active[$id_lit].transcript_model = \\$old.resolved_model'
+assert old in s, "anchor missing: the transcript_model record"
+s = s.replace(old, 'then .', 1)
+PYBODY
+}
+WV_EXPECT[postclearsdowngraded]=stop-foreground-ledger-resolved
+WV_EXPECT[postdowngradetwice]=stop-foreground-ledger-resolved
+WV_EXPECT[postfilllost]=stop-foreground-ledger-resolved
+WV_EXPECT[postdisagreehidden]=stop-foreground-ledger-resolved
+wv_run_mutant postclearsdowngraded wv_body_postclearsdowngraded 'stop-foreground*' 'launch-19*'
+wv_run_mutant postdowngradetwice   wv_body_postdowngradetwice   'stop-foreground*' 'launch-19*'
+wv_run_mutant postfilllost         wv_body_postfilllost         'stop-foreground*' 'launch-19*'
+wv_run_mutant postdisagreehidden   wv_body_postdisagreehidden   'stop-foreground*' 'launch-19*'
 
 # --- the table --------------------------------------------------------------
 

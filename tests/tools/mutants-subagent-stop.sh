@@ -13,10 +13,12 @@
 # killed, because those fire on every narrow --filter regardless of the mutant
 # and would otherwise manufacture a false `killed`.
 #
-# Twenty mutants: the eight properties the task brief names, the seven the
-# round-1 review added (its items 1-7 — the last two land in lib.sh, which is why
-# a mutant now names its own target file), and the two added with the
-# bounded transcript settle and the enforce=warn conversion.
+# Thirty-four mutants. The twenty listed here: the eight properties the task
+# brief names, the seven the round-1 review added (its items 1-7 — the last two
+# land in lib.sh, which is why a mutant now names its own target file), and the
+# ones added with the bounded transcript settle and the enforce=warn
+# conversion. The other fourteen (background tasks, the sidecar recovery and the
+# foreground-dispatch ledger) are described next to their bodies below.
 #   1. closingrole    the artifact check is applied to EVERY role's stop, not
 #                     only the closing role's
 #   2. lastoneout     the last-one-out predicate always says "last", so the
@@ -614,6 +616,37 @@ wv_run_mutant activemergeremoved wv_body_activemergeremoved scripts/hooks/post-a
 wv_run_mutant waveidignored wv_body_waveidignored "$H" 'bgwait-434*'
 wv_run_mutant recoveredguard wv_body_recoveredguard "$H" 'bgwait-434*'
 wv_run_mutant recoveredseed wv_body_recoveredseed "$H" 'bgwait-434*'
+
+# The foreground-dispatch ledger (the stop runs before post-agent.sh and the
+# ledger is append-only): the stop fills `resolved` from the agent transcript,
+# and `downgraded` is durable on the ledger line and on state.active.
+#   stopfillremoved       the transcript fill is gone: `resolved` is "unknown"
+#   stopclearsdowngraded  the `stopped` bookkeeping resets downgraded to false
+#   stopdowngradedropped  the ledger line never carries downgraded: true
+wv_body_stopfillremoved() { cat <<'PYBODY'
+old = '      WV_STOP_RES="$WV_TS_MODEL"\n'
+assert old in s, "anchor missing: the transcript fill"
+s = s.replace(old, '', 1)
+PYBODY
+}
+wv_body_stopclearsdowngraded() { cat <<'PYBODY'
+old = '+ {status: "stopped", stopped: %s})\' \\'
+assert s.count(old) == 1, "anchor missing: the stopped bookkeeping"
+s = s.replace(old, '+ {status: "stopped", stopped: %s, downgraded: false})\' \\', 1)
+PYBODY
+}
+wv_body_stopdowngradedropped() { cat <<'PYBODY'
+old = '+ (if $downgraded == "true" then {downgraded: true}'
+assert old in s, "anchor missing: the ledger downgraded extra"
+s = s.replace(old, '+ (if false then {downgraded: true}', 1)
+PYBODY
+}
+WV_EXPECT[stopfillremoved]=stop-foreground-ledger-resolved
+WV_EXPECT[stopclearsdowngraded]=stop-foreground-ledger-resolved
+WV_EXPECT[stopdowngradedropped]=stop-foreground-ledger-resolved
+wv_run_mutant stopfillremoved wv_body_stopfillremoved "$H" 'stop-foreground*' 'bgwait-434*'
+wv_run_mutant stopclearsdowngraded wv_body_stopclearsdowngraded "$H" 'stop-foreground*'
+wv_run_mutant stopdowngradedropped wv_body_stopdowngradedropped "$H" 'stop-foreground*'
 
 # --- the table --------------------------------------------------------------
 

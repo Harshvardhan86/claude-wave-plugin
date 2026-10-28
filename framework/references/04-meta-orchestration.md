@@ -40,9 +40,9 @@ A wave answers four scope questions, and never guesses one. Each answer is `true
 | `vocabulary` | Does this wave introduce a new kind of record, or a new value of an existing classification (a status, a category, a role), that a user will see? | `[UIA]` at 0.5, `[ES]` at 4.2 |
 | `behaviour-change` | Does this wave change existing system behaviour? | `[BEN]` at 0.8, `[BEN-CLOSE]` at 12.5, and `[DR]` together with `ui` |
 | `ui` | Does this wave touch anything the user looks at? | `[DR]` at 1.5, the GREEN visual approval gate |
-| `cr` | Is there a Change Request in effect for this wave? | `[CR]` at 3.5 |
+| `cr` | Should this wave run the Code Review gate? | `[CR]` at 3.5 |
 
-**When each answer is due.** In full mode, `vocabulary` and `behaviour-change` must be answered **before the wave's first dispatch**, because `[AC]` names `[UIA]` and `[BEN]` as predecessors and an unanswered predecessor denies its successor. `ui` and `cr` may wait until `[TDE-RED]`. `/wave-start` asks the first two before it creates the wave state and passes them to `wave-init.sh`; it asks the other two straight afterwards and records them with `wave-set.sh`. Demo mode is unaffected: its full-only predecessors are skipped on mode before their condition is ever read, so a demo wave can dispatch `[AC]` with every flag still unknown. Solo mode consults no phase table and asks nothing.
+**When each answer is due.** In full mode, answering `vocabulary` and `behaviour-change` **before the wave is created and before its first dispatch** is the command's policy: `/wave-start` asks the first two before it creates the wave state and passes them to `wave-init.sh`; it asks the other two straight afterwards and records them with `wave-set.sh`. The gate enforces each answer only at the rows that read it: `[UIA]` needs only `vocabulary`, `[BEN]` needs `behaviour-change` and a settled `[UIA]`, and `[AC]` names both rows as predecessors, so the gate requires **both answers before `[AC]`** and everything after it; an unanswered flag is denied `W-SCOPE`, never skipped. `ui` and `cr` may wait until `[TDE-RED]`. Demo mode is unaffected: its full-only predecessors are skipped on mode before their condition is ever read, so a demo wave can dispatch `[AC]` with every flag still unknown. Solo mode consults no phase table and asks nothing.
 
 ### CR gate flag (v2-new)
 

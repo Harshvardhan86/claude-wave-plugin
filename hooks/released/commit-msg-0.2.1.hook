@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Installed by wave-init.sh (claude-wave-plugin). Refuses a commit message
+# that carries an AI-attribution trailer. Uses `command grep`, never a bare
+# `grep` (Global Constraint 7): a wrapped searcher can decline the message
+# file and print nothing where real grep prints 0, which must never read as
+# "no trailer found".
+set -u
+msg_file="${1:-}"
+[ -n "$msg_file" ] && [ -r "$msg_file" ] || exit 0
+pattern='Co-Authored-By:.*(Claude|Anthropic)|Generated with.*Claude Code|claude\.ai/code/session'
+offending="$(command grep -nE "$pattern" -- "$msg_file" 2>/dev/null)"
+if [ -n "$offending" ]; then
+  printf 'commit-msg: this message carries an AI-attribution trailer, which is not allowed:\n%s\n' "$offending" >&2
+  exit 1
+fi
+exit 0

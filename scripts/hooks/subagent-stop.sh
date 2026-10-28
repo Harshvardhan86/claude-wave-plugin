@@ -772,6 +772,20 @@ WV_STOP_PHASE="unknown"
 WV_STOP_ROLE="unknown"
 WV_STOP_REQ="unknown"
 WV_STOP_RES="unknown"
+# Where WV_STOP_RES came from. "" is the launch's tool_response, as post-agent.sh
+# recorded it on the joined record (or "unknown" when nothing did); "transcript"
+# is the model the agent's own transcript records, filled at this stop because
+# the launch record had none (see wv_resolve_from_transcript).
+WV_STOP_RES_FROM=""
+# true | false when a requested and a resolved TIER were both readable and
+# compared; "" when no comparison was made. Never re-derived by the `stopped`
+# bookkeeping, which only ever adds status/stopped to the record.
+WV_STOP_DOWNGRADED=""
+# 1 when this stop may fill an unknown resolved model from the transcript: the
+# launch was recovered from the sidecar here, or the joined record was written
+# by such an earlier stop (it has no tool_use_id, which post-agent.sh always
+# writes) and still holds no resolved model.
+WV_STOP_FILL=0
 WV_STOP_JOINED=0
 WV_STOP_SEEN=0        # this agent has already been ledgered (a replay/second stop)
 WV_STOP_GATED=0       # the phase table applies to this stop
@@ -922,6 +936,64 @@ wv_sidecar_wave_mismatch() {
   [ "${BASH_REMATCH[1]}" != "$WV_WAVE" ]
 }
 
+wv_brief() {
+  # wv_brief <text> <max> -> the text, cut to <max> characters plus an ellipsis.
+  jq -nr --arg t "${1:-}" --argjson n "${2:-40}" \
+    'if ($t | length) > $n then $t[0:$n] + "…" else $t end'
+}
+
+wv_resolve_from_transcript() {
+  # wv_resolve_from_transcript <agent transcript path> — fills WV_STOP_RES from
+  # the model the agent transcript records, when this stop may (WV_STOP_FILL)
+  # and the launch record has none. Reuses wv_transcript_stats' modal model
+  # (read as data, never executed), so the id is one whose tier the same vote
+  # already counted. A transcript that is missing, incomplete, or names no model
+  # hooks/models.tsv maps leaves "unknown" and says so with W-RESOLVE-UNKNOWN,
+  # naming the transcript. Then, for a transcript id, the tier check post-agent.sh
+  # would have made: W-DOWNGRADE when it is below the requested tier.
+  local path="${1:-}"
+  if [ "$WV_STOP_FILL" = "1" ] && [ "$WV_STOP_RES" = "unknown" ]; then
+    if [ "$WV_TS_INCOMPLETE" = "0" ] && [ -n "$WV_TS_MODEL" ]; then
+      WV_STOP_RES="$WV_TS_MODEL"
+      WV_STOP_RES_FROM="transcript"
+    else
+      local where why
+      where="$(wv_rel "$path")"
+      [ -n "$where" ] || where="(no path in the payload)"
+      if [ "${#where}" -gt 80 ]; then where="…${where: -80}"; fi
+      if [ "$WV_TS_INCOMPLETE" = "1" ]; then
+        why="held no complete model-reply turn"
+      else
+        case "$WV_TS_NOTE" in
+          "no transcript") why="is absent" ;;
+          "transcript too large") why="is over the size cap" ;;
+          "transcript unreadable") why="is unreadable" ;;
+          *) why="names no model hooks/models.tsv maps" ;;
+        esac
+      fi
+      wv_stop_warn W-RESOLVE-UNKNOWN "resolved model" \
+        "the sidecar records none and transcript $where $why"
+    fi
+  fi
+  if [ "$WV_STOP_RES_FROM" = "transcript" ]; then
+    local req_t res_t
+    req_t="$(wv_tier "$WV_STOP_REQ")"
+    res_t="$(wv_tier "$WV_STOP_RES")"
+    WV_STOP_DOWNGRADED=""
+    case "$req_t$res_t" in
+      [1-4][1-4])
+        if [ "$res_t" -lt "$req_t" ]; then
+          WV_STOP_DOWNGRADED="true"
+          wv_stop_warn W-DOWNGRADE "$(wv_brief "$WV_STOP_REQ" 40)" "$(wv_brief "$WV_STOP_RES" 60)"
+        else
+          WV_STOP_DOWNGRADED="false"
+        fi
+        ;;
+    esac
+  fi
+  return 0
+}
+
 wv_main() {
   wv_parse_stdin || return 0
   # Wired to SubagentStop only. Any other event has not been measured by this
@@ -954,16 +1026,25 @@ wv_main() {
       ((.active // {})[$id]) as $a
       | if ($a | type) == "object"
         then [ "1", ($a.phase // ""), ($a.role // ""), ($a.requested_model // ""),
-               ($a.resolved_model // ""), ($a.status // "") ] | join("\u001f")
+               ($a.resolved_model // ""), ($a.status // ""),
+               (if ($a.resolved_from // "") == "transcript" then "transcript" else "" end),
+               (if ($a.downgraded | type) == "boolean" then ($a.downgraded | tostring) else "" end),
+               (if ($a | has("tool_use_id")) then "1" else "0" end),
+               "end" ] | join("\u001f")
         else "0" end' 2>/dev/null)"
-  local joined_status=""
+  local joined_status="" joined_tuid="" rec_end=""
   if [ "${rec%%$'\x1f'*}" = "1" ]; then
     IFS=$'\x1f' read -r WV_STOP_JOINED WV_STOP_PHASE WV_STOP_ROLE WV_STOP_REQ \
-      WV_STOP_RES joined_status <<<"$rec"
+      WV_STOP_RES joined_status WV_STOP_RES_FROM WV_STOP_DOWNGRADED joined_tuid rec_end <<<"$rec"
     [ -n "$WV_STOP_PHASE" ] || WV_STOP_PHASE="unknown"
     [ -n "$WV_STOP_ROLE" ] || WV_STOP_ROLE="unknown"
     [ -n "$WV_STOP_REQ" ] || WV_STOP_REQ="unknown"
     [ -n "$WV_STOP_RES" ] || WV_STOP_RES="unknown"
+    # A record written by a recovering stop (no tool_use_id) whose transcript
+    # could not name the model then may still be filled now.
+    if [ "$joined_tuid" = "0" ] && [ "$WV_STOP_RES" = "unknown" ]; then
+      WV_STOP_FILL=1
+    fi
   else
     WV_STOP_JOINED=0
     case "$WV_MODE" in
@@ -978,7 +1059,8 @@ wv_main() {
           local req_brief
           req_brief="$(jq -n --arg m "$WV_STOP_REQ" \
             'if ($m | length) > 40 then $m[0:40] + "…" else $m end')"
-          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $req_brief from the launch sidecar beside the agent transcript; the resolved model is ledgered as \"unknown\""
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $req_brief from the launch sidecar beside the agent transcript; the resolved model is read from the agent transcript"
+          WV_STOP_FILL=1
         elif [ "$WV_ENFORCE" = "warn" ] && wv_sidecar_wave_mismatch "$transcript"; then
           # Mirror post-agent.sh: under enforce:warn a tag for another wave is
           # still spent, so it is recorded as untagged / unknown (AC-200),
@@ -1027,6 +1109,7 @@ wv_main() {
   # fan-out of agents stopping at once never queues behind each other's waits.
   wv_transcript_settle "$transcript"
   wv_transcript_stats "$transcript"
+  wv_resolve_from_transcript "$transcript"
 
   local tier_ok="null" tier_verified="false" req_name="-" req_rank=""
   if [ "$WV_STOP_GATED" = "1" ]; then
@@ -1208,6 +1291,21 @@ wv_main() {
       upd="$upd then .rounds[$key_lit] = (((.rounds[$key_lit] // 0) | if type == \"number\" then . else 0 end) + 1) else . end)"
     fi
     wv_state_update "$upd"
+  fi
+  # The transcript-resolved model on the record, filled once: only while the
+  # record still says "unknown", so a replayed stop leaves state.json
+  # byte-identical (AC-237) and a tool_response id post-agent.sh wrote is never
+  # replaced. `downgraded` rides with it; nothing later overwrites either key.
+  if [ "$have_lock" = "1" ] && [ "$WV_STOP_RES_FROM" = "transcript" ] \
+    && { [ "$WV_STOP_JOINED" = "1" ] || [ "$WV_STOP_RECOVERED" = "1" ]; }; then
+    local fill_lit
+    fill_lit="$(jq -nc --arg m "$WV_STOP_RES" --arg d "$WV_STOP_DOWNGRADED" \
+      '{resolved_model: $m, resolved_from: "transcript"}
+       + (if $d == "true" then {downgraded: true} elif $d == "false" then {downgraded: false} else {} end)')"
+    if [ -n "$fill_lit" ]; then
+      wv_state_update "$(printf '.active[%s] |= (if (type == "object") and ((.resolved_model // "unknown") == "unknown") then . + %s else . end)' \
+        "$(wv_jq_str "$WV_STOP_AGENT")" "$fill_lit")"
+    fi
   fi
 
   # The one-shot marker for the lean-return block, written beside the stop record
@@ -1423,9 +1521,21 @@ wv_main() {
   # ---- 4. the ledger line ------------------------------------------------
   #
   # One per agent_id, with the closed key set of spec section 9 plus only the
-  # extras that section names. Appended even when the phase failed its artifact
-  # check — the tokens were spent either way, and a wave that hides failed spend
-  # cannot be scored.
+  # optional keys that section names (its v0.3.0 list includes the two below,
+  # transcript_incomplete and bg_orphaned). Two of them describe `resolved`:
+  #   resolved_from  "transcript" when `resolved` is the model the agent's own
+  #                  transcript records (a foreground dispatch: this stop ran
+  #                  before post-agent.sh, and the ledger is append-only, so no
+  #                  later hook can correct the line). ABSENT means the id is the
+  #                  launch's tool_response.resolvedModel as post-agent.sh
+  #                  recorded it, or "unknown" when nothing could name it.
+  #   downgraded     true | false when a requested and a resolved tier were both
+  #                  readable and compared (by this hook for a transcript id, by
+  #                  post-agent.sh for a tool_response id); absent when not
+  #                  compared; sticky once true.
+  # The line is appended even when the phase failed its artifact check — the
+  # tokens were spent either way, and a wave that hides failed spend cannot be
+  # scored.
   #
   # The one stop that does NOT write it is the one that blocks for a lean return
   # and nothing else: that agent is about to keep working (it has a report to
@@ -1453,8 +1563,12 @@ wv_main() {
     extras="$(jq -nc --arg note "$WV_TS_NOTE" --arg skipped "$WV_TS_SKIPPED" \
       --arg excluded "$WV_TS_EXCLUDED" --arg turns "$WV_TS_TURNS" \
       --argjson incomplete "$([ "$WV_TS_INCOMPLETE" = "1" ] && printf 'true' || printf 'false')" \
-      --argjson bg "$bg_orphans" --argjson long "$long_return" --argjson warn "$warnjson" '
+      --argjson bg "$bg_orphans" --argjson long "$long_return" --argjson warn "$warnjson" \
+      --arg resfrom "$WV_STOP_RES_FROM" --arg downgraded "$WV_STOP_DOWNGRADED" '
         {}
+        + (if $resfrom == "transcript" then {resolved_from: "transcript"} else {} end)
+        + (if $downgraded == "true" then {downgraded: true}
+           elif $downgraded == "false" then {downgraded: false} else {} end)
         + (if $incomplete then {transcript_incomplete: true} else {} end)
         + (if $note != "" then {note: $note}
            elif ($excluded | tonumber) > 0 then

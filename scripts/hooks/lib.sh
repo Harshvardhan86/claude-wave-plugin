@@ -1245,6 +1245,11 @@ wv_up_condition_met() {
       src_rc=$?
       [ "$src_rc" -eq 2 ] && return 2
       [ "$src_rc" -eq 3 ] && return 3
+      # The source runs in this wave and has not run yet: the row waits for it
+      # (the gate's pending, named W-ORDER) unless the source is superseded.
+      if [ "$src_rc" -eq 0 ] && ! wv_row_superseded "$src"; then
+        return 0
+      fi
       return 1
       ;;
     findings:*)
@@ -1273,6 +1278,56 @@ wv_up_condition_met() {
   esac
 }
 
+wv_row_superseded() {
+  # wv_row_superseded <code> -> 0 when <code> is a row this wave predates and
+  # has already passed: THE LEGACY DISCRIMINATOR, the one definition both the
+  # order gate (pre-agent.sh wv_condition_met, done:) and completeness /
+  # the advisory (wv_up_phase_settled, wv_up_condition_met) use. All three:
+  #   1. state.json has no `vocabulary` key, tested on the state itself with
+  #      jq `has("vocabulary") | not`. Never on WV_VOCAB: wv_state_read maps
+  #      an absent key AND a present empty string to "", so an empty scalar
+  #      proves nothing about the key. Every wave-init.sh since 0.3.0 writes
+  #      the key, "unknown" by default, so its absence means an earlier plugin
+  #      started this wave. Schema stays 1; nothing is migrated.
+  #   2. the row has no entry at all in `.phases`: it was never dispatched. A
+  #      row that was dispatched, failed or redone is not absent and must end
+  #      the ordinary way.
+  #   3. a row whose `after` names <code> is recorded done: the wave was past
+  #      <code>'s position when it was upgraded. This mirrors the order walk's
+  #      own stop (pre-agent.sh wv_after_unmet_walk: a predecessor the state
+  #      records as done ends the walk), which is why the gate never asks for
+  #      such a row in the first place.
+  # A 0.3.0 wave never satisfies (1), so a behaviour-changing new wave whose
+  # answer was corrected after AC still owes BEN. Answering vocabulary with
+  # scripts/wave-set.sh on an old wave writes the key and ends the exemption.
+  #
+  # SCOPE OF THIS VERSION. (1) recognises exactly one upgrade, 0.2.x -> 0.3.0,
+  # by the absent `vocabulary` key. Keying a future exemption on the absence of
+  # a later flag breaks as soon as that flag is set with wave-set.sh, so the
+  # next release keys it on `created_by` (the plugin version wave-init.sh
+  # writes into state.json since 0.3.0; absent = created before 0.3.0) versus
+  # the version that introduced the row. (3) checks only rows that name <code>
+  # DIRECTLY in `after`; the next release needs "any later row done", and this
+  # round deliberately does not widen it (for BEN the direct successor is AC).
+  local code="$1" line rec c after
+  local -a cells=()
+  [ -n "$WV_STATE" ] || return 1
+  printf '%s' "$WV_STATE" | jq -e 'try (has("vocabulary") | not) catch false' >/dev/null 2>&1 || return 1
+  printf '%s' "$WV_STATE" | jq -e --arg c "$code" \
+    'try ((.phases // {}) | type == "object" and (has($c) | not)) catch false' >/dev/null 2>&1 || return 1
+  [ -f "$WV_PHASES_TSV" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
+    rec="${line//$'\t'/$'\x1f'}"
+    IFS=$'\x1f' read -r -a cells <<<"$rec"
+    c="${cells[0]:-}"; after="${cells[4]:-}"
+    case ",$after," in
+      *",$code,"*) [ "$(wv_state_phase_status "$c")" = "done" ] && return 0 ;;
+    esac
+  done < "$WV_PHASES_TSV"
+  return 1
+}
+
 wv_up_phase_settled() {
   # wv_up_phase_settled <code> -> 0 when the row counts as settled for the
   # purpose of walking `after`: its state row says done, its `modes` exclude
@@ -1288,6 +1343,7 @@ wv_up_phase_settled() {
     *",$WV_MODE,"*) : ;;
     *) return 0 ;;
   esac
+  wv_row_superseded "$code" && return 0
   wv_up_condition_met "$code"
   crc=$?
   case "$crc" in
@@ -1373,6 +1429,7 @@ wv_next_allowed_phase() {
       *) continue ;;
     esac
     [ "$(wv_state_phase_status "$code")" = "done" ] && continue
+    wv_row_superseded "$code" && continue
     wv_up_condition_met "$code"
     crc=$?
     case "$crc" in

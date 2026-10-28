@@ -115,7 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hook installed by `wave-init.sh` both read `WV_TRAILER_ERE` from
   `scripts/hooks/lib.sh` and refuse the same five forms; the installed hook
   previously let a session line and a vendor-domain co-author line through, and
-  the guard missed the latter.
+  the guard missed the latter. The installed hook now carries a versioned owned
+  marker line, and `wave-init.sh` regenerates a hook that has it (state
+  `upgraded`). The unmarked hook 0.2.x wrote is recognised by its full content
+  and upgraded the same way while it is unmodified; any other hook, including
+  a 0.2.x hook with a local change, is left untouched and the notice gives the
+  refresh path: delete it and re-run `scripts/wave-init.sh`.
 - **Generic prose.** Documentation, comments and messages no longer name a
   vendor, a model or a specific host product; protocol keys, environment names
   and the model-tier routing words are unchanged.
@@ -152,10 +157,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The fixtures that exercised the pointer seeded a state the engine could not
   durably produce. The closing `SubagentStop` now emits the pointer itself, once
   per wave, after it has confirmed the close.
+- **Since 0.2.0, `wave-init.sh` in a linked worktree wrote its hook and exclude where git never reads them.** Each `git rev-parse --git-path` result is now used as is when absolute and joined onto the project root only when relative, so the `commit-msg` hook and the `.wave/` exclude land in the repository's common directory.
+- **Since 0.2.0, `wave-init.sh` wrote into a project's `core.hooksPath` directory.** With `core.hooksPath` set (to any value, an empty one included) it now writes nothing there (state `skipped-hookspath`), renders the check to `.wave/hooks/commit-msg`, and prints a shell-quoted command to call it from the project's own hook manager; the in-session commit guard still applies.
+- **`wave-init.sh` recorded the `commit-msg` hook as installed in a directory that is not a git repository, or in a bare one.** It now writes no hook or check there and nothing under a bare repository's git directory (no `info/exclude` line either; only the wave's own `.wave/` state is created), records `not-a-repo`, and says the guard was not installed because there is no work-tree repository; the in-session commit guard still applies.
+- **`wave-init.sh` reported the `commit-msg` hook installed when writing it had failed.** It now records `installed` or `upgraded` only when the file at the hook path is byte-identical to the intended template: the hook is rendered into a temp file with every command's status checked, compared with an independently rendered reference copy and syntax-checked, then moved into place and compared once more. Otherwise the state is `install-failed`, the notice names the failed step, and the check is saved to `.wave/hooks/commit-msg` instead, verified the same way; whether that check was saved is recorded in a new additive state field `commit_msg_check` (`written`, `failed`, or `none` when no check was needed).
 
 ### Upgrade notes
 
 - The state schema stays at 1. There is no migration and no hook goes silent.
+- `wave-init.sh` writes an additive `created_by` field, the plugin version that
+  created the wave; a state without it was created before 0.3.0, and
+  `wave-set.sh` never changes it.
 - A flag absent from an existing `state.json` reads as the empty string, which is
   neither `true` nor `unknown`, so it behaves as false — this is how the engine has
   always treated an absent field. `vocabulary` is absent in every 0.2.x state file,
@@ -164,15 +176,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written `unknown` by 0.2.x, so `AC` is now denied `W-SCOPE` until it is answered.
   Answer it with `scripts/wave-set.sh behaviour-change true|false`. If the answer is
   `true`, `BEN` is required before `AC` and `BEN-CLOSE` before the tail.
-- For a wave in flight whose `AC` is already done: `BEN` can never run, `BEN-CLOSE`
-  is skipped, and the tail is unchanged. If `behaviour_change` is `true` the wave
-  closes `unverified` and says so once.
+- For a wave in flight whose `AC` is already done: `BEN` is not required (the gate,
+  wave completion and the reminder share one legacy test, `wv_row_superseded`: no
+  `vocabulary` key in `state.json`, no `BEN` entry in `phases`, and `AC` done),
+  `BEN-CLOSE` is skipped, and the tail is unchanged. The closing stop closes the
+  wave; if `behaviour_change` is `true` the verdict is `unverified`, said once.
+- A 0.3.0 wave whose `behaviour_change` becomes `true` after `AC` still owes `BEN`:
+  `BEN` stays dispatchable, and `BEN-CLOSE`, `COMMIT` and the rest of the tail are
+  refused `W-ORDER` naming `BEN` until it has run.
+- Bare `scripts/wave-close.sh` is the supported way to close any wave by hand; it
+  records the honest verdict. Never change `behaviour_change` to get a wave closed.
 - A wave whose dashboard has not yet been dispatched no longer closes when it is. A
   wave already closed that way stays closed.
 - A wave that is complete but still open (its closing stop was blocked or its
   close failed) is reported by every Stop; close it with `scripts/wave-close.sh`.
 - New waves: `/wave-start` asks four scope questions. A wave driven by hand must
-  answer `vocabulary` and `behaviour-change` before its first full-mode dispatch.
+  answer `vocabulary` and `behaviour-change` before `AC` (the gate reads each
+  flag at the row that needs it: `UIA` needs only `vocabulary`).
 - Solo mode is unchanged. Demo mode keeps the same five phases and the same gates.
 - Anything that parsed "`AD` closes the wave" out of the 0.2.x specification must
   use wave completion instead.

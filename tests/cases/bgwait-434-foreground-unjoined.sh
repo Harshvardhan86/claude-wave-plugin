@@ -65,8 +65,14 @@ assert_state '.phases.AD.status == "done" and .phases.AD.agent == "a1"
 assert_ledger_lines 1 || rc=1
 assert_ledger_line '.agent == "a1" and .phase == "AD" and .role == "executor"
                     and .requested == "haiku" and .tier_ok == true' || rc=1
+# The resolved model comes from the agent transcript (all-haiku.jsonl's
+# message.model): the stop deferred by W-BGWAIT must carry it to the line the
+# second stop writes, since post-agent.sh never touches the ledger.
+assert_ledger_line '.resolved == "claude-haiku-4-5-20251001"
+                    and .resolved_from == "transcript"' || rc=1
 
-# post-agent.sh after the stop must not reopen a stopped record.
+# post-agent.sh after the stop must not reopen a stopped record. A foreground
+# dispatch's PostToolUse carries status "completed" (measured on the host).
 # AD is anytime and does not close the wave; seed a still-active copy of
 # the stopped row and run PostToolUse(Agent) against it.
 WV_PROJECT="$(mkproj)"
@@ -82,7 +88,7 @@ jq --arg st "$st" '.script = "post-agent.sh"
     | .stdin.tool_use_id = "toolu_01new"
     | .stdin.tool_input = {description:"[W:1 P:AD R:executor] probe",
         prompt:"done",subagent_type:"general-purpose",model:"haiku"}
-    | .stdin.tool_response = {status:"async_launched",agentId:"a1",
+    | .stdin.tool_response = {status:"completed",agentId:"a1",
         resolvedModel:"claude-haiku-4-5-20251001"}' "$base" > "$c" || exit 1
 run_hook post-agent.sh "$c" || fail 'post-agent run failed'
 assert_allow || rc=1

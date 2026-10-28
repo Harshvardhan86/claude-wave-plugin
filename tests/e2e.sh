@@ -110,7 +110,7 @@ WV_E2E_ASSERTIONS=(
   "load-proof: hooks/hooks.json loads with no 'Duplicate hooks'/'Hook load failed', and this plugin's per-plugin load lines plus the aggregate registered-hook count appear in --debug-file"
   "scenario-a (AC-380): an UNTAGGED Agent dispatch during an active wave (mode full, ui/behaviour_change/cr_enabled all false, enforce block) is denied; the FIRST Agent tool call in the main transcript was denied and its denial text carries [W-TAG]; if a subagent transcript exists, its sidecar description matches the dispatch-tag grammar (a retry with a valid tag is allowed and reported as retried-with-tag)"
   "scenario-b (AC-381): [W:1 P:AC R:lead] dispatched with model \"haiku\" is denied, the transcript's tool_result carries the [W-TIER] reason naming \"opus\""
-  "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
+  "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true, state.active records a real agentId written by post-agent.sh, and state.phases.AD.status == \"done\"; the resolved model is a real id when the host ran the dispatch synchronously (dispatch=sync); when the host launched it asynchronously (dispatch=async, read from the transcript) ledger and state.active agree on either a real id or the honest \"unknown\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
   "scenario-f (AC-385): /<plugin>:wave-start \"x\" with the two early scope answers (no new vocabulary, no behaviour change) in the same message, run WITHOUT --dangerously-skip-permissions, needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json with vocabulary=false and behaviour_change=false"
@@ -536,6 +536,35 @@ wv_e2e_scenario_b() {
 # scenario (c) on the first attempt with tier_ok true, tier_verified true, turns 2.
 # Three runs do not by themselves exclude a one-in-five rate — the mechanism is the
 # primary evidence and the runs are the confirmation.
+# wv_e2e_dispatch_mode <transcript>
+# Prints exactly one of: sync | async | undetermined. The host CLI sometimes runs
+# a subagent dispatch to completion inside the tool call (sync) and sometimes
+# launches it in the background (async). Measured on real transcripts
+# (2026-10-27): the Agent tool_use's paired user line carries a structured
+# toolUseResult object. Sync: status "completed", carries agentType/content/
+# totalDurationMs, no isAsync. Async: status "async_launched" AND isAsync true
+# (also canReadOutputFile/outputFile). The mode is read from that object of the
+# line whose tool_result.tool_use_id equals the id of the Agent tool_use; both
+# fields must agree, anything else (no Agent call, two calls, mixed fields) is
+# "undetermined" and the scenario fails rather than guessing a branch.
+wv_e2e_dispatch_mode() {
+  local transcript="$1"
+  jq -rs '
+    [ .[] | select(.type == "assistant" and (.message.content | type == "array"))
+          | .message.content[] | select(.type == "tool_use" and .name == "Agent") | .id ] as $ids
+    | if ($ids | length) != 1 then "undetermined"
+      else
+        [ .[] | select(.type == "user" and (.message.content | type == "array")
+                       and any(.message.content[]; .type == "tool_result" and .tool_use_id == $ids[0])
+                       and (.toolUseResult | type == "object"))
+              | .toolUseResult ] as $r
+        | if ($r | length) != 1 then "undetermined"
+          elif $r[0].status == "async_launched" and $r[0].isAsync == true then "async"
+          elif $r[0].status == "completed" and ($r[0].isAsync // false) == false then "sync"
+          else "undetermined" end
+      end' "$transcript" 2>/dev/null
+}
+
 WV_SC_C_OK=0
 WV_SC_C_RACE=0
 WV_SC_C_MSG=""
@@ -578,6 +607,16 @@ wv_e2e_scenario_c_attempt() {
     return
   fi
 
+  local mode
+  mode="$(wv_e2e_dispatch_mode "$transcript")"
+  case "$mode" in
+    sync|async) : ;;
+    *)
+      WV_SC_C_MSG="could not tell whether the probe dispatch ran synchronously or asynchronously from $transcript (expected exactly one Agent tool_use whose paired toolUseResult is status completed, or status async_launched with isAsync true); got \"$mode\""
+      return
+      ;;
+  esac
+
   local ledger="$d/.wave/ledger.jsonl"
   if [ ! -f "$ledger" ]; then
     WV_SC_C_MSG="$ledger was never written"
@@ -612,12 +651,26 @@ wv_e2e_scenario_c_attempt() {
   fi
 
   resolved="$(jq -sr '[.[] | select(.phase == "AD" and .role == "executor")][0].resolved' "$ledger" 2>/dev/null)"
-  case "$resolved" in
-    ''|null|unknown)
-      WV_SC_C_MSG="the ledger line's resolved model is \"$resolved\", expected a real model id"
-      return
-      ;;
-  esac
+  if [ "$mode" = "sync" ]; then
+    case "$resolved" in
+      ''|null|unknown)
+        WV_SC_C_MSG="[dispatch=sync] the ledger line's resolved model is \"$resolved\", expected a real model id (the host transcript's own tool result says resolvedModel=\"$(jq -rs '[.[] | select(.toolUseResult | type == "object") | .toolUseResult.resolvedModel][0] // "<absent>"' "$transcript" 2>/dev/null)\"; ledger: $(cat "$ledger"); state.active: $(jq -c '.active' "$d/.wave/state.json" 2>/dev/null))"
+        return
+        ;;
+    esac
+  else
+    # Async launch: the host's launch response is metadata. Observed on real
+    # transcripts, it may or may not carry a resolved model by the time the
+    # post-dispatch hook reads it, so post-agent.sh records either the real id
+    # or the honest "unknown" (with W-RESOLVE-UNKNOWN) and must never invent
+    # one. Both are accepted here; an empty/null value is not.
+    case "$resolved" in
+      ''|null)
+        WV_SC_C_MSG="[dispatch=async] the ledger line has no resolved model value (\"$resolved\"), expected a real model id or \"unknown\""
+        return
+        ;;
+    esac
+  fi
 
   local state="$d/.wave/state.json"
   local active_count active_resolved active_id
@@ -628,12 +681,25 @@ wv_e2e_scenario_c_attempt() {
   fi
   active_resolved="$(jq -r '[.active[] | select(.phase == "AD" and .role == "executor")][0].resolved_model' "$state" 2>/dev/null)"
   active_id="$(jq -r '.active | to_entries[] | select(.value.phase == "AD" and .value.role == "executor") | .key' "$state" 2>/dev/null)"
-  case "$active_resolved" in
-    ''|null|unknown)
-      WV_SC_C_MSG="state.active's AD/executor record has resolved_model \"$active_resolved\", expected a real model id (post-agent.sh should have written it)"
-      return
-      ;;
-  esac
+  if [ "$mode" = "sync" ]; then
+    case "$active_resolved" in
+      ''|null|unknown)
+        WV_SC_C_MSG="[dispatch=sync] state.active's AD/executor record has resolved_model \"$active_resolved\", expected a real model id (post-agent.sh should have written it)"
+        return
+        ;;
+    esac
+  elif [ "$active_resolved" != "$resolved" ]; then
+    # Async: the ledger line is built from the state.active record, so the two
+    # must agree whichever of the two values (real id / "unknown") was recorded.
+    WV_SC_C_MSG="[dispatch=async] state.active's AD/executor record has resolved_model \"$active_resolved\" but the ledger line has \"$resolved\", expected them to agree"
+    return
+  fi
+  # The W-RESOLVE-UNKNOWN warning that goes with the async branch travels on
+  # PostToolUse additionalContext, which the host does NOT write into the
+  # session transcript (measured: no PostToolUse attachment exists in any
+  # scenario transcript). It is therefore not asserted here; its observable
+  # consequences (resolved "unknown" in ledger and state.active) are, and the
+  # warning itself is pinned by the fixture cases for post-agent.sh.
   [ -n "$active_id" ] || { WV_SC_C_MSG="state.active has no agentId key for the AD/executor record"; return; }
 
   # AC-382's other half, preserved by the AD substitution: the phase itself
@@ -649,8 +715,8 @@ wv_e2e_scenario_c_attempt() {
   fi
 
   WV_SC_C_OK=1
-  WV_SC_C_DETAIL="$(printf '  prompt: %s\n  session: %s (%s)\n  ledger line: %s\n  state.active[%s]: phase=AD role=executor resolved_model=%s\n  state.phases.AD.status: %s\n' \
-    "$prompt" "$sid" "$transcript" \
+  WV_SC_C_DETAIL="$(printf '  dispatch=%s resolved=%s\n  prompt: %s\n  session: %s (%s)\n  ledger line: %s\n  state.active[%s]: phase=AD role=executor resolved_model=%s\n  state.phases.AD.status: %s\n' \
+    "$mode" "$resolved" "$prompt" "$sid" "$transcript" \
     "$(jq -sc '[.[] | select(.phase == "AD" and .role == "executor")][0]' "$ledger" 2>/dev/null)" \
     "$active_id" "$active_resolved" "$phase_status")"
 }

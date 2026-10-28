@@ -41,7 +41,7 @@ leg() {
   assert_stderr_rule_tokens "$want" || fail "$label: ordered stderr rule check"
   assert_stderr_contains 'never checked at close' || fail "$label: the unverified explanation is missing"
   assert_stderr_contains 'scripts/wave-scorecard.sh writes .wave/scorecard.md' || fail "$label: the unverified explanation must name the scorecard script and its path"
-  assert_stderr_contains 'remedy: run the BEN-CLOSE phase before closing' || fail "$label: the remedy is missing"
+  assert_stderr_contains 'remedy: the wave is closed; read .wave/ben-close.md and the scorecard and decide' || fail "$label: the remedy is missing"
   assert_state '.status == "closed" and .delivery == "unverified"' || fail "$label: the wave must close with delivery unverified"
   got="$(markers)"
   [ "$got" = "$wantm" ] || fail "$label: want markers [$wantm], got [$got]"

@@ -1,6 +1,6 @@
 {
   "ac": "AC-v030-order",
-  "note": "through BF-BTEET but BEN never ran: COMMIT is allowed. done:BEN is not met, so BEN-CLOSE is skipped and the tail is unchanged (5.3). Negative control for the COMMIT-before-BEN-CLOSE W-ORDER.",
+  "note": "behaviour_change false, through BF-BTEET, BEN never ran: COMMIT is allowed. BEN is skipped, done:BEN is not met, so BEN-CLOSE is skipped and the tail is unchanged (5.3). Negative control for the COMMIT-before-BEN-CLOSE W-ORDER. With behaviour_change true see the two cases below.",
   "script": "pre-agent.sh",
   "seed": {
     "state": "state/p2-bfbteet-no-ben.json",

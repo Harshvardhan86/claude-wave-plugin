@@ -44,12 +44,15 @@ can find it:
 
 ```
 "${CLAUDE_PLUGIN_ROOT}"/scripts/wave-init.sh --wave <next-wave-id> \
-  --mode <full|demo>        # omit and pass --solo instead, for solo mode
+  --mode <full|demo> \
   --enforce block \
-  --vocabulary | --no-vocabulary \
-  --behaviour-change | --no-behaviour-change \
+  <--vocabulary|--no-vocabulary> \
+  <--behaviour-change|--no-behaviour-change> \
   --feature "<feature description>"
 ```
+
+Replace each `<…>` with one of its choices. For solo mode, pass `--solo` in
+place of `--mode <full|demo>`.
 
 Pick `<next-wave-id>` as one past the highest wave id already recorded under
 `.wave/archive/`, or `1` if `.wave/` does not exist yet.
@@ -59,7 +62,7 @@ do not invoke the orchestrator with no wave state behind it.
 
 Then ask the remaining two scope questions (never guess an answer):
 - **ui** — does this wave touch anything the user looks at?
-- **cr** — is there a Change Request in effect for this wave?
+- **cr** — should this wave run the Code Review gate (`[CR]`, phase 3.5, after `[TDE-GREEN]`)?
 
 Route the ui and cr answers through `wave-set.sh`, which records them in
 state and in `.wave/approvals/scope.md`. The same command can correct a

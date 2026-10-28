@@ -39,8 +39,10 @@ the whole tree.
 }
 ```
 
-All fields are optional except `stdin`; `expect` fields are checked only when
-present (a case does not need to assert every field).
+`script` is required: a case without it fails (`case is missing required
+'script' field`). Every other field is optional; `stdin` defaults to `{}` when
+it is absent, and `expect` fields are checked only when present (a case does
+not need to assert every field).
 
 - **`script`** — a hook script name. A bare name (no `/`) resolves to
   `scripts/hooks/<name>`; a path containing `/` resolves relative to the repo
@@ -52,8 +54,7 @@ present (a case does not need to assert every field).
 - **`env`** — extra environment variables exported to the script's process.
 - **`seed.state`** — a path relative to `tests/fixtures/` (or an absolute
   path) copied to `<tmp-project>/.wave/state.json` before the run; an empty
-  `.wave/lock` file is also created (mirroring `wave-init.sh`, which does not
-  exist yet).
+  `.wave/lock` file is also created (mirroring `wave-init.sh`).
 - **`seed.started_hours_before_now`** — rewrites the seeded state's `started` to
   that many whole hours before the instant this case runs at (`env.WV_NOW` if the
   case names one, else the pinned clock in `tests/lib/assert.sh`). Needs
@@ -188,22 +189,31 @@ A case may instead be a `tests/cases/<area>-<name>.sh` script for multi-step
 or concurrency scenarios. It is executed directly (not sourced); it must
 `source "$(dirname "$0")/../lib/assert.sh"`, drive `run_hook` itself as many
 times as it needs (e.g. to fire N concurrent callers against one seeded
-project), and exit 0 for PASS / non-zero for PASS, printing its own diff on
+project), and exit 0 for PASS and non-zero for FAIL, printing its own diff on
 failure. Every `run_hook` call it makes writes the same positive run marker
 as the JSON path, so the harness's "case log carries its run marker" check
 covers `.sh` cases too.
 
 ## The rule-id coverage self-check
 
-The id universe is the union of every `expect.rule` / `expect.negative_control_for`
-value declared anywhere under `tests/cases/`, plus every id in
-`hooks/reasons.tsv` when that file exists (it ships with the plugin; a
-missing file contributes nothing to the universe). For
-every id in that universe, at least one case must declare it via
-`expect.rule` (a positive case) **and** at least one case must declare it via
-`expect.negative_control_for` (a negative control on a neighbouring valid
-input). `tests/run.sh` fails, naming the id, when either is missing
+The id universe is the union of every id in `hooks/reasons.tsv` when that
+file exists (it ships with the plugin; a missing file contributes nothing) and
+every id the selected JSON cases declare. A case is a **positive** for an id
+when it declares it in `expect.rule`, or lists it in `expect.rules` or
+`expect.stderr_rules` (every listed id counts); it is a **negative control**
+when it declares it in `expect.negative_control_for`. For every id in the
+universe, at least one positive and at least one negative control must exist
 (AC-402).
+
+The pre-pass reads only the cases the run selected, so under `--filter` the
+check is about the filtered set, and it reports a gap in one of two ways:
+
+- **A selected positive whose id has no selected negative control fails that
+  case**, with or without `--coverage` (`rule W-X: no negative control` is
+  appended to its result). Select the negative control too, or run the family.
+- **An id with no selected positive at all** is a suite-level line,
+  `coverage: rule W-X: ...`. It is printed on every run and fails the run only
+  under `--coverage`, so a narrow `--filter` prints many of these harmlessly.
 
 ## `tests/fixtures/state/` and `tests/fixtures/transcripts/`
 
@@ -264,12 +274,11 @@ run loop bailed out early), if any case file is 0 bytes or unparseable
 run marker (`RAN <script> <case> decision=<x>`) after the harness attempted
 to run it.
 
-**Coverage gate (default: disabled).** The harness always scans for rule IDs
-with no positive test case and no negative control. By default, it prints these
-lines but does not fail (exits 0 and does not increment `failed=`). To enforce
-coverage at release time, run with `--coverage` flag: `tests/run.sh --coverage`
-fails if any rule lacks cases. During development, the default mode lets you add
-test cases incrementally without blocking other work.
+**Coverage gate.** See "The rule-id coverage self-check" above for its two
+paths. The suite-level lines (an id with no positive case) are printed but do
+not fail by default; `tests/run.sh --coverage` makes each one a failure, which
+is how coverage is enforced at release time. A positive case whose id has no
+negative control in the run fails as a case either way.
 
 **A suite that cannot run at all — the whole file, not one case — is
 reported `SKIPPED`, never counted as a pass.** This applies repo-wide: for

@@ -53,9 +53,9 @@ No new framework role names: the new teams use the tag roles directly, as the `A
 - The schema stays at 1. A flag **absent** from `state.json` reads as the empty string, which is neither `true` nor `unknown`, so it behaves as false; this is how the engine treats every absent field today. Bumping the schema instead would leave every in-flight wave unenforced.
 - `wv_scope_ready`, the `TDE-RED` scope gate, is **not** changed. It is mode-blind, so adding `vocabulary` there would deny every demo wave at `TDE-RED` over a flag no demo row reads; and in full mode section 3.1 already forces the answer earlier.
 
-### 3.1 A full-mode wave needs two answers before its first dispatch
+### 3.1 A full-mode wave needs both answers before `AC`
 
-`AC` names `UIA` and `BEN` as predecessors. A predecessor whose flag is `unknown` denies the successor with `W-SCOPE`, by the existing rule that an unanswered condition is never skipped through. So a full-mode wave can dispatch no `phase` row until `vocabulary` and `behaviour_change` are answered. `ui` and `cr` may still wait until `TDE-RED`.
+`AC` names `UIA` and `BEN` as predecessors. A predecessor whose flag is `unknown` denies the successor with `W-SCOPE`, by the existing rule that an unanswered condition is never skipped through. So `AC`, and every row after it, cannot be dispatched until `vocabulary` and `behaviour_change` are both answered. The gate enforces each flag only where it is read: `UIA` needs `vocabulary` alone, `BEN` needs `behaviour_change` and a settled `UIA`. Asking both before the first dispatch is the command's policy (`/wave-start` asks them before `wave-init.sh`), not a gate rule; `tests/cases/scope-v030-new-rows.sh` pins the mixed answered/unknown states. `ui` and `cr` may still wait until `TDE-RED`.
 
 This withdraws the 0.2.x statement "earlier phases stay dispatchable; a wave has to be able to start" (the comment above the scope gate in `pre-agent.sh` is rewritten). It is accepted because the alternative, hanging `UIA` and `BEN` off `TDE-RED` the way `DR` is, would let the criteria and the design be written before the benefit is stated, which is the failure the phase exists to prevent.
 
@@ -102,7 +102,7 @@ Both verdicts satisfy the marker, so an undelivered wave can still be committed 
 
 ### 5.3 `done:BEN`, a new condition keyword
 
-`BEN-CLOSE` runs when `BEN` ran. `done:<CODE>` is met when `state.phases[CODE].status` is `done`; unanswered when the source row's own condition is unanswered; otherwise not met. A wave started under 0.2.x whose `AC` was already done can never run `BEN` (only `AC` names it), and with `done:BEN` it does not suddenly owe a close-time verdict over a contract nobody wrote: its tail is unchanged. In a new wave `BEN` is necessarily done long before the tail is reachable, so the keyword never has a pending state.
+`BEN-CLOSE` runs when `BEN` ran. `done:<CODE>` is met when `state.phases[CODE].status` is `done`; unanswered when the source row's own condition is unanswered; not met when the source does not run in this wave, or is **superseded** (section 10); otherwise **pending** on the source: the row waits for it, and the order gate names the source in `W-ORDER`. A wave started under 0.2.x whose `AC` was already done is not asked for `BEN` (the order walk stops at the done `AC`, the only row that names `BEN`), and with `done:BEN` it does not suddenly owe a close-time verdict over a contract nobody wrote: its tail is unchanged. A 0.3.0 wave whose behaviour-change answer is corrected to `true` after `AC` is not legacy: `BEN` is still dispatchable (its only predecessor is `UIA`), `BEN-CLOSE` and the tail wait for it, and the wave stays open until it has run.
 
 ### 5.4 The delivery verdict: state, scorecard, and a rule that announces it
 
@@ -178,6 +178,7 @@ An unknown condition string fails open in both evaluators. That stays the right 
 - `stop.sh` never closes a wave and, in full and demo mode, never announces one. On a wave that is complete but still active (the close failed, the final stop was blocked, or the remaining rows were skipped without a closing stop) it refreshes the leftover inventory and emits only `W-STATE`: complete but not closed, noting leftovers when found, with the remedy `scripts/wave-close.sh`. No verdict, no pointer, no marker; it repeats on every Stop until the wave is closed, and an incomplete or closed wave is silent. In solo mode, which has no close and whose verdict is always `not-applicable`, a non-empty ledger gets the same `wv_close_announce` composition.
 - `wave-close.sh` gains `--if-complete`. `--if-terminal <PHASE>` is kept as an accepted alias with the same meaning, its argument ignored, so nothing that calls it breaks. Bare `wave-close.sh` is unchanged: a person may close a wave at any point, and section 5.4 then records the honest verdict. Both forms take the wave lock before reading the state that authorises the close, then re-read it, check it is the same active wave (id and start time) they first saw, decide completeness and delivery, and write, all under that one lock; a wave changed while they waited is not closed (the bare form says so and exits 1).
 - Full mode therefore closes when `VB`, `COMMIT`, `CL` and `CCP` are all done; demo closes when `TEET` is done, as before.
+- **A superseded row is settled.** Completeness and the advisory read the same legacy discriminator the order gate reads (section 10, `wv_row_superseded`), so an upgraded wave that the gate lets finish also completes and closes, `unverified` when it changed behaviour.
 
 ## 10. Compatibility and upgrade
 
@@ -185,10 +186,16 @@ An unknown condition string fails open in both evaluators. That stays the right 
 - **Waves in flight across the upgrade:**
   - `AC` not done, `behaviour_change` `unknown` → `AC` is now denied `W-SCOPE` until it is answered (it was always written `unknown` by 0.2.x).
   - `AC` not done, `behaviour_change` `true` → `BEN` is required before `AC`, and `BEN-CLOSE` before the tail.
-  - `AC` done → `BEN` cannot run, `BEN-CLOSE` is skipped (`done:BEN`), the tail is unchanged; if `behaviour_change` is `true` the wave closes `unverified` and says so once.
+  - `AC` done → `BEN` is superseded: not required by the gate, settled for completeness, never named by the reminder; `BEN-CLOSE` is skipped (`done:BEN` not met), the tail is unchanged, and the closing stop closes the wave. If `behaviour_change` is `true` the verdict is `unverified` and is said once. (`BEN` may still be dispatched by choice; once it has an entry in `.phases` it is no longer superseded and runs to the end like any other row.)
+- **The legacy discriminator** (`scripts/hooks/lib.sh` `wv_row_superseded`, the one definition the gate's `done:` arm, completeness and the advisory all call). A row is superseded when all three hold:
+  1. `state.json` has no `vocabulary` key. Every `wave-init.sh` since 0.3.0 writes it (`"unknown"` by default), so its absence identifies a wave started by an earlier plugin without a schema change. Answering `vocabulary` with `wave-set.sh` on such a wave writes the key and ends the exemption.
+  2. The row has no entry in `.phases` (it was never dispatched).
+  3. A row whose `after` names it is recorded done. This mirrors the order walk's own stop (`pre-agent.sh` `wv_after_unmet_walk`: "a predecessor the state records as done ends the walk"), which is why the gate never asked for such a row.
+  Condition 3 looks only at rows that name the row directly in `after` (for `BEN`, `AC`). A state the discriminator cannot classify as legacy is treated as a 0.3.0 wave.
+- **`created_by`.** `wave-init.sh` writes an additive state field `created_by`, the plugin version from `.claude-plugin/plugin.json` (schema stays 1; a state without it was created before 0.3.0; `wave-set.sh` never writes it). The 0.2.x → 0.3.0 exemption above still keys on the absent `vocabulary` key; the next release keys its exemptions on `created_by` against the version that introduced each row, because the absence of a later flag stops meaning anything once that flag is set by hand. Bare `scripts/wave-close.sh` remains the supported way to close any wave by hand, and records the honest verdict; never change `behaviour_change` to get a wave closed.
   - `vocabulary` is absent in every 0.2.x state file → `UIA` and `ES` are skipped.
   - A wave whose dashboard has not yet been dispatched no longer closes when it is; a wave already closed that way stays closed.
-- **New waves:** `/wave-start` asks four scope questions. A wave driven by hand must answer `vocabulary` and `behaviour-change` before its first full-mode dispatch.
+- **New waves:** `/wave-start` asks four scope questions. A wave driven by hand must answer `vocabulary` and `behaviour-change` before `AC` (section 3.1).
 - **Solo mode:** unchanged. **Demo mode:** unchanged phases and gates; it closes on `TEET` as before.
 - Anything that parsed "`AD` closes the wave" out of the 0.2.x spec must use wave complete instead; section 9 supersedes sections 4 and 8 of that document on this point.
 
@@ -206,7 +213,7 @@ New behaviour, each with a negative control:
 - `vocabulary=false` and absent: `UIA`, `ES`, `BF-ES` denied `W-COND`, the `BF-ES` text naming `findings:ES`; `SEA` dispatchable straight after `BF-BC`.
 - `vocabulary=unknown` at `SEA` → `W-SCOPE`, never skipped through.
 - `ES` done with `FINDINGS: 2`, then `vocabulary` flipped to false → `BF-ES` still met (7.1's ordering).
-- `behaviour_change=true`, `BEN` done: `COMMIT` before `BEN-CLOSE` denied; `BEN` not done and `AC` done: `COMMIT` allowed (5.3).
+- `behaviour_change=true`, `BEN` done: `COMMIT` before `BEN-CLOSE` denied. `BEN` not done and `AC` done, the outcome depends on the wave: with `behaviour_change=false`, `COMMIT` allowed (5.3); with `behaviour_change=true` in a 0.3.0 wave (`vocabulary` key present), `COMMIT` denied `W-ORDER` naming `BEN` (`done:BEN` is pending, section 5.3); with `behaviour_change=true` in a wave started before 0.3.0 (no `vocabulary` key), `COMMIT` allowed because `BEN` is superseded (section 10). Generated cases `order-commit-ben-not-done-allow`, `order-commit-ben-not-done-bc-deny`, `order-commit-ben-not-done-legacy-allow`.
 - `BEN` stop with `red=0` or `authorities=0` fails the marker; `BEN-CLOSE` accepts both verdicts and rejects anything else.
 - tier cells: an allow case and a one-tier-below deny case for every non-`-` cell of the five rows, from the generator.
 - `wave-init` writes `vocabulary`; the four new flags; conflicting flags refused with state untouched. `wave-set vocabulary true|false`, other values refused.

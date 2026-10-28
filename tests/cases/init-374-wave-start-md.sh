@@ -91,4 +91,27 @@ case "$content" in
   *) fail "wave-start.md does not tell the orchestrator to stop on that refusal" ;;
 esac
 
+# The wave-init.sh block is copied and run as one command: every line but the
+# last must end in a line continuation, and no line may carry a trailing
+# comment (a `#` after the arguments swallows the continuation).
+block="$(awk '/^```/ {if (inb) {if (hit) exit; inb = 0; buf = ""; next} inb = 1; next}
+              inb {buf = buf $0 "\n"; if ($0 ~ /wave-init\.sh --wave/) hit = 1}
+              END {}
+              inb && hit {last = buf} END {printf "%s", last}' "$md")"
+[ -n "$block" ] || fail "could not find the fenced wave-init.sh block"
+nlines="$(printf '%s' "$block" | awk 'NF' | wc -l)"
+bad="$(printf '%s' "$block" | awk -v n="$nlines" 'NF { i++; if (i < n && $0 !~ / \\$/) print i": "$0; if ($0 ~ /[^\\] +#/) print i": comment: "$0 }')"
+[ -z "$bad" ] || fail "the wave-init.sh block is not one copyable command: $bad"
+
+# The cr question asks about the gate cr_enabled controls: the [CR] Code Review
+# row (hooks/phases.tsv), not a change request.
+cr_line="$(command grep -m1 -E '^- \*\*cr\*\*' "$md")"
+case "$cr_line" in
+  *'Code Review'*) : ;;
+  *) fail "the cr question must ask about the Code Review gate: '$cr_line'" ;;
+esac
+case "$cr_line" in
+  *'Change Request'*) fail "the cr question still asks about a Change Request: '$cr_line'" ;;
+esac
+
 exit $rc

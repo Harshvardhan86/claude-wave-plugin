@@ -227,7 +227,15 @@ while IFS= read -r line; do
   n_rows=$((n_rows + 1))
   phase="$(jq -r '.phase // "unknown"' <<<"$line")"
   role="$(jq -r '.role // "unknown"' <<<"$line")"
-  model="$(jq -r '.resolved // "unknown"' <<<"$line")"
+  # The resolved id, and where it came from when that was not the launch's
+  # tool_response: a foreground dispatch is ledgered at its stop, before the
+  # launch record exists, from the model the agent transcript records. A
+  # dispatch served below its requested tier (`downgraded: true`, written by
+  # whichever hook compared the tiers) is marked with the tier it asked for.
+  model="$(jq -r '
+    [ (if (.resolved_from // "") == "transcript" then "from the agent transcript" else empty end),
+      (if .downgraded == true then "DOWNGRADED from requested \(.requested // "unknown")" else empty end) ] as $notes
+    | (.resolved // "unknown") + (if ($notes | length) > 0 then " (" + ($notes | join("; ")) + ")" else "" end)' <<<"$line")"
   output="$(jq -r '.output // 0' <<<"$line")"
   case "$output" in ''|*[!0-9]*) output=0 ;; esac
 

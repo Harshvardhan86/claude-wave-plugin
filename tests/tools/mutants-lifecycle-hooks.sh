@@ -19,7 +19,7 @@
 # `--mutant <label>` runs only that row (used to re-check a single new
 # mutant without replaying the rest of the sweep).
 #
-# Eight mutants — the task-10-brief's own six, plus the two properties the fix
+# Fifty mutants. The first eight are the task-10-brief's own six plus the two properties the fix
 # rounds added, which cases pinned and no mutant could break:
 #   1. the planning-path glob is unanchored (drops `^`/`$`)
 #   2. the trailer regex is loosened to the bare word "claude"
@@ -747,6 +747,169 @@ PY
 }
 WV_EXPECT[leftoverpointerunmarked]=undelivered-close-matrix
 wv_run_mutant leftoverpointerunmarked scripts/hooks/lib.sh wv_body_leftoverpointerunmarked 'undelivered-*'
+
+# --- round 4: once-per-wave markers, the legacy discriminator ---------------
+
+# wave-init.sh keeps the previous wave's close-time markers, so a second wave
+# in the same project is never announced. Killed by init-two-wave-markers.
+wv_body_markersnotreset() { cat <<'PY'
+old = 'rm -f "$wave_dir/.undelivered-warned" "$wave_dir/.scorecard-printed" "$wave_dir/.leftover-warned"\n'
+assert old in s, "anchor missing: wave-init.sh removes the once-per-wave markers"
+s = s.replace(old, '', 1)
+PY
+}
+WV_EXPECT[markersnotreset]=init-two-wave-markers
+wv_run_mutant markersnotreset scripts/wave-init.sh wv_body_markersnotreset 'init-two-wave*' 'init-358*' 'init-359*'
+
+# The discriminator never holds, so an upgraded AC-done behaviour-changing wave
+# never completes. Killed by complete-legacy-upgrade.
+wv_body_supersedednever() { cat <<'PY'
+old = '  printf \'%s\' "$WV_STATE" | jq -e \'try (has("vocabulary") | not) catch false\' >/dev/null 2>&1 || return 1\n'
+assert old in s, "anchor missing: wv_row_superseded's legacy-state check"
+s = s.replace(old, '  return 1\n', 1)
+PY
+}
+WV_EXPECT[supersedednever]=complete-legacy-upgrade
+wv_run_mutant supersedednever scripts/hooks/lib.sh wv_body_supersedednever 'complete-*'
+
+# The discriminator drops its legacy-state clause, so BEN becomes optional for
+# every behaviour-changing NEW wave past AC. Killed by complete-legacy-upgrade.
+wv_body_supersedednewwave() { cat <<'PY'
+old = '  printf \'%s\' "$WV_STATE" | jq -e \'try (has("vocabulary") | not) catch false\' >/dev/null 2>&1 || return 1\n'
+assert old in s, "anchor missing: wv_row_superseded's legacy-state check"
+s = s.replace(old, '', 1)
+PY
+}
+WV_EXPECT[supersedednewwave]=complete-legacy-upgrade
+wv_run_mutant supersedednewwave scripts/hooks/lib.sh wv_body_supersedednewwave 'complete-*' 'scope-v030*'
+
+# The discriminator goes back to testing an empty WV_VOCAB, which a present
+# `"vocabulary": ""` also produces, so such a wave is wrongly treated as
+# legacy and BEN is exempted. Killed by complete-legacy-upgrade.
+wv_body_supersededemptyscalar() { cat <<'PY'
+old = '  printf \'%s\' "$WV_STATE" | jq -e \'try (has("vocabulary") | not) catch false\' >/dev/null 2>&1 || return 1\n'
+assert old in s, "anchor missing: wv_row_superseded's legacy-state check"
+s = s.replace(old, '  [ -z "$WV_VOCAB" ] || return 1\n', 1)
+PY
+}
+WV_EXPECT[supersededemptyscalar]=complete-legacy-upgrade
+wv_run_mutant supersededemptyscalar scripts/hooks/lib.sh wv_body_supersededemptyscalar 'complete-*'
+
+# An owned commit-msg hook from an older template is treated as foreign and
+# never receives the current pattern. Killed by commitmsg-owned-hook-upgrade.
+wv_body_ownedhookforeign() { cat <<'PY'
+old = '    hook_owned=1\n'
+assert old in s, "anchor missing: wave-init.sh recognises the owned marker"
+s = s.replace(old, '    hook_owned=0\n', 1)
+PY
+}
+WV_EXPECT[ownedhookforeign]=commitmsg-owned-hook-upgrade
+wv_run_mutant ownedhookforeign scripts/wave-init.sh wv_body_ownedhookforeign 'commitmsg-*'
+
+# The hook 0.2.0 / 0.2.1 installed is no longer recognised by its content, so
+# an unmodified released hook is left in place with the old, narrower pattern.
+# Killed by commitmsg-owned-hook-upgrade.
+wv_body_releasedhookforeign() { cat <<'PY'
+old = '    hook_owned=1 # the unmodified released template\n'
+assert old in s, "anchor missing: wave-init.sh recognises the unmodified released hook"
+s = s.replace(old, '    hook_owned=0 # the unmodified released template\n', 1)
+PY
+}
+WV_EXPECT[releasedhookforeign]=commitmsg-owned-hook-upgrade
+wv_run_mutant releasedhookforeign scripts/wave-init.sh wv_body_releasedhookforeign 'commitmsg-*'
+
+# The released-hook comparison loosens to "any byte-equal prefix" (cmp's EOF
+# on the shorter input is ignored), so a released hook with a line appended
+# is treated as ours and its user's edit is overwritten.
+# Killed by commitmsg-owned-hook-upgrade.
+wv_body_releasedhookprefix() { cat <<'PY'
+old = 'wv_released_commit_msg_hook | cmp -s - "$hook_file"; then\n'
+assert old in s, "anchor missing: wave-init.sh's full-content comparison"
+s = s.replace(old, 'wv_released_commit_msg_hook | cmp -s - <(head -c 752 "$hook_file"); then\n', 1)
+PY
+}
+WV_EXPECT[releasedhookprefix]=commitmsg-owned-hook-upgrade
+wv_run_mutant releasedhookprefix scripts/wave-init.sh wv_body_releasedhookprefix 'commitmsg-*'
+
+# An absolute `git rev-parse --git-path` result (a linked worktree's common
+# directory) is joined onto the project root again, so the hook and the
+# .wave/ exclude land in a nested directory git never reads.
+# Killed by init-linked-worktree.
+wv_body_gitpathjoined() { cat <<'PY'
+old = "    /*) printf '%s' \"$2\" ;;\n"
+assert old in s, "anchor missing: wave-init.sh's absolute --git-path branch"
+s = s.replace(old, "    /*) printf '%s/%s' \"$1\" \"$2\" ;;\n", 1)
+PY
+}
+WV_EXPECT[gitpathjoined]=init-linked-worktree
+wv_run_mutant gitpathjoined scripts/wave-init.sh wv_body_gitpathjoined 'init-linked-worktree*'
+
+# A configured core.hooksPath is ignored, so the hook is written into the
+# project's own hooks directory. Killed by init-hookspath. (Re-anchored when
+# the check moved from the value's length to `git config --get`'s exit
+# status; the mutation itself, "never take the skip path", is unchanged.)
+wv_body_hookspathignored() { cat <<'PY'
+old = 'if [ "$hooks_path_rc" = "0" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's core.hooksPath check"
+s = s.replace(old, 'if [ -n "" ]; then\n', 1)
+PY
+}
+WV_EXPECT[hookspathignored]=init-hookspath
+wv_run_mutant hookspathignored scripts/wave-init.sh wv_body_hookspathignored 'init-hookspath*'
+
+# The core.hooksPath check goes back to the value's length, so an EMPTY
+# configured value (which git still honours) reads as unset and the install
+# is attempted at the path git resolves for it. Killed by init-hookspath
+# (its empty-local and empty-global legs).
+wv_body_hookspathemptyignored() { cat <<'PY'
+old = 'if [ "$hooks_path_rc" = "0" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's core.hooksPath check"
+s = s.replace(old, 'if [ -n "$hooks_path_cfg" ]; then\n', 1)
+PY
+}
+WV_EXPECT[hookspathemptyignored]=init-hookspath
+wv_run_mutant hookspathemptyignored scripts/wave-init.sh wv_body_hookspathemptyignored 'init-hookspath*'
+
+# A directory that is not a work-tree repository (no repository, or a bare one)
+# takes the install path again, so the state claims "installed" for a hook that
+# was never meant to run. Killed by init-no-worktree.
+wv_body_norepoclaimsinstalled() { cat <<'PY'
+old = 'if [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's work-tree check"
+s = s.replace(old, 'if [ -n "" ]; then\n', 1)
+PY
+}
+WV_EXPECT[norepoclaimsinstalled]=init-no-worktree
+wv_run_mutant norepoclaimsinstalled scripts/wave-init.sh wv_body_norepoclaimsinstalled 'init-no-worktree*'
+
+# A failed install step is not acted on, so the hook is reported and recorded
+# as installed although it was never written. Killed by
+# init-hook-install-failed.
+wv_body_installclaimedonfailure() { cat <<'PY'
+old = '    if [ -n "$hook_fail" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's install-failure branch"
+s = s.replace(old, '    if false; then\n', 1)
+PY
+}
+WV_EXPECT[installclaimedonfailure]=init-hook-install-failed
+wv_run_mutant installclaimedonfailure scripts/wave-init.sh wv_body_installclaimedonfailure 'init-hook-install-failed*'
+
+# The rendered hook is no longer compared with an independently rendered
+# reference, before the move or after it, so a render that silently loses its
+# head (every command exits 0) is installed and recorded "installed" while it
+# accepts every message. Both comparisons are removed: either alone still
+# catches the fault. Killed by init-hook-render-fault (its silentfault leg).
+wv_body_renderunchecked() { cat <<'PY'
+old = '  if ! cmp -s -- "$f" "$wv_render_ref"; then\n'
+assert old in s, "anchor missing: wv_render_checked's reference comparison"
+s = s.replace(old, '  if false; then\n', 1)
+old = '        if ! cmp -s -- "$hook_file" "$wv_render_ref"; then\n'
+assert old in s, "anchor missing: the post-move comparison of the installed hook"
+s = s.replace(old, '        if false; then\n', 1)
+PY
+}
+WV_EXPECT[renderunchecked]=init-hook-render-fault
+wv_run_mutant renderunchecked scripts/wave-init.sh wv_body_renderunchecked 'init-hook-render-fault*'
 
 # --- the table --------------------------------------------------------------
 

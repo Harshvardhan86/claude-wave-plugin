@@ -722,6 +722,22 @@ wv_run_mutant donenotdonemet wv_body_donenotdonemet \
 wv_run_mutant vocabunknownisfalse wv_body_vocabunknownisfalse \
   'scope-uia-vocab-unknown*' 'scope-111-unknown*' 'scope-v030*'
 
+# A done: source that runs in this wave but has not run yet reads as a skip
+# again, so a NEW behaviour-changing wave past AC commits without BEN. Killed
+# by scope-v030-new-rows (commit-ben-not-done-new).
+wv_body_donependingskip() { cat <<'PY'
+old = """          if ! wv_row_superseded "$src"; then
+            WV_COND_PENDING="$src"
+            return 3
+          fi
+"""
+assert old in s, "anchor missing: the done: pending branch"
+s = s.replace(old, "")
+PY
+}
+WV_EXPECT[donependingskip]=scope-v030-new-rows
+wv_run_mutant donependingskip wv_body_donependingskip 'scope-v030*' 'order-commit-ben-not-done*'
+
 # --- the table ------------------------------------------------------------
 
 printf '\n%-17s %-11s %-33s %s\n' MUTANT VERDICT EFFECT 'FIRST CASE THAT CAUGHT IT'

@@ -48,7 +48,7 @@
       "never checked at close",
       "no verdict line in .wave/ben-close.md",
       "scripts/wave-scorecard.sh writes .wave/scorecard.md",
-      "remedy: run the BEN-CLOSE phase before closing",
+      "remedy: the wave is closed; read .wave/ben-close.md and the scorecard and decide",
       "scripts/wave-scorecard.sh (writes .wave/scorecard.md)"
     ],
     "state_assert": ".status == \"closed\" and .delivery == \"unverified\""

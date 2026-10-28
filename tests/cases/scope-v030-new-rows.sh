@@ -93,6 +93,92 @@ if drive ben-both-unknown "$UNK" BEN lead opus; then
   esac
 fi
 
+# ---- one early answer given, the other unknown -----------------------------
+#
+# The gate enforces each flag only at the rows that read it: UIA reads
+# vocabulary, BEN reads behaviour_change (and has UIA as its predecessor), AC
+# names both. So with vocabulary true and behaviour_change unknown UIA is
+# allowed, and BEN and AC are W-SCOPE on behaviour_change. "Both answers
+# before the first dispatch" is /wave-start's policy, not a gate rule; the
+# gate's rule is "both answers before AC".
+
+MIXED_VT='.vocabulary = true | .behaviour_change = "unknown" | .ui = "unknown" | .cr_enabled = "unknown"'
+if drive uia-vocab-true-bc-unknown "$MIXED_VT" UIA lead opus; then
+  expect_allow uia-vocab-true-bc-unknown
+fi
+if drive ben-vocab-true-bc-unknown "$MIXED_VT | .phases = {UIA: {status: \"done\"}}" BEN lead opus; then
+  expect_deny ben-vocab-true-bc-unknown W-SCOPE
+  assert_reason_contains 'behaviour_change' || fail "ben-vocab-true-bc-unknown: '$(reason_of)'"
+fi
+if drive ac-vocab-true-bc-unknown "$MIXED_VT | .phases = {UIA: {status: \"done\"}}" AC lead opus; then
+  expect_deny ac-vocab-true-bc-unknown W-SCOPE
+  assert_reason_contains 'behaviour_change' || fail "ac-vocab-true-bc-unknown: '$(reason_of)'"
+fi
+# The mirror: behaviour_change true, vocabulary unknown. BEN waits on UIA's
+# unanswered flag.
+MIXED_BT='.vocabulary = "unknown" | .behaviour_change = true | .ui = "unknown" | .cr_enabled = "unknown"'
+if drive ben-bc-true-vocab-unknown "$MIXED_BT" BEN lead opus; then
+  expect_deny ben-bc-true-vocab-unknown W-SCOPE
+  assert_reason_contains 'vocabulary' || fail "ben-bc-true-vocab-unknown: '$(reason_of)'"
+fi
+
+# ---- the prose agrees with the legs above ----------------------------------
+# Every passage that says when the two early answers are due must keep the
+# three facts apart: asking both before init / the first dispatch is the
+# command's POLICY; the GATE requires both before AC; UIA needs only
+# vocabulary. None may claim the first-dispatch timing is enforced because AC
+# names UIA and BEN (the uia-vocab-true-bc-unknown leg is the counterexample).
+
+para() {
+  # para <file> <ERE> -> the first blank-line-separated paragraph matching ERE,
+  # joined onto one line.
+  awk -v RS= -v re="$2" '$0 ~ re { gsub(/\n/, " "); print; exit }' "$WV_REPO_ROOT/$1"
+}
+
+prose_check() {
+  # prose_check <label> <file> <paragraph-ERE>
+  local label="$1" file="$2" text
+  text="$(para "$file" "$3")"
+  if [ -z "$text" ]; then
+    fail "prose $label: no paragraph in $file matches '$3'"
+    return
+  fi
+  printf '%s' "$text" | command grep -qiE 'polic(y|ies)' \
+    || fail "prose $label ($file): must call the first-dispatch timing the command's policy: '$text'"
+  printf '%s' "$text" | command grep -qE 'before `\[?AC\]?`|`\[?AC\]?`[^.]* cannot be dispatched until' \
+    || fail "prose $label ($file): must say the gate requires both answers before AC: '$text'"
+  printf '%s' "$text" | command grep -qE '`\[?UIA\]?`[^.;]*(only `vocabulary`|`vocabulary` alone)' \
+    || fail "prose $label ($file): must say UIA needs only vocabulary: '$text'"
+  if printf '%s' "$text" | command grep -qiE 'first dispatch[*]*,? because|must be known before the first dispatch'; then
+    fail "prose $label ($file): still presents the first-dispatch timing as gate-enforced: '$text'"
+  fi
+}
+
+prose_check ref04-when-due framework/references/04-meta-orchestration.md 'When each answer is due'
+prose_check skill-contract skills/wave-orchestrator/SKILL.md 'initialises `[.]wave/state[.]json`'
+# Controls: the passages round 4 already corrected keep passing.
+prose_check skill-v030 skills/wave-orchestrator/SKILL.md 'Two scope answers before'
+prose_check design-3.1 docs/design/2026-09-18-benefit-contract-phases.md '^`AC` names `UIA` and `BEN` as predecessors'
+
+# ---- an ABSENT flag is reported as absent, not as an answer ----------------
+# A state written before 0.3.0 has no vocabulary key; the W-COND remedy says so
+# instead of claiming the wave answered false.
+if drive uia-vocab-absent 'del(.vocabulary) | .behaviour_change = false' UIA lead opus; then
+  expect_deny uia-vocab-absent W-COND
+  assert_reason_contains 'state.vocabulary is absent from .wave/state.json' \
+    || fail "uia-vocab-absent: '$(reason_of)'"
+fi
+if drive ben-bc-absent 'del(.behaviour_change) | .vocabulary = false' BEN lead opus; then
+  expect_deny ben-bc-absent W-COND
+  assert_reason_contains 'state.behaviour_change is absent from .wave/state.json' \
+    || fail "ben-bc-absent: '$(reason_of)'"
+fi
+# Answered false still says false.
+if drive uia-vocab-false-detail '.vocabulary = false | .behaviour_change = false' UIA lead opus; then
+  assert_reason_contains 'state.vocabulary is false in .wave/state.json' \
+    || fail "uia-vocab-false-detail: '$(reason_of)'"
+fi
+
 # ---- answered false, ui/cr still unknown: AC silent -----------------------
 
 FALSE_EARLY='.ui = "unknown" | .behaviour_change = false | .cr_enabled = "unknown" | .vocabulary = false'
@@ -248,9 +334,20 @@ if drive commit-ben-close-done "$THROUGH_BFBTEET_BEN | .phases[\"BEN-CLOSE\"] = 
   expect_allow commit-ben-close-done
 fi
 
-# ---- BEN not done and AC done: COMMIT allowed (done:BEN not met) ----------
+# ---- BEN not done and AC done: the legacy discriminator ------------------
+#
+# A wave started before 0.3.0 has no `vocabulary` key in state.json (every
+# 0.3.0 wave-init writes one). In such a wave BEN has no entry in .phases and
+# AC, which names BEN in its `after`, is done: the wave was past BEN's position
+# when it was upgraded, so BEN is superseded (lib.sh wv_row_superseded),
+# BEN-CLOSE is skipped and the tail is unchanged.
+#
+# A 0.3.0 wave with the same phase map (behaviour_change answered true after
+# AC) is NOT legacy: BEN still has to run, so done:BEN is pending on it and
+# the tail is refused W-ORDER naming BEN, exactly as completeness keeps the
+# wave open (tests/cases/complete-legacy-upgrade.sh).
 
-THROUGH_BFBTEET_NO_BEN='.vocabulary = false | .behaviour_change = true | .ui = false | .cr_enabled = false | .phases = {
+THROUGH_BFBTEET_NO_BEN='del(.vocabulary) | .behaviour_change = true | .ui = false | .cr_enabled = false | .phases = {
   AC:{status:"done"}, ACB:{status:"done"}, DR:{status:"done"},
   "TDE-RED":{status:"done"}, "TDE-GREEN":{status:"done"}, CR:{status:"done"},
   BC:{status:"done"}, "BF-BC":{status:"done"},
@@ -264,6 +361,40 @@ THROUGH_BFBTEET_NO_BEN='.vocabulary = false | .behaviour_change = true | .ui = f
 
 if drive commit-ben-not-done "$THROUGH_BFBTEET_NO_BEN" COMMIT executor sonnet; then
   expect_allow commit-ben-not-done
+fi
+
+# Legacy: a BEN-CLOSE dispatch is W-COND, and its remedy says there is nothing
+# to run and why (the state has no vocabulary key).
+if drive ben-close-legacy "$THROUGH_BFBTEET_NO_BEN" BEN-CLOSE lead opus; then
+  expect_deny ben-close-legacy W-COND
+  assert_reason_contains 'nothing to run for BEN-CLOSE' \
+    || fail "ben-close-legacy: remedy must say there is nothing to run: '$(reason_of)'"
+  assert_reason_contains 'no vocabulary key' \
+    || fail "ben-close-legacy: remedy must name the legacy discriminator: '$(reason_of)'"
+fi
+
+# New wave, same phase map: COMMIT and BEN-CLOSE wait for BEN.
+NEW_NO_BEN="$THROUGH_BFBTEET_NO_BEN | .vocabulary = false"
+if drive commit-ben-not-done-new "$NEW_NO_BEN" COMMIT executor sonnet; then
+  expect_deny commit-ben-not-done-new W-ORDER
+  assert_reason_contains 'predecessor(s) not done: BEN;' \
+    || fail "commit-ben-not-done-new: W-ORDER must name BEN: '$(reason_of)'"
+  assert_reason_contains 'BEN (required because state.behaviour_change is true)' \
+    || fail "commit-ben-not-done-new: missing because clause: '$(reason_of)'"
+fi
+if drive ben-close-ben-not-done-new "$NEW_NO_BEN" BEN-CLOSE lead opus; then
+  expect_deny ben-close-ben-not-done-new W-ORDER
+  assert_reason_contains 'predecessor(s) not done: BEN;' \
+    || fail "ben-close-ben-not-done-new: W-ORDER must name BEN: '$(reason_of)'"
+fi
+# ...and BEN itself is dispatchable after AC in that wave (its only
+# predecessor is UIA, skipped by vocabulary false).
+if drive ben-after-ac-new "$NEW_NO_BEN" BEN lead opus; then
+  expect_allow ben-after-ac-new
+fi
+# New wave, behaviour_change false: BEN does not run, COMMIT proceeds.
+if drive commit-ben-not-done-new-bcfalse "$NEW_NO_BEN | .behaviour_change = false | .ui = false" COMMIT executor sonnet; then
+  expect_allow commit-ben-not-done-new-bcfalse
 fi
 
 exit $rc
