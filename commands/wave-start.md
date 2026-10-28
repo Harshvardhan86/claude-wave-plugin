@@ -15,7 +15,7 @@ allowed-tools: "Bash(git:*), Bash(npm:*), Bash(pnpm:*), Bash(yarn:*), Bash(npx:*
 
 ## Instructions
 
-The user invoked `/wave-start` with arguments: **$ARGUMENTS**
+The user invoked `/wave-orchestrator:wave-start` with arguments: **$ARGUMENTS**
 
 ### Step 1 — parse the mode
 
@@ -25,9 +25,9 @@ The user invoked `/wave-start` with arguments: **$ARGUMENTS**
 
 If the feature description is empty, refuse and remind the user of the syntax:
 ```
-/wave-start "<feature description>"           # full v2 framework (31 phase rows: 18 always + 13 conditional)
-/wave-start --demo "<feature description>"    # trimmed 5-phase demo subset
-/wave-start --solo "<feature description>"    # directly-driven task, cheap invariants only
+/wave-orchestrator:wave-start "<feature description>"           # full v2 framework (31 phase rows: 18 always + 13 conditional)
+/wave-orchestrator:wave-start --demo "<feature description>"    # trimmed 5-phase demo subset
+/wave-orchestrator:wave-start --solo "<feature description>"    # directly-driven task, cheap invariants only
 ```
 
 ### Step 0 — start the wave state

@@ -6,7 +6,7 @@
 
 ![A complete wave run — 17 phases, 4h 56m, 483.2k tokens, all checks green](assets/wave-run-output.png)
 
-*A real `/wave-start` run end-to-end, recorded on 0.2.x: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
+*A real `/wave-orchestrator:wave-start` run end-to-end, recorded on 0.2.x: 17 phases dispatched through dedicated sub-agents, TDD-RED → GREEN → visual gates → cleanup → checkpoint. Unattended.*
 
 The defaults of "vibe-coding" optimise for *time-to-first-demo*. This plugin optimises for *time-to-shippable*.
 
@@ -77,10 +77,16 @@ This plugin packages that workflow.
 
 After installation you should see two new slash commands available:
 
-- `/wave-start`
-- `/wave-checkpoint`
+- `/wave-orchestrator:wave-start`
+- `/wave-orchestrator:wave-checkpoint`
 
 …and seven skills registered: `wave-orchestrator`, `benefit-contract`, `ac-writer`, `design-reviewer`, `red-tests`, `green-impl`, `teet-verify`.
+
+### Command names
+
+Claude Code lists plugin commands under the plugin's name, so type `/wave-orchestrator:wave-start` and `/wave-orchestrator:wave-checkpoint`.
+Typing the bare `/wave-start` does not run the command.
+If you already installed the plugin, you don't need to do anything else: use the prefixed form in your existing setup.
 
 ### Manual install (no marketplace)
 
@@ -98,7 +104,7 @@ Restart the host CLI. The plugin should be picked up automatically.
 In any project you want to ship a feature in:
 
 ```bash
-/wave-start --demo "make the save button show a loading spinner"
+/wave-orchestrator:wave-start --demo "make the save button show a loading spinner"
 ```
 
 What you'll see:
@@ -115,14 +121,14 @@ If the agent says "done" without showing you a screenshot, refuse the hand-off �
 Once you've shipped two or three waves with `--demo` successfully, drop the flag:
 
 ```bash
-/wave-start "implement the new payment flow"
+/wave-orchestrator:wave-start "implement the new payment flow"
 ```
 
 This invokes the canonical pipeline: 31 phase rows, 18 of which run in every full wave and 13 of which depend on what the wave is — `[UIA]` and `[ES]` on a wave that introduces new vocabulary, `[BEN]` and `[BEN-CLOSE]` on a wave that changes existing behaviour, `[DR]` on a wave that does either, `[CR]` when the code-review gate is opted in, and each `[BF-*]` row when the scan before it found something. Benefit contract, user-intent criteria, Brutal AC, Empty-State Scan, Silent Error Analysis, Brutal SEA, Dependency Audit, Output Alignment, Brutalised E2E, benefit verdict, version bump, commit, cleanup, checkpoint, dashboard — all dispatched as separate Agents with proper model-tier routing.
 
 Before that first dispatch the command asks whether the wave introduces new vocabulary and whether it changes existing behaviour. Both answers are required: they decide four of the conditional rows, and an unanswered scope flag is never read as "no".
 
-If context fills before completion, `/wave-checkpoint` writes resume state to `.wave/checkpoints/`. A fresh session picks up exactly where you left off.
+If context fills before completion, `/wave-orchestrator:wave-checkpoint` writes resume state to `.wave/checkpoints/`. A fresh session picks up exactly where you left off.
 
 ## What you get
 
@@ -144,15 +150,15 @@ For first-time users, small features, and live-demo segments, the plugin ships *
 | `green-impl` | GREEN | Minimum implementation, verify-before-scan: live stack + tests + screenshot |
 | `teet-verify` | TEET | True end-to-end with computed-style assertions, not `toBeVisible()` lies |
 
-These run as `/wave-start --demo "<feature>"`. The recommended starting point.
+These run as `/wave-orchestrator:wave-start --demo "<feature>"`. The recommended starting point.
 
 ### Commands (`commands/`)
 
-- `/wave-start <feature>` — runs the full v2 pipeline (31 rows; 18 always, 13 conditional)
-- `/wave-start --demo <feature>` — runs the trimmed 5-phase entry subset
-- `/wave-start --solo <feature>` — runs a direct task with explicit models, commit guard,
+- `/wave-orchestrator:wave-start <feature>` — runs the full v2 pipeline (31 rows; 18 always, 13 conditional)
+- `/wave-orchestrator:wave-start --demo <feature>` — runs the trimmed 5-phase entry subset
+- `/wave-orchestrator:wave-start --solo <feature>` — runs a direct task with explicit models, commit guard,
   PreCompact checkpoint and token ledger
-- `/wave-checkpoint` — saves wave state to disk so an auto-compact (or laptop battery dying) doesn't kill the run
+- `/wave-orchestrator:wave-checkpoint` — saves wave state to disk so an auto-compact (or laptop battery dying) doesn't kill the run
 
 ## Hook enforcement (v0.2.0)
 
@@ -179,11 +185,11 @@ full/demo routing requires at least the tier in `hooks/phases.tsv`.
 - **Demo** applies the same rules to `AC`, `DR`, `TDE-RED`, `TDE-GREEN`, `TEET`.
   Skipped conditional or out-of-mode rows are looked through transitively so
   unfinished applicable predecessors cannot be bypassed.
-- **Solo** (`/wave-start --solo`) keeps only the explicit-model rule, commit
+- **Solo** (`/wave-orchestrator:wave-start --solo`) keeps only the explicit-model rule, commit
   guard, PreCompact checkpoint, ledger and W-LEFTOVER inventory. No tag, prompt caps, phase order,
   tiers, orchestrator-only rules, rounds or budgets are enforced.
 
-`/wave-start` creates `.wave/state.json` before dispatch and records full/demo
+`/wave-orchestrator:wave-start` creates `.wave/state.json` before dispatch and records full/demo
 scope answers with `scripts/wave-set.sh`. The state defaults to `enforce: "block"`.
 **Escape hatch:** use `--enforce warn` when invoking `scripts/wave-init.sh`, or
 set `enforce` to `warn` in the active `.wave/state.json`. Event-hook denials become
@@ -257,7 +263,7 @@ v0.3.0 adds these enforced contracts:
   so both refuse the same five trailer forms.
 
 PreCompact now writes `.wave/checkpoints/<ts>-precompact.md` automatically;
-`/wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
+`/wave-orchestrator:wave-checkpoint` is the manual form. The checkpoint is enforced, the stop is
 advised: the host CLI cannot block compaction through this hook. Start a fresh
 terminal from the recorded resume instructions.
 
@@ -372,8 +378,8 @@ wave-orchestrator/
 │   └── teet-verify/SKILL.md
 │
 ├── commands/
-│   ├── wave-start.md                            # /wave-start [--demo|--solo] "<feature>"
-│   └── wave-checkpoint.md                       # /wave-checkpoint
+│   ├── wave-start.md                            # /wave-orchestrator:wave-start [--demo|--solo] "<feature>"
+│   └── wave-checkpoint.md                       # /wave-orchestrator:wave-checkpoint
 │
 ├── hooks/                                       # auto-loaded wiring + rule data
 │   ├── hooks.json                              # events, matchers, command timeouts
@@ -418,6 +424,7 @@ wave-orchestrator/
 - [Skills Directory](https://www.skillsdirectory.com/skills?author=Harshvardhan86) — all seven skills listed with `npx skills add` install commands
 - [SkillsMP](https://skillsmp.com/creators/harshvardhan86) — creator page listing the plugin's seven skills
 - [Code Insights](https://zhoux77899.github.io/claude-code-insights/) — daily-updated tracker of active plugin repositories
+- [Agensi](https://www.agensi.io/skills/claude-wave-plugin-evidence-first-engineering-waves) — free listing of the full plugin: seven skills, both commands and the hooks
 
 ## Used in production by
 
@@ -426,6 +433,7 @@ This plugin is in early public release. If you're using this plugin in a real en
 ## Talks & writing
 
 - 🎤 **[Beyond Vibe Coding — Delhi NCR builders meetup, May 2026](https://www.linkedin.com/posts/harshvardhan-chouhan_claude-delhi-event-recap-ugcPost-7459117381680881664-tJ1q)** — the talk that introduced this framework. Recap with photos and the core thesis.
+- ✍️ **[The Two Birthday Cakes: Why 483,000 Tokens Is the Cheap Part of Shipping to Production](https://www.linkedin.com/pulse/two-birthday-cakes-why-483000-tokens-cheap-part-shipping-chouhan-mpk8c)** — the token-cost question, answered as a bedtime story.
 - ✍️ *Coming soon:* TDD with sub-agents — the patterns from this plugin. Acceptance criteria, evidence-first verification, brutal silent-error scans.
 
 ## Status

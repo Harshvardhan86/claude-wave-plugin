@@ -147,7 +147,7 @@ is neither met nor skipped: the row is required and not yet allowed, and the
 dispatch is denied `W-SCOPE` naming the flag. Because `AC` names `UIA` and `BEN`
 as predecessors, `AC` and everything after it wait until `vocabulary` and
 `behaviour_change` are both answered (`UIA` itself needs only `vocabulary`;
-`/wave-start` asks both up front); `ui` and `cr` are still only needed by
+`/wave-orchestrator:wave-start` asks both up front); `ui` and `cr` are still only needed by
 `TDE-RED`. A demo wave is unaffected — a full-only predecessor is skipped on
 mode before its condition is read. A `findings:` or `done:` row whose source row
 does not run in this wave is not left pending: the condition reports not met,
@@ -308,7 +308,7 @@ goal, phase, artifacts, token totals, trigger and resume command. It spawns no
 agent. An unwritable directory warns and allows compaction. The platform ignores
 PreCompact output, so the hook cannot prevent compaction. On `SessionStart`
 with source `compact`, the latest checkpoint is named with a fresh-terminal
-advisory. `/wave-checkpoint` is the manual form; CCP separately requires a
+advisory. `/wave-orchestrator:wave-checkpoint` is the manual form; CCP separately requires a
 `*-ccp.md` file.
 
 Invariant 6 uses `scripts/hooks/pre-commit-guard.sh` on `Bash`. It recognises git

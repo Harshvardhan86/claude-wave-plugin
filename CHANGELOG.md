@@ -196,6 +196,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Solo mode is unchanged. Demo mode keeps the same five phases and the same gates.
 - Anything that parsed "`AD` closes the wave" out of the 0.2.x specification must
   use wave completion instead.
+## [Unreleased] (published main, documentation only)
+
+### Changed
+
+- Documentation now shows plugin commands with the plugin prefix, as the host lists them:
+  `/wave-orchestrator:wave-start` and `/wave-orchestrator:wave-checkpoint`.
+  Behaviour is unchanged.
+
 
 ## [0.2.1] — 2026-09-12
 

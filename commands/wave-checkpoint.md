@@ -20,7 +20,7 @@ Compaction itself cannot be blocked; resume from the checkpoint in a fresh termi
 
 Save a wave checkpoint to `.wave/checkpoints/<timestamp>.md` containing:
 
-1. **Wave goal** — the original feature description from `/wave-start`.
+1. **Wave goal** — the original feature description from `/wave-orchestrator:wave-start`.
 2. **Phase reached** — which of AC / DR / RED / GREEN / TEET is currently in flight.
 3. **Last verified evidence** — paste the most recent screenshot path, test output, or computed-style assertion result. NOT "tsc passes". Real evidence only.
 4. **Open questions** — anything the user still has to decide.
