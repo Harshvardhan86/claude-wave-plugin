@@ -10,15 +10,16 @@
 #      stop of the phase's CLOSING role and only when no other agent of that
 #      phase is still running (spec section 6);
 #   2. reads the agent's own transcript and compares the MODAL tier of its
-#      assistant turns with what the phase table required (spec section 7) —
+#      model-reply turns with what the phase table required (spec section 7) —
 #      a warning and a recorded taint, never a block;
 #   3. appends one ledger line per agent with the token usage (spec section 9);
 #   4. increments `state.rounds["<PHASE>/<role>"]` once per concurrent group
 #      (spec section 8.7), which is the counter pre-agent.sh's round ceiling
 #      reads and never writes;
 #   5. blocks ONCE for a return message over 2,000 characters (spec section
-#      8.5), and hands over to `scripts/wave-close.sh --if-terminal` when the
-#      active mode's terminal phase reaches `done`.
+#      8.5), and hands over to `scripts/wave-close.sh --if-complete` when
+#      every when=phase row of the active mode is settled. anytime rows
+#      never count, so an AD stop never closes a wave.
 #
 # Evaluation order, at most one JSON object on stdout (the library's WV_EMITTED
 # guard), and every state write completed BEFORE that object is emitted:
@@ -33,7 +34,12 @@
 #        the stop record and the round counter
 #        artifact + marker, closing role, last one out  (W-ARTIFACT / W-MARKER)
 #        the phase record, then the ledger line
-#   -> release, then the terminal-phase close (a separate process, same lock)
+#   -> release, then the leftover inventory (at a final row's closing-role
+#      stop whatever its status, once every other when=phase row is settled,
+#      or at the stop that completes the wave)
+#   -> the wave-complete close (a separate process, same lock) when this stop
+#      made every when=phase row settled; the close-time warnings only once
+#      state.json reads closed, else a W-STATE naming scripts/wave-close.sh
 #   -> the one block: W-ARTIFACT / W-MARKER, else W-LONG-RETURN
 #
 # THE THREE RULES THAT DECIDE WHEN THIS SCRIPT BLOCKS, and why each is written
@@ -203,8 +209,8 @@ WV_TS_OUTPUT=0
 WV_TS_CACHE_READ=0
 WV_TS_CACHE_CREATE=0
 WV_TS_SKIPPED=0
-WV_TS_EXCLUDED=0      # assistant turns with no model, or no output tokens
-WV_TS_VOTES=0         # assistant turns that DID carry a mappable tier
+WV_TS_EXCLUDED=0      # model-reply turns with no model, or no output tokens
+WV_TS_VOTES=0         # model-reply turns that DID carry a mappable tier
 WV_TS_TIER=""         # the modal tier's rank, or "" when unverifiable
 WV_TS_MODEL=""        # a model string representing that tier
 WV_TS_NOTE=""         # "" | "no transcript" | "transcript too large" | …
@@ -263,9 +269,9 @@ wv_transcript_settle() {
   # CONFIRMATION is the conjunction of two independent signals, because either
   # alone is satisfied by a half-written file: the byte size is unchanged across
   # two consecutive samples (nothing is still being appended) AND at least one
-  # complete `assistant` line is readable (the turn we need for the tier vote is
+  # complete model-reply line is readable (the turn we need for the tier vote is
   # actually there). A file that is absent, zero bytes, still growing, or holds no
-  # assistant line yet is not a transcript this hook can measure.
+  # model-reply line yet is not a transcript this hook can measure.
   #
   # It never denies, never blocks, and never turns an unconfirmed read into a
   # violation: on the cap it proceeds with exactly the numbers it would have
@@ -309,7 +315,7 @@ wv_transcript_settle() {
       # the sleep was the largest single component). The file's own mtime already
       # answers "is anything still being appended": if nothing has touched it for
       # a full sample interval, a second sample cannot tell us more than the
-      # filesystem already has. Combined with the assistant-line check it is the
+      # filesystem already has. Combined with the reply-line check it is the
       # same conjunction the loop enforces, obtained without waiting for it.
       if [ -n "$size" ] && [ "$size" != "0" ] && wv_ts_quiet_for_one_interval "$path"; then
         assistants="$(command grep -acE '"type"[[:space:]]*:[[:space:]]*"assistant"' "$path" 2>/dev/null)"
@@ -337,7 +343,7 @@ wv_transcript_settle() {
   done
 
   WV_TS_INCOMPLETE=1
-  wv_warn W-STATE "transcript $(wv_rel "$path") held no complete assistant turn after $(( WV_TRANSCRIPT_SETTLE_TRIES * WV_TRANSCRIPT_SETTLE_MS ))ms, so its token sum and tier are unconfirmed and the ledger line is marked transcript_incomplete"
+  wv_warn W-STATE "transcript $(wv_rel "$path") held no complete model-reply turn after $(( WV_TRANSCRIPT_SETTLE_TRIES * WV_TRANSCRIPT_SETTLE_MS ))ms, so its token sum and tier are unconfirmed and the ledger line is marked transcript_incomplete"
   return 1
 }
 
@@ -714,10 +720,16 @@ wv_stale_successors() {
   local code="$1"
   local frontier="$code" next seen="" line rec c after
   local -a codes=()
-  # One pass per generation over the (26-row) table; the DAG is small and this
-  # keeps the walk obviously terminating.
-  local guard=0
-  while [ -n "$frontier" ] && [ "$guard" -lt 30 ]; do
+  # One pass per generation over the table; the DAG is small and this keeps
+  # the walk obviously terminating. The cap is the row count so a longer chain
+  # cannot be truncated by a leftover literal.
+  local guard=0 n_rows=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
+    n_rows=$((n_rows + 1))
+  done < "$WV_PHASES_TSV"
+  [ "$n_rows" -gt 0 ] || n_rows=1
+  while [ -n "$frontier" ] && [ "$guard" -lt "$n_rows" ]; do
     guard=$((guard + 1))
     next=""
     while IFS= read -r line || [ -n "$line" ]; do
@@ -760,6 +772,20 @@ WV_STOP_PHASE="unknown"
 WV_STOP_ROLE="unknown"
 WV_STOP_REQ="unknown"
 WV_STOP_RES="unknown"
+# Where WV_STOP_RES came from. "" is the launch's tool_response, as post-agent.sh
+# recorded it on the joined record (or "unknown" when nothing did); "transcript"
+# is the model the agent's own transcript records, filled at this stop because
+# the launch record had none (see wv_resolve_from_transcript).
+WV_STOP_RES_FROM=""
+# true | false when a requested and a resolved TIER were both readable and
+# compared; "" when no comparison was made. Never re-derived by the `stopped`
+# bookkeeping, which only ever adds status/stopped to the record.
+WV_STOP_DOWNGRADED=""
+# 1 when this stop may fill an unknown resolved model from the transcript: the
+# launch was recovered from the sidecar here, or the joined record was written
+# by such an earlier stop (it has no tool_use_id, which post-agent.sh always
+# writes) and still holds no resolved model.
+WV_STOP_FILL=0
 WV_STOP_JOINED=0
 WV_STOP_SEEN=0        # this agent has already been ledgered (a replay/second stop)
 WV_STOP_GATED=0       # the phase table applies to this stop
@@ -910,6 +936,64 @@ wv_sidecar_wave_mismatch() {
   [ "${BASH_REMATCH[1]}" != "$WV_WAVE" ]
 }
 
+wv_brief() {
+  # wv_brief <text> <max> -> the text, cut to <max> characters plus an ellipsis.
+  jq -nr --arg t "${1:-}" --argjson n "${2:-40}" \
+    'if ($t | length) > $n then $t[0:$n] + "…" else $t end'
+}
+
+wv_resolve_from_transcript() {
+  # wv_resolve_from_transcript <agent transcript path> — fills WV_STOP_RES from
+  # the model the agent transcript records, when this stop may (WV_STOP_FILL)
+  # and the launch record has none. Reuses wv_transcript_stats' modal model
+  # (read as data, never executed), so the id is one whose tier the same vote
+  # already counted. A transcript that is missing, incomplete, or names no model
+  # hooks/models.tsv maps leaves "unknown" and says so with W-RESOLVE-UNKNOWN,
+  # naming the transcript. Then, for a transcript id, the tier check post-agent.sh
+  # would have made: W-DOWNGRADE when it is below the requested tier.
+  local path="${1:-}"
+  if [ "$WV_STOP_FILL" = "1" ] && [ "$WV_STOP_RES" = "unknown" ]; then
+    if [ "$WV_TS_INCOMPLETE" = "0" ] && [ -n "$WV_TS_MODEL" ]; then
+      WV_STOP_RES="$WV_TS_MODEL"
+      WV_STOP_RES_FROM="transcript"
+    else
+      local where why
+      where="$(wv_rel "$path")"
+      [ -n "$where" ] || where="(no path in the payload)"
+      if [ "${#where}" -gt 80 ]; then where="…${where: -80}"; fi
+      if [ "$WV_TS_INCOMPLETE" = "1" ]; then
+        why="held no complete model-reply turn"
+      else
+        case "$WV_TS_NOTE" in
+          "no transcript") why="is absent" ;;
+          "transcript too large") why="is over the size cap" ;;
+          "transcript unreadable") why="is unreadable" ;;
+          *) why="names no model hooks/models.tsv maps" ;;
+        esac
+      fi
+      wv_stop_warn W-RESOLVE-UNKNOWN "resolved model" \
+        "the sidecar records none and transcript $where $why"
+    fi
+  fi
+  if [ "$WV_STOP_RES_FROM" = "transcript" ]; then
+    local req_t res_t
+    req_t="$(wv_tier "$WV_STOP_REQ")"
+    res_t="$(wv_tier "$WV_STOP_RES")"
+    WV_STOP_DOWNGRADED=""
+    case "$req_t$res_t" in
+      [1-4][1-4])
+        if [ "$res_t" -lt "$req_t" ]; then
+          WV_STOP_DOWNGRADED="true"
+          wv_stop_warn W-DOWNGRADE "$(wv_brief "$WV_STOP_REQ" 40)" "$(wv_brief "$WV_STOP_RES" 60)"
+        else
+          WV_STOP_DOWNGRADED="false"
+        fi
+        ;;
+    esac
+  fi
+  return 0
+}
+
 wv_main() {
   wv_parse_stdin || return 0
   # Wired to SubagentStop only. Any other event has not been measured by this
@@ -942,16 +1026,25 @@ wv_main() {
       ((.active // {})[$id]) as $a
       | if ($a | type) == "object"
         then [ "1", ($a.phase // ""), ($a.role // ""), ($a.requested_model // ""),
-               ($a.resolved_model // ""), ($a.status // "") ] | join("\u001f")
+               ($a.resolved_model // ""), ($a.status // ""),
+               (if ($a.resolved_from // "") == "transcript" then "transcript" else "" end),
+               (if ($a.downgraded | type) == "boolean" then ($a.downgraded | tostring) else "" end),
+               (if ($a | has("tool_use_id")) then "1" else "0" end),
+               "end" ] | join("\u001f")
         else "0" end' 2>/dev/null)"
-  local joined_status=""
+  local joined_status="" joined_tuid="" rec_end=""
   if [ "${rec%%$'\x1f'*}" = "1" ]; then
     IFS=$'\x1f' read -r WV_STOP_JOINED WV_STOP_PHASE WV_STOP_ROLE WV_STOP_REQ \
-      WV_STOP_RES joined_status <<<"$rec"
+      WV_STOP_RES joined_status WV_STOP_RES_FROM WV_STOP_DOWNGRADED joined_tuid rec_end <<<"$rec"
     [ -n "$WV_STOP_PHASE" ] || WV_STOP_PHASE="unknown"
     [ -n "$WV_STOP_ROLE" ] || WV_STOP_ROLE="unknown"
     [ -n "$WV_STOP_REQ" ] || WV_STOP_REQ="unknown"
     [ -n "$WV_STOP_RES" ] || WV_STOP_RES="unknown"
+    # A record written by a recovering stop (no tool_use_id) whose transcript
+    # could not name the model then may still be filled now.
+    if [ "$joined_tuid" = "0" ] && [ "$WV_STOP_RES" = "unknown" ]; then
+      WV_STOP_FILL=1
+    fi
   else
     WV_STOP_JOINED=0
     case "$WV_MODE" in
@@ -966,7 +1059,8 @@ wv_main() {
           local req_brief
           req_brief="$(jq -n --arg m "$WV_STOP_REQ" \
             'if ($m | length) > 40 then $m[0:40] + "…" else $m end')"
-          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $req_brief from the launch sidecar beside the agent transcript; the resolved model is ledgered as \"unknown\""
+          wv_warn W-STATE "SubagentStop for agent $WV_STOP_AGENT recovered phase $WV_STOP_PHASE, role $WV_STOP_ROLE and requested model $req_brief from the launch sidecar beside the agent transcript; the resolved model is read from the agent transcript"
+          WV_STOP_FILL=1
         elif [ "$WV_ENFORCE" = "warn" ] && wv_sidecar_wave_mismatch "$transcript"; then
           # Mirror post-agent.sh: under enforce:warn a tag for another wave is
           # still spent, so it is recorded as untagged / unknown (AC-200),
@@ -1015,6 +1109,7 @@ wv_main() {
   # fan-out of agents stopping at once never queues behind each other's waits.
   wv_transcript_settle "$transcript"
   wv_transcript_stats "$transcript"
+  wv_resolve_from_transcript "$transcript"
 
   local tier_ok="null" tier_verified="false" req_name="-" req_rank=""
   if [ "$WV_STOP_GATED" = "1" ]; then
@@ -1196,6 +1291,21 @@ wv_main() {
       upd="$upd then .rounds[$key_lit] = (((.rounds[$key_lit] // 0) | if type == \"number\" then . else 0 end) + 1) else . end)"
     fi
     wv_state_update "$upd"
+  fi
+  # The transcript-resolved model on the record, filled once: only while the
+  # record still says "unknown", so a replayed stop leaves state.json
+  # byte-identical (AC-237) and a tool_response id post-agent.sh wrote is never
+  # replaced. `downgraded` rides with it; nothing later overwrites either key.
+  if [ "$have_lock" = "1" ] && [ "$WV_STOP_RES_FROM" = "transcript" ] \
+    && { [ "$WV_STOP_JOINED" = "1" ] || [ "$WV_STOP_RECOVERED" = "1" ]; }; then
+    local fill_lit
+    fill_lit="$(jq -nc --arg m "$WV_STOP_RES" --arg d "$WV_STOP_DOWNGRADED" \
+      '{resolved_model: $m, resolved_from: "transcript"}
+       + (if $d == "true" then {downgraded: true} elif $d == "false" then {downgraded: false} else {} end)')"
+    if [ -n "$fill_lit" ]; then
+      wv_state_update "$(printf '.active[%s] |= (if (type == "object") and ((.resolved_model // "unknown") == "unknown") then . + %s else . end)' \
+        "$(wv_jq_str "$WV_STOP_AGENT")" "$fill_lit")"
+    fi
   fi
 
   # The one-shot marker for the lean-return block, written beside the stop record
@@ -1411,9 +1521,21 @@ wv_main() {
   # ---- 4. the ledger line ------------------------------------------------
   #
   # One per agent_id, with the closed key set of spec section 9 plus only the
-  # extras that section names. Appended even when the phase failed its artifact
-  # check — the tokens were spent either way, and a wave that hides failed spend
-  # cannot be scored.
+  # optional keys that section names (its v0.3.0 list includes the two below,
+  # transcript_incomplete and bg_orphaned). Two of them describe `resolved`:
+  #   resolved_from  "transcript" when `resolved` is the model the agent's own
+  #                  transcript records (a foreground dispatch: this stop ran
+  #                  before post-agent.sh, and the ledger is append-only, so no
+  #                  later hook can correct the line). ABSENT means the id is the
+  #                  launch's tool_response.resolvedModel as post-agent.sh
+  #                  recorded it, or "unknown" when nothing could name it.
+  #   downgraded     true | false when a requested and a resolved tier were both
+  #                  readable and compared (by this hook for a transcript id, by
+  #                  post-agent.sh for a tool_response id); absent when not
+  #                  compared; sticky once true.
+  # The line is appended even when the phase failed its artifact check — the
+  # tokens were spent either way, and a wave that hides failed spend cannot be
+  # scored.
   #
   # The one stop that does NOT write it is the one that blocks for a lean return
   # and nothing else: that agent is about to keep working (it has a report to
@@ -1441,12 +1563,16 @@ wv_main() {
     extras="$(jq -nc --arg note "$WV_TS_NOTE" --arg skipped "$WV_TS_SKIPPED" \
       --arg excluded "$WV_TS_EXCLUDED" --arg turns "$WV_TS_TURNS" \
       --argjson incomplete "$([ "$WV_TS_INCOMPLETE" = "1" ] && printf 'true' || printf 'false')" \
-      --argjson bg "$bg_orphans" --argjson long "$long_return" --argjson warn "$warnjson" '
+      --argjson bg "$bg_orphans" --argjson long "$long_return" --argjson warn "$warnjson" \
+      --arg resfrom "$WV_STOP_RES_FROM" --arg downgraded "$WV_STOP_DOWNGRADED" '
         {}
+        + (if $resfrom == "transcript" then {resolved_from: "transcript"} else {} end)
+        + (if $downgraded == "true" then {downgraded: true}
+           elif $downgraded == "false" then {downgraded: false} else {} end)
         + (if $incomplete then {transcript_incomplete: true} else {} end)
         + (if $note != "" then {note: $note}
            elif ($excluded | tonumber) > 0 then
-             {note: ("\($excluded) of \($turns) assistant line(s) were excluded from the tier vote (no message.model, or output_tokens 0)")}
+             {note: ("\($excluded) of \($turns) model-reply line(s) were excluded from the tier vote (no message.model, or output_tokens 0)")}
            else {} end)
         + (if ($skipped | tonumber) > 0 then {skipped_lines: ($skipped | tonumber)} else {} end)
         + (if ($bg | length) > 0 then {bg_orphaned: $bg} else {} end)
@@ -1493,19 +1619,67 @@ wv_main() {
     wv_lock_release
   fi
 
-  # Inventory leftover resources at the terminal role's close, including
-  # failed and artifact-missing verdicts. Warning is informational; the
-  # phase outcome and the block below are unchanged. The flock is released.
+  # ---- does THIS call close the wave? -------------------------------------
+  #
+  # Decided once, here, from the same facts the close below acts on: no block
+  # (the four block rules return before the close), no failed check, a phase
+  # recorded done, and the wave now complete. The leftover warning of a call
+  # that will attempt the close is DEFERRED to the close report: it names the
+  # scorecard, i.e. it is the close's pointer, so it and its marker wait until
+  # state.json says the wave is actually closed. A failed close then marks
+  # nothing and the next closing stop retries the whole composition.
+  #
+  # Only a when=phase row triggers the close. An anytime row (AD) is outside
+  # the completeness walk, so its stop on a wave that is already complete but
+  # still active (a failed closer, a scope change that skipped the remaining
+  # rows) must not close it either (tests/cases/complete-ad-no-close.sh).
+  local will_close=0 trig_when
+  trig_when="$(wv_row_get "$WV_STOP_PHASE" "$WV_COL_WHEN" 2>/dev/null)"
+  case "$emit_rule" in
+    W-BGWAIT|W-ARTIFACT|W-MARKER|W-LONG-RETURN) : ;;
+    *)
+      if [ -z "$verdict_rule" ] && [ "$status_new" = "done" ] && [ "$trig_when" = "phase" ] && wv_wave_complete; then
+        will_close=1
+      fi
+      ;;
+  esac
+
+  # ---- leftover inventory -------------------------------------------------
+  #
+  # Taken at the closing role's stop of a FINAL row (a when=phase row of the
+  # mode that no other when=phase row of the mode names in `after`; full:
+  # VB, COMMIT, CL, CCP; demo: TEET — wv_final_row derives it) WHATEVER that
+  # stop's resulting status is, as long as every OTHER when=phase row of the
+  # mode is settled; and at the stop that completes the wave. A wave that
+  # ends on a failed or artifact-missing final row never completes (the
+  # completeness check is strict, and a person closes such a wave with bare
+  # scripts/wave-close.sh), and it is exactly the wave most likely to leave
+  # runaway work behind, so its inventory must not depend on completing.
+  #
+  # Before the block below, so a blocked final row is still inventoried. The
+  # warning is informational; the phase outcome and the block are unchanged.
+  # The flock is already released.
+  #
+  # Only a call that does NOT close the wave warns here (with its once-per-
+  # wave marker); a closing call's warning is composed by wv_close_announce
+  # once the close is confirmed (see will_close above).
+  local lo_due=0
   case "$status_new" in
-    done|failed|artifact-missing)
-      if [ "$WV_STOP_PHASE" = "$(wv_lo_terminal_phase "$WV_MODE")" ]; then
+    done|failed|artifact-missing|redo)
+      if wv_final_row "$WV_STOP_PHASE" && wv_wave_complete "$WV_STOP_PHASE"; then
+        lo_due=1
+      elif [ "$status_new" = "done" ] && wv_wave_complete; then
+        lo_due=1
+      fi
+      if [ "$lo_due" = "1" ]; then
         wv_lo_collect "$WV_STOP_AGENT"
         wv_lo_write_checkpoint
         # EMIT FIRST, MARK SECOND — the marker silences every later Stop and
-        # SubagentStop in the wave, so it is written only once the warning has
-        # actually been queued. A failed emit leaves the wave unmarked and the
-        # next terminal fire retries (tests/cases/leftover-433-warn-before-mark.sh).
-        if [ "$WV_LO_WARN" = "1" ] && [ ! -f "$WV_WAVE_DIR/.leftover-warned" ]; then
+        # SubagentStop in the wave, so it is written only once the warning
+        # has actually been queued. A failed emit leaves the wave unmarked
+        # and the next eligible stop retries
+        # (tests/cases/leftover-433-warn-before-mark.sh).
+        if [ "$will_close" = "0" ] && [ "$WV_LO_WARN" = "1" ] && [ ! -f "$WV_WAVE_DIR/.leftover-warned" ]; then
           # `then` is on its own line deliberately: reason-corpus.sh's arity
           # gate reads a call site to the end of its line, so a trailing
           # `; then` counts as a second argument to this one-specifier
@@ -1520,7 +1694,7 @@ wv_main() {
       ;;
   esac
 
-  # ---- the one block, and the terminal close ----------------------------
+  # ---- the one block, and the wave-complete close -------------------------
   #
   # Both are last, so every record above is already on disk whichever way this
   # goes, and `stop_hook_active` disarms every block path without disarming any
@@ -1541,31 +1715,77 @@ wv_main() {
   esac
 
   # No block. A phase that failed its check is still not closed out, so the
-  # terminal close is reached only by a phase that is genuinely done.
+  # wave-complete close is reached only by a phase that is genuinely done.
   if [ -n "$verdict_rule" ]; then
     return 0
   fi
 
-  if [ "$status_new" = "done" ]; then
-    wv_close_if_terminal "$WV_STOP_PHASE"
+  if [ "$will_close" = "1" ]; then
+    wv_close_if_complete
+    wv_close_report
   fi
   return 0
 }
 
-wv_close_if_terminal() {
-  # Hands the terminality question to scripts/wave-close.sh, which derives the
-  # mode's terminal phase from hooks/phases.tsv and is a silent no-op for every
-  # other phase. Its stdout is captured and asserted EMPTY: that script's
-  # --if-terminal contract says it prints only to stderr, and this hook's stdout
-  # may carry nothing but its own single JSON object.
-  local code="$1"
+WV_CLOSE_RC=0
+WV_CLOSE_ERR=""
+
+wv_close_if_complete() {
+  # Hands the close to scripts/wave-close.sh --if-complete. Its stdout is
+  # captured and asserted EMPTY: that script's --if-complete contract says it
+  # prints only to stderr, and this hook's stdout may carry nothing but its
+  # own single JSON object. Its exit status and the first line of its stderr
+  # are kept (WV_CLOSE_RC / WV_CLOSE_ERR) for wv_close_report, which decides
+  # from state.json — not from this status — whether the wave closed.
   local closer="$WV_PLUGIN_DIR/scripts/wave-close.sh"
-  [ -f "$closer" ] || return 0
-  local out
-  out="$(CLAUDE_PROJECT_DIR="$WV_ROOT" bash "$closer" --if-terminal "$code" 2>/dev/null)"
-  if [ -n "$out" ]; then
-    wv_warn W-STATE "scripts/wave-close.sh --if-terminal $code wrote to stdout ($out), which would corrupt this hook's JSON channel; the output was discarded and the wave may not be closed"
+  WV_CLOSE_RC=0
+  WV_CLOSE_ERR=""
+  if [ ! -f "$closer" ]; then
+    WV_CLOSE_RC=127
+    WV_CLOSE_ERR="scripts/wave-close.sh is missing from the plugin"
+    return 1
   fi
+  local out errf
+  errf="$(mktemp "${TMPDIR:-/tmp}/wave-close-err.XXXXXX" 2>/dev/null)" || errf=""
+  if [ -n "$errf" ]; then
+    out="$(CLAUDE_PROJECT_DIR="$WV_ROOT" bash "$closer" --if-complete 2>"$errf")"
+    WV_CLOSE_RC=$?
+    WV_CLOSE_ERR="$(head -n 1 "$errf" 2>/dev/null)"
+    rm -f "$errf"
+  else
+    out="$(CLAUDE_PROJECT_DIR="$WV_ROOT" bash "$closer" --if-complete 2>/dev/null)"
+    WV_CLOSE_RC=$?
+  fi
+  if [ -n "$out" ]; then
+    wv_warn W-STATE "scripts/wave-close.sh --if-complete wrote to stdout ($out), which would corrupt this hook's JSON channel; the output was discarded and the wave may not be closed"
+  fi
+  return "$WV_CLOSE_RC"
+}
+
+wv_close_report() {
+  # The close-time warnings, emitted only once state.json says the wave is
+  # ACTUALLY closed. A close that did not happen (a lock race, an unwritable
+  # .wave/, a missing closer) gets a W-STATE saying so and naming the remedy,
+  # and nothing else: no W-SCORECARD and no W-LEFTOVER (both are the pointer
+  # of a closed wave), no W-UNDELIVERED (there is no recorded verdict), and
+  # no marker — not even .leftover-warned when the inventory found leftovers.
+  # The next closing stop retries the close and, once it succeeds, announces
+  # all of it; a Stop meanwhile says "complete but not closed" (stop.sh).
+  #
+  # When it did close: wv_close_announce, the composition stop.sh uses in
+  # solo mode (SubagentStop's warnings go to stderr, one after another;
+  # stdout stays empty). delivery is read back from the state file with jq
+  # directly: wv_state_read refuses a closed wave.
+  local closed delivery excerpt
+  closed="$(jq -r '.status // empty' "$WV_STATE_FILE" 2>/dev/null)"
+  if [ "$closed" != "closed" ]; then
+    excerpt="$(wv_list_cap 1 40 '' "${WV_CLOSE_ERR:-no message}")"
+    wv_rule_warn W-STATE "wave $WV_WAVE is complete but could not be closed (wave-close.sh exit $WV_CLOSE_RC: $excerpt); nothing announced or marked, the next closing stop retries; close it with \`scripts/wave-close.sh\`"
+    return 0
+  fi
+  delivery="$(jq -r '.delivery // empty' "$WV_STATE_FILE" 2>/dev/null)"
+  [ "$delivery" = "null" ] && delivery=""
+  wv_close_announce "$delivery"
   return 0
 }
 

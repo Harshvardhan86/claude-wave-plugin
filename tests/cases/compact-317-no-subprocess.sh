@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tests/cases/compact-317-no-subprocess.sh - AC-317.
 #
-# pre-compact.sh must never spawn a `claude` subprocess: it cannot fail for
-# lack of context because it never asks for any. A PATH shim whose `claude`
+# pre-compact.sh must never spawn a host-CLI subprocess: it cannot fail for
+# lack of context because it never asks for any. A PATH shim standing in for the host CLI
 # fails the whole case the moment it is invoked proves it.
 set -u
 # shellcheck source=../lib/assert.sh

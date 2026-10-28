@@ -1,5 +1,7 @@
 # Golden tier reference transcribed from framework/SKILL.md phase table
 # phase	lead	executor	reviewer
+UIA	opus	sonnet	opus
+BEN	opus	sonnet	opus
 AC	opus	sonnet	opus
 ACB	opus	opus	opus
 DR	opus	sonnet	opus
@@ -8,6 +10,8 @@ TDE-GREEN	sonnet	sonnet	opus
 CR	-	-	sonnet
 BC	-	sonnet	-
 BF-BC	opus	sonnet	opus
+ES	-	sonnet	-
+BF-ES	opus	sonnet	opus
 SEA	-	sonnet	-
 BF-SEA	opus	sonnet	opus
 DS	-	sonnet	-
@@ -21,6 +25,7 @@ BF-TEET	opus	sonnet	opus
 BTEET	opus	opus	opus
 BTEET-X	sonnet	sonnet	sonnet
 BF-BTEET	opus	sonnet	opus
+BEN-CLOSE	opus	sonnet	opus
 VB	-	haiku	-
 COMMIT	-	sonnet	-
 CL	-	sonnet	-

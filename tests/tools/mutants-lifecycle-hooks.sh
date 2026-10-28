@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# tests/tools/mutants-lifecycle-hooks.sh [--keep]
+# tests/tools/mutants-lifecycle-hooks.sh [--keep] [--mutant <label>]
 #
 # The mutation control for the five lifecycle scripts (pre-commit-guard.sh,
 # pre-compact.sh, stop.sh, session-start.sh, user-prompt.sh) plus the wave-id
 # bound in scripts/wave-init.sh, which is the other half of session-start.sh's
-# character budget: proves the
-# case corpus is not vacuous by breaking one property at a time and
-# requiring at least one case to go red for each. Same construction as
+# character budget, plus the advisory evaluator in scripts/hooks/lib.sh
+# (wv_up_condition_met / wv_next_allowed_phase) that those hooks print:
+# proves the case corpus is not vacuous by breaking one property at a time
+# and requiring at least one case to go red for each. Same construction as
 # tests/tools/mutants-post-agent.sh (read its header first) — a mutant is
 # applied to a COPY of the tree in a temp directory, never the working
 # tree, with logs OUTSIDE the copied tree so the measurement cannot write
@@ -15,13 +16,17 @@
 # SURVIVED vs killed, because those fire on every narrow --filter regardless
 # of the mutant and would otherwise manufacture a false `killed`.
 #
-# Eight mutants — the task-10-brief's own six, plus the two properties the fix
+# `--mutant <label>` runs only that row (used to re-check a single new
+# mutant without replaying the rest of the sweep).
+#
+# Fifty mutants. The first eight are the task-10-brief's own six plus the two properties the fix
 # rounds added, which cases pinned and no mutant could break:
 #   1. the planning-path glob is unanchored (drops `^`/`$`)
 #   2. the trailer regex is loosened to the bare word "claude"
 #   3. the commit guard's main-session-only (agent_id) guard is removed
 #   4. the PreCompact checkpoint is written without the ledger section
-#   5. the stop.sh scorecard pointer's once-per-wave marker check is removed
+#   5. the scorecard pointer's once-per-wave marker check is removed (since
+#      the second revision it lives in lib.sh wv_close_announce, which stop.sh calls)
 #   6. the reminder is emitted with no active wave at all
 #   7. wave-init.sh's 1-24 `[A-Za-z0-9._-]` wave-id bound is loosened — the bound
 #      the session banner's own 400-character budget is derived from
@@ -35,6 +40,7 @@
 #
 #   bash tests/tools/mutants-lifecycle-hooks.sh
 #   bash tests/tools/mutants-lifecycle-hooks.sh --keep   # leave the temp root behind
+#   bash tests/tools/mutants-lifecycle-hooks.sh --mutant unansweredskipped
 #
 # Deliberately `set -u`, never `set -e`: a mutant whose run fails must reach
 # the table rather than abort the sweep.
@@ -44,7 +50,23 @@ set -u
 WV_TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WV_REPO_ROOT="$(cd "$WV_TOOLS_DIR/../.." && pwd)"
 WV_KEEP=0
-[ "${1:-}" = "--keep" ] && WV_KEEP=1
+WV_ONLY_MUTANT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --keep) WV_KEEP=1; shift ;;
+    --mutant)
+      [ $# -ge 2 ] || {
+        printf 'mutants-lifecycle-hooks.sh: --mutant needs a label\n' >&2
+        exit 1
+      }
+      WV_ONLY_MUTANT="$2"; shift 2 ;;
+    *)
+      printf 'mutants-lifecycle-hooks.sh: unknown argument: %s\n' "$1" >&2
+      printf 'usage: bash tests/tools/mutants-lifecycle-hooks.sh [--keep] [--mutant <label>]\n' >&2
+      exit 1
+      ;;
+  esac
+done
 
 for tool in jq git python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -54,6 +76,11 @@ for tool in jq git python3; do
 done
 
 WV_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wave-mutants-lifecycle.XXXXXX")" || exit 1
+# The harness keeps the scratch directory of every RED run, and every killed
+# mutant is a red run: each run gets TMPDIR inside this temp root, removed
+# after the run (kept with --keep) and with the root on exit
+# (tests/cases/_selfcheck/data-mutant-scratch.sh).
+WV_SCRATCH="$WV_TMP/scratch"
 WV_TREE="$WV_TMP/tree"
 WV_LOGS="$WV_TMP/logs"
 mkdir -p "$WV_TREE" "$WV_LOGS" || exit 1
@@ -62,6 +89,7 @@ cleanup() {
   if [ "$WV_KEEP" = "1" ]; then
     printf 'temp root kept at %s\n' "$WV_TMP"
   else
+    chmod -R u+rwX "$WV_TMP" 2>/dev/null
     rm -rf "$WV_TMP"
   fi
 }
@@ -103,6 +131,9 @@ wv_register_target scripts/hooks/session-start.sh
 # is derived from it: the two are one property with two halves, and this sweep is
 # where the banner's half is already measured.
 wv_register_target scripts/wave-init.sh
+# Not a hook either: the close-time Delivery section is rendered here.
+wv_register_target scripts/wave-scorecard.sh
+wv_register_target scripts/wave-close.sh
 
 wv_restore_target() {
   local rel="$1"
@@ -147,6 +178,9 @@ wv_run_mutant() {
   # wv_run_mutant <label> <relative-script-path> <body-function> <filter>...
   local label="$1" rel="$2" body="$3"
   shift 3
+  if [ -n "$WV_ONLY_MUTANT" ] && [ "$label" != "$WV_ONLY_MUTANT" ]; then
+    return
+  fi
   local target="$WV_TREE/$rel"
   wv_total=$((wv_total + 1))
 
@@ -186,7 +220,9 @@ wv_run_mutant() {
   local f
   for f in "$@"; do args+=(--filter "$f"); done
   local log="$WV_LOGS/$label.log"
-  ( cd "$WV_TREE" && bash tests/run.sh "${args[@]}" ) > "$log" 2>&1
+  mkdir -p "$WV_SCRATCH"
+  ( cd "$WV_TREE" && TMPDIR="$WV_SCRATCH" bash tests/run.sh "${args[@]}" ) > "$log" 2>&1
+  if [ "$WV_KEEP" != "1" ]; then chmod -R u+rwX "$WV_SCRATCH" 2>/dev/null; rm -rf "$WV_SCRATCH"; fi
 
   local summary total
   summary="$(command grep -m1 '^total=' "$log")"
@@ -248,9 +284,9 @@ PY
 
 # --- 2. trailer regex loosened to the bare word "claude" -------------------
 wv_body_trailerloosened() { cat <<'PY'
-old = "WV_PCG_TRAILER_RE='Co-Authored-By: Claude|Co-Authored-By: [^[:space:]]*@anthropic\\.com|Generated with \\[Claude Code\\]|Claude-Session: https|https://claude\\.ai/code/session_'"
-assert old in s, "anchor missing: WV_PCG_TRAILER_RE"
-new = "WV_PCG_TRAILER_RE='[Cc]laude'"
+old = "WV_TRAILER_ERE='Co-Authored-By: Claude|Co-Authored-By: .*@anthropic\\.com|Generated with \\[Claude Code\\]|Claude-Session: https|https://claude\\.ai/code/session_'"
+assert old in s, "anchor missing: WV_TRAILER_ERE"
+new = "WV_TRAILER_ERE='[Cc]laude'"
 s = s.replace(old, new)
 PY
 }
@@ -271,11 +307,14 @@ s = s.replace(old, "", 1)
 PY
 }
 
-# --- 5. stop.sh's once-per-wave marker check is removed --------------------
+# --- 5. the pointer's once-per-wave marker check is removed ---------------
+# RE-ANCHORED: the check moved from stop.sh into lib.sh's
+# wv_close_announce, the one composition both hooks use. Killed by
+# stopcard-322 (solo, marker present: silent).
 wv_body_scorecardtwice() { cat <<'PY'
-old = "  [ -f \"$WV_WAVE_DIR/.scorecard-printed\" ] && return 0\n\n"
-assert old in s, "anchor missing: the scorecard-printed early return"
-s = s.replace(old, "", 1)
+old = '{ [ ! -f "$d/.scorecard-printed" ] && [ -s "$d/ledger.jsonl" ]; }'
+assert old in s, "anchor missing: the scorecard-printed once-per-wave check"
+s = s.replace(old, '{ [ -s "$d/ledger.jsonl" ]; }', 1)
 PY
 }
 
@@ -345,10 +384,10 @@ WV_EXPECT[waveidbound]=init-360-invalid-args
 WV_EXPECT[clauseorder]=session-327d-max-banner-stale
 
 wv_run_mutant globunanchored        scripts/hooks/pre-commit-guard.sh wv_body_globunanchored        'commit-*' 'solo-guard-*'
-wv_run_mutant trailerloosened       scripts/hooks/pre-commit-guard.sh wv_body_trailerloosened       'commit-*' 'solo-guard-*'
+wv_run_mutant trailerloosened       scripts/hooks/lib.sh wv_body_trailerloosened       'commit-*' 'solo-guard-*'
 wv_run_mutant agentidguardremoved   scripts/hooks/pre-commit-guard.sh wv_body_agentidguardremoved   'commit-*' 'solo-guard-*'
 wv_run_mutant noledgersection       scripts/hooks/pre-compact.sh      wv_body_noledgersection       'compact-*' 'solo-guard-336*'
-wv_run_mutant scorecardtwice        scripts/hooks/stop.sh             wv_body_scorecardtwice        'stopcard-*'
+wv_run_mutant scorecardtwice        scripts/hooks/lib.sh              wv_body_scorecardtwice        'stopcard-*'
 wv_run_mutant reminderwithnowave    scripts/hooks/user-prompt.sh      wv_body_reminderwithnowave    'prompt-inject-*'
 wv_run_mutant waveidbound           scripts/wave-init.sh              wv_body_waveidbound           'init-36*'
 wv_run_mutant clauseorder           scripts/hooks/session-start.sh    wv_body_clauseorder           'session-*'
@@ -429,13 +468,448 @@ WV_EXPECT[leftoverselfexcluded]=leftover-426-proc-exact-root
 WV_EXPECT[leftovermarkerfirst]=leftover-430-closed-and-double-stop
 wv_run_mutant leftoverprefixcwd scripts/hooks/lib.sh wv_body_leftoverprefixcwd 'leftover-426*'
 wv_run_mutant leftovercronsdropped scripts/hooks/lib.sh wv_body_leftovercronsdropped 'leftover-428*'
-wv_run_mutant leftoverwarnremoved scripts/hooks/stop.sh wv_body_leftoverwarnremoved 'leftover-423*'
+# RE-TARGETED: the 4-space anchor line moved, byte-identical,
+# from stop.sh into lib.sh wv_close_announce.
+wv_run_mutant leftoverwarnremoved scripts/hooks/lib.sh wv_body_leftoverwarnremoved 'leftover-423*'
 wv_run_mutant leftoverstopwarn scripts/hooks/subagent-stop.sh wv_body_leftoverstopwarn 'leftover-431*'
 wv_run_mutant leftoverkills scripts/hooks/lib.sh wv_body_leftoverkills 'leftover-426*'
 wv_run_mutant leftoverscanclean scripts/hooks/lib.sh wv_body_leftoverscanclean 'leftover-427*'
 wv_run_mutant leftoverprecompactsection scripts/hooks/pre-compact.sh wv_body_leftoverprecompactsection 'leftover-429*'
 wv_run_mutant leftoverselfexcluded scripts/hooks/lib.sh wv_body_leftoverselfexcluded 'leftover-426*'
 wv_run_mutant leftovermarkerfirst scripts/hooks/stop.sh wv_body_leftovermarkerfirst 'leftover-430*'
+
+# --- unanswered reads as skipped (advisory evaluator, design 3.2) ----------
+#
+# Collapses wv_up_condition_met's third outcome (return 2, unanswered) back
+# into return 1 (not met). wv_up_phase_settled then treats the row as
+# skipped and wv_next_allowed_phase walks through it to a successor the
+# gate would refuse. Killed by advisory-gate-agreement.
+wv_body_unansweredskipped() { cat <<'PY'
+start = s.find('wv_up_condition_met()')
+end = s.find('wv_up_phase_settled()')
+assert start != -1 and end != -1, "anchor missing: wv_up_condition_met / wv_up_phase_settled"
+block = s[start:end]
+assert 'return 2' in block, "anchor missing: unanswered return 2 in wv_up_condition_met"
+new_block = block.replace('return 2', 'return 1')
+assert new_block != block, "unansweredskipped: return 2 was not replaced"
+s = s[:start] + new_block + s[end:]
+PY
+}
+WV_EXPECT[unansweredskipped]=advisory-gate-agreement
+wv_run_mutant unansweredskipped scripts/hooks/lib.sh wv_body_unansweredskipped 'advisory-gate-agreement'
+
+# --- wave complete: anytime rows count towards complete --------------------
+# Drops the when=phase filter so AD (anytime) must be done before the wave
+# is complete. Killed by stop-227-dash-artifact: the last of VB/COMMIT/CL/CCP
+# closes while AD has never run.
+wv_body_anytimecounts() { cat <<'PY'
+old = '''    [ "$when" = "phase" ] || continue
+    case ",$modes," in
+      *",$WV_MODE,"*) : ;;
+      *) continue ;;
+    esac
+    wv_up_phase_settled "$code" || return 1
+'''
+new = '''    : # anytime rows count towards complete
+    case ",$modes," in
+      *",$WV_MODE,"*) : ;;
+      *) continue ;;
+    esac
+    wv_up_phase_settled "$code" || return 1
+'''
+assert old in s, "anchor missing: anytime rows skipped in wv_wave_complete"
+s = s.replace(old, new, 1)
+PY
+}
+WV_EXPECT[anytimecounts]=stop-227-dash-artifact
+wv_run_mutant anytimecounts scripts/hooks/lib.sh wv_body_anytimecounts 'stop-227*' 'complete-wave-complete'
+
+# --- wave complete: unanswered counts as settled ---------------------------
+# An unsettled row (including unanswered) is skipped instead of blocking.
+# Killed by complete-wave-complete (vocabulary unknown).
+wv_body_unansweredsettled() { cat <<'PY'
+old = '    wv_up_phase_settled "$code" || return 1\n'
+assert old in s, "anchor missing: unsettled row blocks wv_wave_complete"
+s = s.replace(old, '    wv_up_phase_settled "$code" || continue\n', 1)
+PY
+}
+WV_EXPECT[unansweredsettled]=complete-wave-complete
+wv_run_mutant unansweredsettled scripts/hooks/lib.sh wv_body_unansweredsettled 'complete-wave-complete'
+
+# --- 5.4: absent ben-close.md reads as delivered ---------------------------
+wv_body_absentdelivered() { cat <<'PY'
+old = '''  if [ ! -f "$file" ]; then
+    printf 'unverified'
+    return 0
+  fi'''
+new = '''  if [ ! -f "$file" ]; then
+    printf 'delivered'
+    return 0
+  fi'''
+assert old in s, "anchor missing: absent ben-close.md is unverified"
+s = s.replace(old, new, 1)
+PY
+}
+WV_EXPECT[absentdelivered]=init-delivery-54
+wv_run_mutant absentdelivered scripts/hooks/lib.sh wv_body_absentdelivered 'init-delivery-54' 'init-363*'
+
+# --- 5.4: BEN not done with behaviour_change true reads as not-applicable --
+wv_body_bctrueapplicable() { cat <<'PY'
+old = '''      true|unknown) printf 'unverified' ;;
+      *) printf 'not-applicable' ;;'''
+new = '''      true|unknown) printf 'not-applicable' ;;
+      *) printf 'unverified' ;;'''
+assert old in s, "anchor missing: BEN not done + bc true/unknown is unverified"
+s = s.replace(old, new, 1)
+PY
+}
+WV_EXPECT[bctrueapplicable]=init-delivery-54
+wv_run_mutant bctrueapplicable scripts/hooks/lib.sh wv_body_bctrueapplicable 'init-delivery-54'
+
+# --- 5.4: the BEN row's modes are not consulted -----------------------------
+# A demo wave with behaviour_change true then closes unverified and is told to
+# run a phase demo does not have. Killed by init-delivery-54's mode rows.
+wv_body_benmodesignored() { cat <<'PY'
+old = '  if ben_modes="$(wv_row_get BEN "$WV_COL_MODES")"; then\n'
+assert old in s, "anchor missing: verdict reads the BEN row's modes"
+s = s.replace(old, '  if false; then\n', 1)
+PY
+}
+WV_EXPECT[benmodesignored]=init-delivery-54
+wv_run_mutant benmodesignored scripts/hooks/lib.sh wv_body_benmodesignored 'init-delivery-54' 'undelivered-*'
+
+# --- scorecard: Delivery section printed when state.json has no delivery ---
+# The guard's exact negation. Killed by scorecard-004-delivery's first leg,
+# which seeds a ledger line so the scorecard is actually rendered (without it
+# the "no ledger" early return hid the Delivery code and this mutant survived).
+wv_body_deliveryalways() { cat <<'PY'
+old = 'if [ -n "$wv_sc_delivery" ]; then\n'
+assert old in s, "anchor missing: Delivery section gated on a set delivery"
+s = s.replace(old, 'if true; then\n', 1)
+PY
+}
+WV_EXPECT[deliveryalways]=scorecard-004-delivery
+wv_run_mutant deliveryalways scripts/wave-scorecard.sh wv_body_deliveryalways 'scorecard-*'
+
+# --- close-report, completeness and verdict-reader mutants ------------------
+
+# The close is reported without reading state.json back. Killed by
+# undelivered-failed-close (a failing closer must yield W-STATE, no pointer).
+wv_body_closeunchecked() { cat <<'PY'
+old = '  if [ "$closed" != "closed" ]; then\n'
+assert old in s, "anchor missing: close report reads the closed status back"
+s = s.replace(old, '  if false; then\n', 1)
+PY
+}
+WV_EXPECT[closeunchecked]=undelivered-failed-close
+wv_run_mutant closeunchecked scripts/hooks/subagent-stop.sh wv_body_closeunchecked 'undelivered-*'
+
+# A verdict no longer forces its same-call pointer (it goes out
+# alone once the pointer marker exists). RE-ANCHORED: the
+# composition moved from stop.sh into lib.sh wv_close_announce. Killed by
+# undelivered-close-matrix (its pointer-already-printed leg).
+wv_body_undeliveredinstead() { cat <<'PY'
+old = '    if [ "$verdict_now" = "1" ] || { [ ! -f "$d/.scorecard-printed" ]'
+assert old in s, "anchor missing: the verdict-forces-pointer condition"
+s = s.replace(old, '    if { [ ! -f "$d/.scorecard-printed" ]', 1)
+PY
+}
+WV_EXPECT[undeliveredinstead]=undelivered-close-matrix
+wv_run_mutant undeliveredinstead scripts/hooks/lib.sh wv_body_undeliveredinstead 'undelivered-*'
+
+# The final-row leftover trigger is gone (only a completing stop
+# inventories). Killed by leftover-431 (failed / artifact-missing final row).
+wv_body_finalrownoinventory() { cat <<'PY'
+old = '      if wv_final_row "$WV_STOP_PHASE" && wv_wave_complete "$WV_STOP_PHASE"; then\n'
+assert old in s, "anchor missing: final-row leftover trigger"
+s = s.replace(old, '      if false; then\n', 1)
+PY
+}
+WV_EXPECT[finalrownoinventory]=leftover-431-closing-subagent
+wv_run_mutant finalrownoinventory scripts/hooks/subagent-stop.sh wv_body_finalrownoinventory 'leftover-431*'
+
+# Completeness made stale-aware, so it disagrees with the gate. Killed
+# by complete-wave-complete (done-and-stale).
+wv_body_stalenotsettled() { cat <<'PY'
+old = '  [ "$(wv_state_phase_status "$code")" = "done" ] && return 0\n  modes="$(wv_row_get "$code" "$WV_COL_MODES")" || return 1\n'
+assert old in s, "anchor missing: wv_up_phase_settled done check"
+new = '  [ "$(printf "%s" "$WV_STATE" | jq -r --arg c "$code" ".phases[\\$c].stale // false")" = "true" ] && return 1\n' + old
+s = s.replace(old, new, 1)
+PY
+}
+WV_EXPECT[stalenotsettled]=complete-wave-complete
+wv_run_mutant stalenotsettled scripts/hooks/lib.sh wv_body_stalenotsettled 'complete-*'
+
+# An unmeasurable findings condition (no FINDINGS: line, unreadable file)
+# reads as settled for completeness too, so the closer closes a wave whose
+# BF- row the gate still holds (W-MARKER, or fail-open required). Killed by
+# complete-unmeasurable-findings.
+wv_body_unmeasurablesettled() { cat <<'PY'
+old = '    3) [ "${WV_UP_STRICT:-0}" = "1" ] && return 1; return 0 ;;\n'
+assert old in s, "anchor missing: strict completeness reads unmeasurable as unsettled"
+s = s.replace(old, '    3) return 0 ;;\n', 1)
+PY
+}
+WV_EXPECT[unmeasurablesettled]=complete-unmeasurable-findings
+wv_run_mutant unmeasurablesettled scripts/hooks/lib.sh wv_body_unmeasurablesettled 'complete-*'
+
+# Any row's done stop may trigger the close again, so an AD (anytime) stop
+# closes a complete-but-active wave. Killed by complete-ad-no-close.
+wv_body_anytimetriggers() { cat <<'PY'
+old = '[ "$status_new" = "done" ] && [ "$trig_when" = "phase" ] && wv_wave_complete; then\n'
+assert old in s, "anchor missing: only a when=phase row triggers the close"
+s = s.replace(old, '[ "$status_new" = "done" ] && wv_wave_complete; then\n', 1)
+PY
+}
+WV_EXPECT[anytimetriggers]=complete-ad-no-close
+wv_run_mutant anytimetriggers scripts/hooks/subagent-stop.sh wv_body_anytimetriggers 'complete-*'
+
+# The closer decides on the state it read BEFORE taking the lock (the
+# under-lock re-read is skipped), so a redo, a new wave or another close
+# recorded while it waited is overwritten. Killed by
+# complete-close-lock-race.
+wv_body_closeunlocked() { cat <<'PY'
+old = 'if ! wv_state_read; then\n  wv_lock_release\n'
+assert old in s, "anchor missing: the under-lock re-read in wave-close.sh"
+s = s.replace(old, 'if false; then\n  wv_lock_release\n', 1)
+PY
+}
+WV_EXPECT[closeunlocked]=complete-close-lock-race
+wv_run_mutant closeunlocked scripts/wave-close.sh wv_body_closeunlocked 'complete-*'
+
+# A done scan with a missing findings file reads as skipped again.
+# Killed by complete-wave-complete (done-scan-missing-findings).
+wv_body_missingfindingsskips() { cat <<'PY'
+old = '        [ "$(wv_state_phase_status "$src")" = "done" ] && return 2\n'
+assert old in s, "anchor missing: done scan + missing findings is unanswered"
+s = s.replace(old, '', 1)
+PY
+}
+WV_EXPECT[missingfindingsskips]=complete-wave-complete
+wv_run_mutant missingfindingsskips scripts/hooks/lib.sh wv_body_missingfindingsskips 'complete-*'
+
+# The verdict reader strips trailing whitespace/CR, so it disagrees with
+# the BEN-CLOSE stop marker. Killed by undelivered-benclose-edges.
+wv_body_benclosestrip() { cat <<'PY'
+old = """  line="$(command grep -m1 -E '^BENEFIT: (DELIVERED|UNDELIVERED)$' "$file" 2>/dev/null || true)\""""
+assert old in s, "anchor missing: the verdict line reader"
+new = """  line="$(sed -E 's/[[:space:]]+$//' "$file" 2>/dev/null | command grep -m1 -E '^BENEFIT: (DELIVERED|UNDELIVERED)$' || true)\""""
+s = s.replace(old, new, 1)
+PY
+}
+WV_EXPECT[benclosestrip]=undelivered-benclose-edges
+wv_run_mutant benclosestrip scripts/hooks/lib.sh wv_body_benclosestrip 'undelivered-*'
+
+# --- Stop never closes; close-time warning composition ----------------------
+
+# The Stop on a complete, unclosed full/demo wave announces the verdict
+# and the pointer after its W-STATE (it falls through to wv_close_announce).
+# Killed by stopcard-321 (W-STATE alone, no pointer, no marker).
+wv_body_stopannounces() { cat <<'PY'
+old = '      return 0\n      ;;\n  esac\n\n  wv_close_announce'
+assert old in s, "anchor missing: stop.sh full/demo W-STATE return"
+s = s.replace(old, '      ;;\n  esac\n\n  wv_close_announce', 1)
+PY
+}
+WV_EXPECT[stopannounces]=stopcard-321-terminal-done-prints
+wv_run_mutant stopannounces scripts/hooks/stop.sh wv_body_stopannounces 'stopcard-*'
+
+# A SubagentStop that attempts the close warns of leftovers (and writes
+# .leftover-warned) BEFORE the close is confirmed. Killed by
+# undelivered-failed-close (failed closer with leftovers: no marker).
+wv_body_leftovernotdeferred() { cat <<'PY'
+old = '        if [ "$will_close" = "0" ] && [ "$WV_LO_WARN" = "1" ]'
+assert old in s, "anchor missing: the deferred closing-call leftover warning"
+s = s.replace(old, '        if [ "$WV_LO_WARN" = "1" ]', 1)
+PY
+}
+WV_EXPECT[leftovernotdeferred]=undelivered-failed-close
+wv_run_mutant leftovernotdeferred scripts/hooks/subagent-stop.sh wv_body_leftovernotdeferred 'undelivered-*'
+
+# A leftover warning from a PRIOR call suppresses this call's pointer
+# (the round-1 SubagentStop behaviour). Killed by undelivered-close-matrix.
+wv_body_priorwarnsuppresses() { cat <<'PY'
+old = '  if [ "$lo_now" = "0" ]; then\n'
+assert old in s, "anchor missing: the pointer when no leftover warning was queued this call"
+s = s.replace(old, '  if [ "$lo_now" = "0" ] && [ ! -f "$d/.leftover-warned" ]; then\n', 1)
+PY
+}
+WV_EXPECT[priorwarnsuppresses]=undelivered-close-matrix
+wv_run_mutant priorwarnsuppresses scripts/hooks/lib.sh wv_body_priorwarnsuppresses 'undelivered-*'
+
+# A leftover close (W-LEFTOVER carried the pointer) does not write
+# .scorecard-printed. Killed by undelivered-close-matrix.
+wv_body_leftoverpointerunmarked() { cat <<'PY'
+old = '      lo_now=1\n      pointer=1\n'
+assert old in s, "anchor missing: W-LEFTOVER counts as the pointer"
+s = s.replace(old, '      lo_now=1\n', 1)
+PY
+}
+WV_EXPECT[leftoverpointerunmarked]=undelivered-close-matrix
+wv_run_mutant leftoverpointerunmarked scripts/hooks/lib.sh wv_body_leftoverpointerunmarked 'undelivered-*'
+
+# --- round 4: once-per-wave markers, the legacy discriminator ---------------
+
+# wave-init.sh keeps the previous wave's close-time markers, so a second wave
+# in the same project is never announced. Killed by init-two-wave-markers.
+wv_body_markersnotreset() { cat <<'PY'
+old = 'rm -f "$wave_dir/.undelivered-warned" "$wave_dir/.scorecard-printed" "$wave_dir/.leftover-warned"\n'
+assert old in s, "anchor missing: wave-init.sh removes the once-per-wave markers"
+s = s.replace(old, '', 1)
+PY
+}
+WV_EXPECT[markersnotreset]=init-two-wave-markers
+wv_run_mutant markersnotreset scripts/wave-init.sh wv_body_markersnotreset 'init-two-wave*' 'init-358*' 'init-359*'
+
+# The discriminator never holds, so an upgraded AC-done behaviour-changing wave
+# never completes. Killed by complete-legacy-upgrade.
+wv_body_supersedednever() { cat <<'PY'
+old = '  printf \'%s\' "$WV_STATE" | jq -e \'try (has("vocabulary") | not) catch false\' >/dev/null 2>&1 || return 1\n'
+assert old in s, "anchor missing: wv_row_superseded's legacy-state check"
+s = s.replace(old, '  return 1\n', 1)
+PY
+}
+WV_EXPECT[supersedednever]=complete-legacy-upgrade
+wv_run_mutant supersedednever scripts/hooks/lib.sh wv_body_supersedednever 'complete-*'
+
+# The discriminator drops its legacy-state clause, so BEN becomes optional for
+# every behaviour-changing NEW wave past AC. Killed by complete-legacy-upgrade.
+wv_body_supersedednewwave() { cat <<'PY'
+old = '  printf \'%s\' "$WV_STATE" | jq -e \'try (has("vocabulary") | not) catch false\' >/dev/null 2>&1 || return 1\n'
+assert old in s, "anchor missing: wv_row_superseded's legacy-state check"
+s = s.replace(old, '', 1)
+PY
+}
+WV_EXPECT[supersedednewwave]=complete-legacy-upgrade
+wv_run_mutant supersedednewwave scripts/hooks/lib.sh wv_body_supersedednewwave 'complete-*' 'scope-v030*'
+
+# The discriminator goes back to testing an empty WV_VOCAB, which a present
+# `"vocabulary": ""` also produces, so such a wave is wrongly treated as
+# legacy and BEN is exempted. Killed by complete-legacy-upgrade.
+wv_body_supersededemptyscalar() { cat <<'PY'
+old = '  printf \'%s\' "$WV_STATE" | jq -e \'try (has("vocabulary") | not) catch false\' >/dev/null 2>&1 || return 1\n'
+assert old in s, "anchor missing: wv_row_superseded's legacy-state check"
+s = s.replace(old, '  [ -z "$WV_VOCAB" ] || return 1\n', 1)
+PY
+}
+WV_EXPECT[supersededemptyscalar]=complete-legacy-upgrade
+wv_run_mutant supersededemptyscalar scripts/hooks/lib.sh wv_body_supersededemptyscalar 'complete-*'
+
+# An owned commit-msg hook from an older template is treated as foreign and
+# never receives the current pattern. Killed by commitmsg-owned-hook-upgrade.
+wv_body_ownedhookforeign() { cat <<'PY'
+old = '    hook_owned=1\n'
+assert old in s, "anchor missing: wave-init.sh recognises the owned marker"
+s = s.replace(old, '    hook_owned=0\n', 1)
+PY
+}
+WV_EXPECT[ownedhookforeign]=commitmsg-owned-hook-upgrade
+wv_run_mutant ownedhookforeign scripts/wave-init.sh wv_body_ownedhookforeign 'commitmsg-*'
+
+# The hook 0.2.0 / 0.2.1 installed is no longer recognised by its content, so
+# an unmodified released hook is left in place with the old, narrower pattern.
+# Killed by commitmsg-owned-hook-upgrade.
+wv_body_releasedhookforeign() { cat <<'PY'
+old = '    hook_owned=1 # the unmodified released template\n'
+assert old in s, "anchor missing: wave-init.sh recognises the unmodified released hook"
+s = s.replace(old, '    hook_owned=0 # the unmodified released template\n', 1)
+PY
+}
+WV_EXPECT[releasedhookforeign]=commitmsg-owned-hook-upgrade
+wv_run_mutant releasedhookforeign scripts/wave-init.sh wv_body_releasedhookforeign 'commitmsg-*'
+
+# The released-hook comparison loosens to "any byte-equal prefix" (cmp's EOF
+# on the shorter input is ignored), so a released hook with a line appended
+# is treated as ours and its user's edit is overwritten.
+# Killed by commitmsg-owned-hook-upgrade.
+wv_body_releasedhookprefix() { cat <<'PY'
+old = 'wv_released_commit_msg_hook | cmp -s - "$hook_file"; then\n'
+assert old in s, "anchor missing: wave-init.sh's full-content comparison"
+s = s.replace(old, 'wv_released_commit_msg_hook | cmp -s - <(head -c 752 "$hook_file"); then\n', 1)
+PY
+}
+WV_EXPECT[releasedhookprefix]=commitmsg-owned-hook-upgrade
+wv_run_mutant releasedhookprefix scripts/wave-init.sh wv_body_releasedhookprefix 'commitmsg-*'
+
+# An absolute `git rev-parse --git-path` result (a linked worktree's common
+# directory) is joined onto the project root again, so the hook and the
+# .wave/ exclude land in a nested directory git never reads.
+# Killed by init-linked-worktree.
+wv_body_gitpathjoined() { cat <<'PY'
+old = "    /*) printf '%s' \"$2\" ;;\n"
+assert old in s, "anchor missing: wave-init.sh's absolute --git-path branch"
+s = s.replace(old, "    /*) printf '%s/%s' \"$1\" \"$2\" ;;\n", 1)
+PY
+}
+WV_EXPECT[gitpathjoined]=init-linked-worktree
+wv_run_mutant gitpathjoined scripts/wave-init.sh wv_body_gitpathjoined 'init-linked-worktree*'
+
+# A configured core.hooksPath is ignored, so the hook is written into the
+# project's own hooks directory. Killed by init-hookspath. (Re-anchored when
+# the check moved from the value's length to `git config --get`'s exit
+# status; the mutation itself, "never take the skip path", is unchanged.)
+wv_body_hookspathignored() { cat <<'PY'
+old = 'if [ "$hooks_path_rc" = "0" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's core.hooksPath check"
+s = s.replace(old, 'if [ -n "" ]; then\n', 1)
+PY
+}
+WV_EXPECT[hookspathignored]=init-hookspath
+wv_run_mutant hookspathignored scripts/wave-init.sh wv_body_hookspathignored 'init-hookspath*'
+
+# The core.hooksPath check goes back to the value's length, so an EMPTY
+# configured value (which git still honours) reads as unset and the install
+# is attempted at the path git resolves for it. Killed by init-hookspath
+# (its empty-local and empty-global legs).
+wv_body_hookspathemptyignored() { cat <<'PY'
+old = 'if [ "$hooks_path_rc" = "0" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's core.hooksPath check"
+s = s.replace(old, 'if [ -n "$hooks_path_cfg" ]; then\n', 1)
+PY
+}
+WV_EXPECT[hookspathemptyignored]=init-hookspath
+wv_run_mutant hookspathemptyignored scripts/wave-init.sh wv_body_hookspathemptyignored 'init-hookspath*'
+
+# A directory that is not a work-tree repository (no repository, or a bare one)
+# takes the install path again, so the state claims "installed" for a hook that
+# was never meant to run. Killed by init-no-worktree.
+wv_body_norepoclaimsinstalled() { cat <<'PY'
+old = 'if [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's work-tree check"
+s = s.replace(old, 'if [ -n "" ]; then\n', 1)
+PY
+}
+WV_EXPECT[norepoclaimsinstalled]=init-no-worktree
+wv_run_mutant norepoclaimsinstalled scripts/wave-init.sh wv_body_norepoclaimsinstalled 'init-no-worktree*'
+
+# A failed install step is not acted on, so the hook is reported and recorded
+# as installed although it was never written. Killed by
+# init-hook-install-failed.
+wv_body_installclaimedonfailure() { cat <<'PY'
+old = '    if [ -n "$hook_fail" ]; then\n'
+assert old in s, "anchor missing: wave-init.sh's install-failure branch"
+s = s.replace(old, '    if false; then\n', 1)
+PY
+}
+WV_EXPECT[installclaimedonfailure]=init-hook-install-failed
+wv_run_mutant installclaimedonfailure scripts/wave-init.sh wv_body_installclaimedonfailure 'init-hook-install-failed*'
+
+# The rendered hook is no longer compared with an independently rendered
+# reference, before the move or after it, so a render that silently loses its
+# head (every command exits 0) is installed and recorded "installed" while it
+# accepts every message. Both comparisons are removed: either alone still
+# catches the fault. Killed by init-hook-render-fault (its silentfault leg).
+wv_body_renderunchecked() { cat <<'PY'
+old = '  if ! cmp -s -- "$f" "$wv_render_ref"; then\n'
+assert old in s, "anchor missing: wv_render_checked's reference comparison"
+s = s.replace(old, '  if false; then\n', 1)
+old = '        if ! cmp -s -- "$hook_file" "$wv_render_ref"; then\n'
+assert old in s, "anchor missing: the post-move comparison of the installed hook"
+s = s.replace(old, '        if false; then\n', 1)
+PY
+}
+WV_EXPECT[renderunchecked]=init-hook-render-fault
+wv_run_mutant renderunchecked scripts/wave-init.sh wv_body_renderunchecked 'init-hook-render-fault*'
 
 # --- the table --------------------------------------------------------------
 
@@ -458,5 +932,10 @@ for rel in "${!WV_PRISTINE[@]}"; do
   fi
 done
 printf 'mutants=%s survived=%s restored=%s\n' "$wv_total" "$wv_survived" "$wv_all_restored"
+
+if [ -n "$WV_ONLY_MUTANT" ] && [ "$wv_total" -eq 0 ]; then
+  printf 'mutants-lifecycle-hooks.sh: no mutant named %s\n' "$WV_ONLY_MUTANT" >&2
+  exit 1
+fi
 
 [ "$wv_survived" -eq 0 ] && [ "$wv_all_restored" = "yes" ]

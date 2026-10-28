@@ -593,6 +593,7 @@ wv_unanswered_scope() {
       case "$key" in
         behaviour_change) first="behaviour-change" ;;
         cr_enabled) first="cr" ;;
+        vocabulary) first="vocabulary" ;;
         *) first="$key" ;;
       esac
     fi
@@ -601,6 +602,80 @@ wv_unanswered_scope() {
   WV_COND_RULE=W-SCOPE
   WV_COND_ARGS=("$flags" "$first")
   return 0
+}
+
+wv_row_applies() {
+  # wv_row_applies <code> — whether a row applies to this wave from its mode
+  # and its condition KEYWORD alone, with no file reads. Used by the pending
+  # branch of findings:* (design 7.1) and by done:* so a helper never calls
+  # wv_condition_met recursively (that would reset WV_COND_TEXT to the source
+  # row's keyword).
+  #
+  # Returns:
+  #   0  applies (in this mode, and the keyword is met or always)
+  #   1  not in this mode, or the keyword is false
+  #   2  the keyword is unanswered (WV_COND_RULE/ARGS carry W-SCOPE; WV_COND_TEXT
+  #      is left as the caller set it)
+  # Does not touch WV_COND_TEXT, WV_COND_DETAIL, or WV_COND_PENDING.
+  local code="$1" modes cond
+  modes="$(wv_row_get "$code" "$WV_COL_MODES")" || return 1
+  case ",$modes," in
+    *",$WV_MODE,"*) : ;;
+    *) return 1 ;;
+  esac
+  cond="$(wv_row_get "$code" "$WV_COL_CONDITION")" || return 0
+  case "$cond" in
+    ''|always) return 0 ;;
+    'ui|behaviour_change')
+      [ "$WV_UI" = "true" ] && return 0
+      [ "$WV_BC" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_UI" ui "$WV_BC" behaviour_change; then
+        return 2
+      fi
+      return 1
+      ;;
+    cr)
+      [ "$WV_CR" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_CR" cr_enabled; then
+        return 2
+      fi
+      return 1
+      ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_VOCAB" vocabulary; then
+        return 2
+      fi
+      return 1
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && return 0
+      if wv_unanswered_scope "$WV_BC" behaviour_change; then
+        return 2
+      fi
+      return 1
+      ;;
+    *)
+      # findings:/done: must not appear as the source (one-level rule). Treat
+      # an unknown keyword as applies so we fall through to pending as today.
+      return 0
+      ;;
+  esac
+}
+
+wv_flag_said() {
+  # wv_flag_said <value> -> how a W-COND remedy names a flag that reads as
+  # false: "false in .wave/state.json" for an answer, and "absent from
+  # .wave/state.json (the wave was started before the plugin asked it)" for a
+  # missing key (wv_state_read maps an absent key to "", and also a present
+  # empty string, which no supported writer produces), so an upgraded wave is
+  # never told it answered a question nobody asked it. Wording only: the
+  # legacy decision itself is lib.sh wv_row_superseded, on the key.
+  if [ -z "$1" ]; then
+    printf 'absent from .wave/state.json (the wave was started before the plugin asked it)'
+  else
+    printf 'false in .wave/state.json'
+  fi
 }
 
 wv_condition_met() {
@@ -652,6 +727,43 @@ wv_condition_met() {
       WV_COND_DETAIL="state.cr_enabled is false in .wave/state.json; run \`scripts/wave-set.sh cr true\` if this wave does need a code review"
       return 1
       ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && return 0
+      wv_unanswered_scope "$WV_VOCAB" vocabulary && return 2
+      WV_COND_DETAIL="state.vocabulary is $(wv_flag_said "$WV_VOCAB"), so this wave declares no new user-visible vocabulary; run \`scripts/wave-set.sh vocabulary true\` if that is wrong"
+      return 1
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && return 0
+      wv_unanswered_scope "$WV_BC" behaviour_change && return 2
+      WV_COND_DETAIL="state.behaviour_change is $(wv_flag_said "$WV_BC"), so this wave declares no behaviour change; run \`scripts/wave-set.sh behaviour-change true\` if that is wrong"
+      return 1
+      ;;
+    done:*)
+      src="${cond#done:}"
+      if [ "$(wv_state_phase_status "$src")" = "done" ]; then
+        return 0
+      fi
+      wv_row_applies "$src"
+      case "$?" in
+        2) return 2 ;;
+        0)
+          # The source runs in this wave and has not run yet. In a wave this
+          # plugin started, that is the future: the row waits for it (pending,
+          # so the order rule names the source). Only a source the wave
+          # predates and has already passed is a skip (lib.sh
+          # wv_row_superseded, the legacy discriminator completeness uses too).
+          if ! wv_row_superseded "$src"; then
+            WV_COND_PENDING="$src"
+            return 3
+          fi
+          WV_COND_DETAIL="nothing to run for $code: $src is not required, because this wave was started before the plugin added it (state.json has no vocabulary key) and already ran a phase after it; dispatch the next phase"
+          return 1
+          ;;
+      esac
+      WV_COND_DETAIL="nothing to run for $code: $src does not run in this wave, so there is no completed $src to close; dispatch the next phase, or answer the flag $src reads with scripts/wave-set.sh if that is wrong"
+      return 1
+      ;;
     findings:*)
       src="${cond#findings:}"
       rel=".wave/findings/$src.md"
@@ -662,6 +774,16 @@ wv_condition_met() {
           WV_COND_ARGS=("$rel" "$src" "$rel")
           return 2
         fi
+        wv_row_applies "$src"
+        case "$?" in
+          1)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
         WV_COND_PENDING="$src"
         return 3
       fi
@@ -758,8 +880,17 @@ wv_required_because() {
     cr)
       [ "$WV_CR" = "true" ] && printf ' (required because state.cr_enabled is true)'
       ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && printf ' (required because state.vocabulary is true)'
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && printf ' (required because state.behaviour_change is true)'
+      ;;
     findings:*)
       printf ' (required because %s reported findings)' "${cond#findings:}"
+      ;;
+    done:*)
+      printf ' (required because %s ran)' "${cond#done:}"
       ;;
   esac
   return 0
@@ -1407,9 +1538,12 @@ wv_main() {
   #     Warn-only, queued here so a later deny carries it (spec section 7).
   wv_taint_warn
 
-  # 10. Scope: TDE-RED is the first phase whose predecessor set depends on the
-  #     answers, so it is where an unanswered scope question stops the wave.
-  #     Earlier phases stay dispatchable — a wave has to be able to start.
+  # 10. Scope: TDE-RED still demands ui/cr answers, because those flags only
+  #     affect TDE-RED's predecessor set. vocabulary and behaviour_change are
+  #     demanded earlier, by the rows that read them: UIA reads vocabulary, BEN
+  #     reads behaviour_change, and AC names both, so an unanswered predecessor
+  #     makes AC and everything after it W-SCOPE until both are answered. UIA
+  #     itself needs only vocabulary. ui and cr may still wait until TDE-RED.
   if [ "$WV_TAG_PHASE" = "TDE-RED" ] && ! wv_scope_ready; then
     wv_rule_deny W-SCOPE "$WV_SCOPE_FLAG" "$WV_SCOPE_ARG"
     return 0
@@ -1429,6 +1563,7 @@ wv_main() {
   # reorder and not a relaxation — status 2 still denies, and still cannot be
   # skipped through.
   local deferred_rule=""
+  local own_pending=""
   local -a deferred_args=()
   wv_condition_met "$WV_TAG_PHASE"
   case "$?" in
@@ -1439,6 +1574,9 @@ wv_main() {
     2)
       deferred_rule="$WV_COND_RULE"
       deferred_args=("${WV_COND_ARGS[@]}")
+      ;;
+    3)
+      own_pending="$WV_COND_PENDING"
       ;;
   esac
   # 0 (met) and 3 (its own scan has not run yet) both fall through: for 3 the
@@ -1467,6 +1605,13 @@ wv_main() {
   # dispatch is refused for.
   if [ -n "$deferred_rule" ]; then
     wv_rule_deny "$deferred_rule" "${deferred_args[@]+"${deferred_args[@]}"}"
+    return 0
+  fi
+  # This row's own condition waits on a phase its `after` does not name (a
+  # `done:` source, BEN for BEN-CLOSE): that phase is the predecessor to run
+  # first. A pending `findings:` scan is always in `after`, so it never gets here.
+  if [ -n "$own_pending" ]; then
+    wv_rule_deny W-ORDER "$own_pending" "$WV_TAG_PHASE" "$own_pending$(wv_required_because "$own_pending")"
     return 0
   fi
 

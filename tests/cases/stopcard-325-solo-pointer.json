@@ -1,0 +1,29 @@
+{
+  "script": "stop.sh",
+  "ac": "AC-324",
+  "note": "solo mode, a non-empty ledger, clean inventory, no marker yet -> the once-per-wave W-SCORECARD pointer (the same composition the closing SubagentStop uses; a solo verdict is always not-applicable, so no W-UNDELIVERED even with behaviour_change true).",
+  "seed": {
+    "state": "state/solo.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a0\",\"phase\":\"CCP\",\"role\":\"executor\",\"output\":1}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop",
+    "background_tasks": [],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "warn",
+    "rule": "W-SCORECARD",
+    "reason_template": "W-SCORECARD",
+    "reason_contains": [
+      "wave-scorecard.sh"
+    ],
+    "stdout_absent": [
+      "W-UNDELIVERED",
+      "W-LEFTOVER"
+    ]
+  }
+}

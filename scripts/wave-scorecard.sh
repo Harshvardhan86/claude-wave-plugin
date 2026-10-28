@@ -75,8 +75,11 @@ wave_dir="$WV_ROOT/.wave"
 ledger="$wave_dir/ledger.jsonl"
 state_file="$wave_dir/state.json"
 
+wv_sc_delivery="$(jq -r 'if has("delivery") then (.delivery|tostring) else empty end' "$state_file" 2>/dev/null)"
+[ "$wv_sc_delivery" = "null" ] && wv_sc_delivery=""
+
 lo_section="$(wv_lo_latest_section "$wave_dir")"
-if [ ! -s "$ledger" ] && [ -z "$lo_section" ]; then
+if [ ! -s "$ledger" ] && [ -z "$lo_section" ] && [ -z "$wv_sc_delivery" ]; then
   printf 'wave-scorecard.sh: no ledger at %s; nothing has been dispatched yet.\n' "$ledger"
   exit 0
 fi
@@ -173,6 +176,46 @@ wv_wave_id="$(jq -r '.wave // "unknown"' "$state_file" 2>/dev/null)"
 [ -n "$wv_wave_id" ] && [ "$wv_wave_id" != "null" ] || wv_wave_id="unknown"
 
 wv_sc_append "# Wave $wv_wave_id scorecard"
+if [ -n "$wv_sc_delivery" ]; then
+  wv_sc_append ""
+  wv_sc_append "## Delivery"
+  wv_sc_append ""
+  case "$wv_sc_delivery" in
+    undelivered)
+      wv_sc_append "- undelivered. Reasons from .wave/ben-close.md:"
+      if [ -f "$wave_dir/ben-close.md" ]; then
+        wv_sc_reasons="$(awk '
+          BEGIN { go=0; n=0 }
+          go && n<20 { print "- " $0; n++ }
+          /^BENEFIT: (DELIVERED|UNDELIVERED)$/ && !go { go=1 }
+        ' "$wave_dir/ben-close.md")"
+        # Each quoted line is capped at 200 characters of reason text (an
+        # ellipsis marks the cut) as well as the 20-line cap above, so one
+        # runaway line cannot swamp the document. awk has already prefixed
+        # "- ", which is not counted.
+        while IFS= read -r line; do
+          [ -n "$line" ] || continue
+          if [ "${#line}" -gt 202 ]; then
+            line="${line:0:202}…"
+          fi
+          wv_sc_append "$line"
+        done <<<"$wv_sc_reasons"
+      fi
+      ;;
+    unverified)
+      wv_sc_append "- unverified: the benefit was never checked at close."
+      ;;
+    delivered)
+      wv_sc_append "- delivered."
+      ;;
+    not-applicable)
+      wv_sc_append "- not-applicable: this wave did not require a benefit contract."
+      ;;
+    *)
+      wv_sc_append "- $wv_sc_delivery"
+      ;;
+  esac
+fi
 wv_sc_append ""
 wv_sc_append "| Phase | Role | Model | Output Tokens | Budget | Ratio | Rework |"
 wv_sc_append "|---|---|---|---|---|---|---|"
@@ -184,7 +227,15 @@ while IFS= read -r line; do
   n_rows=$((n_rows + 1))
   phase="$(jq -r '.phase // "unknown"' <<<"$line")"
   role="$(jq -r '.role // "unknown"' <<<"$line")"
-  model="$(jq -r '.resolved // "unknown"' <<<"$line")"
+  # The resolved id, and where it came from when that was not the launch's
+  # tool_response: a foreground dispatch is ledgered at its stop, before the
+  # launch record exists, from the model the agent transcript records. A
+  # dispatch served below its requested tier (`downgraded: true`, written by
+  # whichever hook compared the tiers) is marked with the tier it asked for.
+  model="$(jq -r '
+    [ (if (.resolved_from // "") == "transcript" then "from the agent transcript" else empty end),
+      (if .downgraded == true then "DOWNGRADED from requested \(.requested // "unknown")" else empty end) ] as $notes
+    | (.resolved // "unknown") + (if ($notes | length) > 0 then " (" + ($notes | join("; ")) + ")" else "" end)' <<<"$line")"
   output="$(jq -r '.output // 0' <<<"$line")"
   case "$output" in ''|*[!0-9]*) output=0 ;; esac
 

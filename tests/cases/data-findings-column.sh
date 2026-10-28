@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/data-findings-column.sh — AC-346
 #
-# BC, SEA, DS, BSEA, TEET, BTEET name their own code in the `findings`
+# BC, SEA, DS, BSEA, TEET, BTEET, ES name their own code in the `findings`
 # column; every other row is `-`; and every `findings:<CODE>` condition
 # names a code whose row has a non-`-` findings entry (so no BF-* row is
 # permanently unevaluable).
@@ -24,7 +24,7 @@ fail() { printf '%s\n' "$*" >&2; rc=1; }
 PHASES=hooks/phases.tsv
 [ -f "$PHASES" ] || { fail "$PHASES does not exist"; exit 1; }
 
-declare -A own_code=( [BC]=1 [SEA]=1 [DS]=1 [BSEA]=1 [TEET]=1 [BTEET]=1 )
+declare -A own_code=( [BC]=1 [SEA]=1 [DS]=1 [BSEA]=1 [TEET]=1 [BTEET]=1 [ES]=1 )
 
 # code\tfindings\tcondition, joined with 0x1f (never a tab — see
 # data-artifacts-markers.sh for why a bash `read` with IFS=$'\t' cannot be
@@ -34,7 +34,7 @@ while IFS=$'\x1f' read -r code findings cond; do
   if [ -n "${own_code[$code]:-}" ]; then
     [ "$findings" = "$code" ] || fail "$code should have findings='$code', got '$findings'"
   else
-    [ "$findings" = "-" ] || fail "$code should have findings='-' (only BC/SEA/DS/BSEA/TEET/BTEET name themselves), got '$findings'"
+    [ "$findings" = "-" ] || fail "$code should have findings='-' (only BC/SEA/DS/BSEA/TEET/BTEET/ES name themselves), got '$findings'"
   fi
 
   case "$cond" in
@@ -50,8 +50,8 @@ while IFS=$'\x1f' read -r code findings cond; do
   esac
 done < <(awk -F'\t' 'NR==1{next} /^#/{next} {print $1"\037"$12"\037"$4}' "$PHASES")
 
-# sanity: exactly 6 rows name their own code
+# sanity: exactly 7 rows name their own code
 own_count=$(awk -F'\t' 'NR>1 && $1==$12{c++} END{print c+0}' "$PHASES")
-[ "$own_count" = "6" ] || fail "expected exactly 6 rows with findings==code, got $own_count"
+[ "$own_count" = "7" ] || fail "expected exactly 7 rows with findings==code, got $own_count"
 
 exit $rc

@@ -43,6 +43,13 @@ if ! command grep -i '\*\*[Ss]olo\*\*\|solo.*mode' "$file" >/dev/null 2>&1; then
   fail "Missing reference to solo mode"
 fi
 
+# v0.3.0: the new artifacts and the delivery verdict must be in the contract.
+for str in '.wave/uia.md' '.wave/ben.md' '.wave/ben-close.md' 'W-UNDELIVERED' 'vocabulary'; do
+  if ! command grep -F "$str" "$file" >/dev/null 2>&1; then
+    fail "Missing required v0.3.0 string: $str"
+  fi
+done
+
 # Check for enforce values
 if ! command grep -F 'enforce' "$file" >/dev/null 2>&1; then
   fail "Missing enforce values documentation"

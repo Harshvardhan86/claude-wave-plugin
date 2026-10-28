@@ -33,7 +33,7 @@ fail() { printf '%s\n' "$*" >&2; rc=1; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 sandbox="$(mktemp -d "$WV_RUN_TMP/coverage-flag-sandbox.XXXXXX")"
-trap 'rm -rf "$sandbox"' EXIT
+wv_on_exit 'rm -rf "$sandbox"'
 
 mkdir -p "$sandbox/tests/lib" "$sandbox/tests/cases" "$sandbox/hooks"
 cp "$REPO_ROOT/tests/run.sh" "$sandbox/tests/run.sh"

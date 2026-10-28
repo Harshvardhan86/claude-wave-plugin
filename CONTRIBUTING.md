@@ -1,4 +1,4 @@
-# Contributing to claude-wave-plugin
+# Contributing to wave-orchestrator
 
 Thanks for taking a look. Contributions are welcome — especially:
 
@@ -14,7 +14,7 @@ Open a GitHub issue with:
 - A clear title naming the affected skill, phase, or reference file
 - The wave goal and the dispatch that produced the issue
 - Expected vs actual artifact — paste the relevant `.wave/<phase>.md` excerpt
-- Your environment: Claude Code version, OS, the project's stack
+- Your environment: host CLI version, OS, the project's stack
 
 ## Submitting a pull request
 
@@ -24,6 +24,13 @@ Open a GitHub issue with:
 4. For demo on-ramp skill changes: include a before/after example showing the new guidance in action
 5. Sign off your commit (`git commit -s`)
 6. One PR per logical change
+
+## Running the tests
+
+- `bash tests/run.sh` runs every case; `--filter '<glob>'` narrows a run while you work, and the release gates are listed in the README.
+- Write the failing case first. Case schema, `expect.rule` / `expect.rules` / `expect.stderr_rules` and the self-checks are documented in `tests/cases/README.md`.
+- A green run removes its scratch directory; a failed run, or one with `WV_KEEP_TMP=1`, keeps it and prints its path so the case logs stay readable.
+- A case that needs a cleanup registers it with `wv_on_exit '<command>'` from `tests/lib/assert.sh`; never install a `trap ... EXIT` in a case, which would replace the scratch cleanup.
 
 ## Style
 
@@ -38,4 +45,4 @@ Open a GitHub issue with:
 - Changes that soften the invariants (lean context, strict TDD, fresh-eyes hardening, user-decides-on-bugs)
 - New phases without a clear gate definition and hand-off contract
 - Examples that endorse one specific design system over another (keep on-ramps stack-agnostic)
-- Co-authored trailers naming AI assistants
+- Co-authored trailers naming AI tools

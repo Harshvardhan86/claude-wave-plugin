@@ -1,6 +1,6 @@
 {
   "ac": "AC-190",
-  "note": "tool_response as an OBJECT giving status:async_launched, agentId and a resolvedModel matching the requested tier: exit 0, no warning, state.active[<agentId>] records phase/role/requested_model/resolved_model/tool_use_id/status:launched.",
+  "note": "tool_response as an OBJECT giving status:async_launched, agentId and a resolvedModel matching the requested tier: exit 0, no warning, state.active[<agentId>] records phase/role/requested_model/resolved_model/tool_use_id/status:launched. downgraded:false records that the tier check ran and passed.",
   "script": "post-agent.sh",
   "seed": {
     "state": "state/full-all-done.json"
@@ -34,6 +34,6 @@
   "expect": {
     "exit": 0,
     "decision": "silent",
-    "state_assert": ".active[\"a6a129f2ae0850db1\"] == {\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested_model\":\"sonnet\",\"resolved_model\":\"claude-sonnet-4-5-20250929\",\"tool_use_id\":\"toolu_01RXAwe6jcU5LBKHd9geD6sE\",\"status\":\"launched\"}"
+    "state_assert": ".active[\"a6a129f2ae0850db1\"] == {\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"requested_model\":\"sonnet\",\"resolved_model\":\"claude-sonnet-4-5-20250929\",\"tool_use_id\":\"toolu_01RXAwe6jcU5LBKHd9geD6sE\",\"status\":\"launched\",\"downgraded\":false}"
   }
 }

@@ -25,10 +25,10 @@ v0.1.0 ships zero hooks. `plugin.json` has no `hooks` entry and there is no
 
 `framework/references/11-hooks-and-automation.md` also documents a hook syntax
 (`"if"`, `"decision": "block-on-nonzero"`, `claude invoke-agent`, `TaskCreated`
-handlers with `${task.id}`) that Claude Code does not have. It is replaced by the
+handlers with `${task.id}`) that the host CLI does not have. It is replaced by the
 real schema in this change.
 
-## 2. Verified platform facts (Claude Code 2.1.266, probed 2026-09-09)
+## 2. Verified platform facts (host CLI 2.1.266, probed 2026-09-09)
 
 These were measured with a throwaway probe plugin in headless sessions, not
 taken from memory. The design depends on every one of them. Raw probe logs are
@@ -164,6 +164,15 @@ the one command that sets it:
 records the answer in `.wave/approvals/scope.md`. An explicit `false` is fine; a
 silent skip is impossible.
 
+> **Superseded in part by [`2026-09-18-benefit-contract-phases.md`](2026-09-18-benefit-contract-phases.md).**
+> That document's section 3 adds a fourth scope flag, `vocabulary`, alongside the
+> three below, and a `delivery` field written at the close (its section 5.4); the
+> schema stays 1 and an absent flag still reads as false. Its section 9 replaces
+> the terminal-phase rule stated in the next paragraph with **wave complete**.
+> The statement that a `TDE-RED` dispatch is the first thing denied over an
+> unanswered flag is superseded too: in full mode `vocabulary` and
+> `behaviour_change` are now required before the wave's first dispatch.
+
 Wave lifetime: `status` is `active` until the active mode's terminal phase
 (`AD` in full, `TEET` in demo) is marked `done`, or `scripts/wave-close.sh`
 runs; either sets `status: "closed"` and `ended`. Every hook exits 0
@@ -221,6 +230,16 @@ which tag role its role name belongs to. For the tier comparison, `scanner` and
 `writer` both resolve to the row's `executor` column.
 
 ## 6. Phase table (`hooks/phases.tsv`)
+
+> **Superseded in part by [`2026-09-18-benefit-contract-phases.md`](2026-09-18-benefit-contract-phases.md).**
+> That document's section 2 adds five rows — `UIA`, `BEN`, `ES`, `BF-ES`,
+> `BEN-CLOSE` — so the full-mode row list below, and the counts "26 rows × 3 role
+> cells = 78 tier cells", are now 31 rows and 93 cells, and `AC`, `SEA` and the
+> tail rows have new `after` values. The `condition` vocabulary below gains
+> `vocabulary`, `behaviour_change` and `done:<CODE>`, and is closed by a data test
+> (its section 7.2). A `findings:<CODE>` row whose scan does not run in the wave
+> reports its condition unmet rather than pending (its section 7.1). Demo-mode
+> rows are unchanged.
 
 Columns (12): `code`, `modes`, `when`, `condition`, `after`, `fanout`, `lead`,
 `executor`, `reviewer`, `artifact`, `marker`, `findings`.
@@ -345,7 +364,7 @@ Cross-checks:
   `resolved_model: "unknown"` and a `W-RESOLVE-UNKNOWN` warning. Above the
   request → nothing. A `PostToolUse` hook cannot deny and never tries.
 - At `SubagentStop`, the agent transcript is streamed and the **modal tier of
-  `assistant` turns with `usage.output_tokens > 0`** is compared with the
+  model-reply turns with `usage.output_tokens > 0`** is compared with the
   requirement, reconciled against `resolvedModel`. Below it, the phase records
   `tier_ok: false` and `tainted: true`, one warning is emitted, and dependent
   dispatches carry a `W-TAINT` warning — **but are allowed**. A single
@@ -353,7 +372,7 @@ Cross-checks:
   answers a prompt with a small model) and by platform quota fallback; a
   platform-side downgrade is recorded, not punished, because the remedy of a
   gate here would be paid rework on a correct wave. A transcript with no
-  `assistant` line, or lines with no `message.model`, records
+  model-reply line, or lines with no `message.model`, records
   `tier_verified: false` and `tier_ok: null` — unverifiable is not taint.
 - `subagent_type: "fork"` is denied during a full/demo wave (`W-FORK`): a fork
   inherits the orchestrator's entire context, which defeats §9's lean-context
@@ -497,6 +516,18 @@ Default denial prevents unbounded waits while permitting a bounded foreground
 wait and main-session monitoring. Remedy: bound loops, keep bare sleeps at or
 under 300 seconds, and leave Monitor to the main session.
 
+> **Superseded in part by [`2026-09-18-benefit-contract-phases.md`](2026-09-18-benefit-contract-phases.md).**
+> Its section 9 replaces "the mode's terminal phase is done" below, and in
+> section 9's scorecard paragraph, with **wave complete**: every `when=phase` row
+> of the active mode settled, `anytime` rows never counting, so an `AD` stop no
+> longer closes a wave. The inventory still runs immediately before the close,
+> which only the closing `SubagentStop` takes, when the wave becomes complete.
+> The close-time composition below is replaced too: that call announces
+> `W-LEFTOVER`, `W-UNDELIVERED` and `W-SCORECARD` in that order once the state
+> reads `closed`, and in full and demo mode a `Stop` never closes or announces —
+> on a complete but unclosed wave it prints only `W-STATE` naming
+> `scripts/wave-close.sh`. Solo keeps its ledger-based Stop pointer.
+
 **8.10 Leftovers (`W-LEFTOVER`).** Inventory at the closing `SubagentStop`,
 immediately before `wv_close_if_terminal` (and also when that terminal role's
 verdict is `failed` or `artifact-missing`; the warning is informational and the
@@ -561,6 +592,39 @@ as `0`. Extra keys appear only where this document names them (`warn`,
 recorded even when the phase fails its artifact check. Above a stated transcript
 byte cap the sum is skipped with `note: "transcript too large"`.
 
+Since v0.3.0 the ledger line may also carry these optional keys, named here so
+the closed key set includes them:
+
+- `resolved_from` — present only with the value `"transcript"`: `resolved` is
+  the model the agent's own transcript records, filled at `SubagentStop`
+  because the launch record had none (a foreground dispatch, whose stop runs
+  before `post-agent.sh`). **Absent** means `resolved` is the launch's
+  `tool_response` model as `post-agent.sh` recorded it, or `"unknown"` when no
+  source could name it.
+- `downgraded` — `true` or `false` when a requested and a resolved tier were
+  both readable and compared (by `subagent-stop.sh` for a transcript id, by
+  `post-agent.sh` for a `tool_response` id); absent when no comparison was
+  made. It is sticky: once a record says `true`, no later hook or later
+  equal-tier answer sets it back to `false`.
+- `transcript_incomplete` — `true` when the bounded transcript-settle wait in
+  `subagent-stop.sh` expired before the file was seen settled (no longer
+  growing) with at least one model-reply line, so the token sum and the tier
+  read from it are unconfirmed. **Absent** means only that the flag was not
+  raised, which includes no transcript path, a path naming no file, and a
+  transcript over the size cap (whose sum is skipped); it is not a statement
+  that the transcript was complete, and no acknowledgement from the client is
+  read.
+- `bg_orphaned` — the background task ids the agent left running (section 4).
+
+`post-agent.sh` never writes or reconciles a ledger line; the ledger is
+append-only and `subagent-stop.sh` owns it. When `post-agent.sh` runs after the
+stop and learns a model from `tool_response`, it updates `state.active[<id>]`
+only: a readable id replaces `resolved_model` and drops `resolved_from`; when
+that id differs from the transcript fill, the fill is kept beside it as
+**`transcript_model`**, so the record shows that the two sources disagree while
+the ledger line keeps the transcript one. An unreadable id (`"unknown"`) never
+replaces a fill. `downgraded` on the record follows the same sticky rule.
+
 `hooks/budgets.tsv` gives an **output-token** budget per phase (output is the
 work produced; cache reads are cheap and would hide waste). The effective budget
 is the row's value × the phase's `fanout`, and it is a **per-phase total**
@@ -581,7 +645,7 @@ Scorecard: `scripts/wave-scorecard.sh` renders the ledger as a table (phase,
 role, model, output tokens, budget, ratio, rework count) plus, for `TDE-GREEN`,
 output tokens per changed line (`git diff --shortstat <base_sha>`) and the
 passing-test count from `green.md`. The `Stop` hook fires at the end of every
-assistant turn, so it prints the scorecard path **only** once the active mode's
+reply turn, so it prints the scorecard path **only** once the active mode's
 terminal phase (`AD` full, `TEET` demo) is `done`, and writes
 `.wave/.scorecard-printed` so it prints once.
 
@@ -608,9 +672,8 @@ change.
   (`git -C dir commit`, `cd x && git commit`, extra spaces): denies when a
   staged path matches a row of `hooks/planning-paths.tsv` (`W-COMMIT-DOC`) or
   when the message text carries an attribution trailer
-  (`Co-Authored-By: .*(Claude|Anthropic)`, `Generated with .*Claude Code`,
-  `claude.ai/code/session`) (`W-COMMIT-TRAILER`). Functional mentions in code
-  or in a message ("fix the claude-config parser", "bump the vendor SDK") are
+  (the five trailer forms defined once as `WV_TRAILER_ERE` in `scripts/hooks/lib.sh`, shared with the installed commit-msg hook) (`W-COMMIT-TRAILER`). Functional mentions in code
+  or in a message ("fix the config parser", "bump the vendor SDK") are
   not touched, and `--amend --no-edit` is judged on `git log -1 --format=%B`.
   Git is run as `git -C "<stdin cwd>"` — never `CLAUDE_PROJECT_DIR` — so the
   guard inspects the index the commit will actually use, including inside a
@@ -835,7 +898,7 @@ Changed (minimal):
 | F5 | New `when` column with `anytime`; `AD` is `anytime` and exempt from `after`, the round ceiling and budgets. |
 | F6 | New principle 3 in §3 (a hook that could not read its input has measured nothing): `jq`/`flock` guards, a positive parse marker gating every deny, no `set -e`, no `exit 2` on error paths. |
 | F7 | `flock` a dedicated never-replaced `.wave/lock` held across the whole read-modify-write including the rename; `-w 10`; timeout warns; ledger appended under the same lock; duplicate `agent_id` named as the tell of a lost lock. |
-| F8 | The transcript tier check is a **warning**, judged on the modal tier of assistant turns with output tokens, reconciled with `resolvedModel`. `tainted` no longer gates a dependent dispatch. |
+| F8 | The transcript tier check is a **warning**, judged on the modal tier of model-reply turns with output tokens, reconciled with `resolvedModel`. `tainted` no longer gates a dependent dispatch. |
 | F9 | `ui`, `behaviour_change` and `cr_enabled` start `"unknown"`; `TDE-RED` is denied (`W-SCOPE`) while any is unknown, naming `scripts/wave-set.sh`. A silent DR skip is impossible. |
 | F10 | `wave-init.sh` appends `.wave/` to `.git/info/exclude`; `.wave/**` is the first row of `hooks/planning-paths.tsv`. |
 | F11 | Tag enum stays the five values (a closed grammar is testable); `hooks/roles.tsv` maps the framework's role names onto them and the deny reason quotes it; `scanner` and `writer` resolve to the `executor` tier cell. |

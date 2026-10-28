@@ -95,8 +95,8 @@ check_reasons() {
     done
   fi
 
-  # 37 rows: W-SESSION, W-REMINDER and W-SCORECARD added with those hooks.
-  [ "${#actual_order[@]}" = "37" ] || echo "expected 37 rule rows, got ${#actual_order[@]}"
+  # 38 rows: W-UNDELIVERED added with the close-time delivery verdict.
+  [ "${#actual_order[@]}" = "38" ] || echo "expected 38 rule rows, got ${#actual_order[@]}"
 
   # The third leg: the independent golden. Read here rather than in the caller so
   # the mutation proof below exercises it too.
@@ -147,7 +147,7 @@ fi
 # header's declared precedence, so the order check must catch it ---------
 
 tmp_reasons="$(mktemp "${TMPDIR:-/tmp}/reasons-mutated.XXXXXX.tsv")"
-trap 'rm -f "$tmp_reasons"' EXIT
+wv_on_exit 'rm -f "$tmp_reasons"'
 
 # Simple, robust swap: exchange the two data lines whose first field is
 # W-STATE and W-NESTED, leaving every other line (including the header

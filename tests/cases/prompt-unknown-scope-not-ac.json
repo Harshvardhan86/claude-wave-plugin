@@ -1,0 +1,25 @@
+{
+  "script": "user-prompt.sh",
+  "ac": "AC-v030-advisory",
+  "note": "full mode, vocabulary and behaviour_change unknown, nothing done: the reminder must not name AC as next allowed (the gate would refuse that dispatch W-SCOPE). It names the unanswered predecessor and that a scope answer is pending.",
+  "seed": {
+    "state": "state/unknown-scope.json"
+  },
+  "stdin": {
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "let's continue"
+  },
+  "expect": {
+    "decision": "warn",
+    "rule": "W-REMINDER",
+    "reason_contains": [
+      "wave 1 active, phase none",
+      "UIA",
+      "scope answer pending",
+      "This session is the orchestrator"
+    ],
+    "stdout_absent": [
+      "phase none → AC"
+    ]
+  }
+}

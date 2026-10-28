@@ -15,9 +15,11 @@
 #     predecessor in WV_UNMET. The unmet predecessor was then never reported.
 #
 # Both are reachable with the shipped table: VB, COMMIT, CL and CCP all list
-# `after=BTEET-X,BF-BTEET`, and BF-BTEET's condition is `findings:BTEET` — so a
-# wave with BTEET done, BTEET-X not done and .wave/findings/BTEET.md absent
-# violates the order AND cannot answer a condition, in one dispatch.
+# `after=BEN-CLOSE`. BEN-CLOSE is skipped when BEN never ran (`done:BEN` is not
+# met), and the walk then looks through to `BTEET-X,BF-BTEET`. BF-BTEET's
+# condition is `findings:BTEET` — so a wave with BTEET done, BTEET-X not done
+# and .wave/findings/BTEET.md absent violates the order AND cannot answer a
+# condition, in one dispatch. The skip-through is the same mechanism AC-81 pins.
 #
 # THE FIX IS A REORDER, NOT A RELAXATION. Status 2 still cannot skip through: it is
 # either the deny (when the order is satisfied) or superseded by a HIGHER-precedence
@@ -109,8 +111,9 @@ fi
 
 # ---- pair 2: a PREDECESSOR's condition, inside the order walk ---------------
 #
-# COMMIT lists after=BTEET-X,BF-BTEET. The walk records BTEET-X as unmet and then
-# meets BF-BTEET, whose condition cannot be answered.
+# COMMIT lists after=BEN-CLOSE. With BEN not done, BEN-CLOSE is skipped and the
+# walk records BTEET-X as unmet and then meets BF-BTEET, whose condition cannot
+# be answered.
 
 if drive pred-cond-order-unmet COMMIT executor sonnet no; then
   expect_rule pred-cond-order-unmet W-ORDER

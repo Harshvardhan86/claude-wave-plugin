@@ -1,0 +1,15 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.rule present as JSON null beside a correct expect.rules: still both keys, still a harness error (exclusivity is by key presence, never by value). No decision field, so nothing but the exclusivity check can reject it. harness_fails inverts.",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "last_assistant_message": "SELFCHECK_WARN_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "rule": null,
+    "rules": ["W-FAKE", "W-FAKE2"],
+    "harness_fails": true
+  }
+}

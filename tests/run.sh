@@ -110,6 +110,54 @@ for i in "${!wv_case_files[@]}"; do
     wv_universe["$rid"]=1
     wv_positive["$rid"]="${wv_positive[$rid]:-} $name"
   fi
+  # expect.rules: every token it lists is asserted rendered, so every one is a
+  # positive for coverage. `rule` and `rules` are exclusive BY KEY PRESENCE —
+  # `"rule": ""` or `"rule": null` beside `rules` is still both keys, and a
+  # value test would let it through with the single-rule check silently off —
+  # and `rules` must be a non-empty array of W- ids. A malformed declaration is
+  # a harness error on the case, never silently ignored.
+  if jq -e '.expect | has("rules")' "$f" >/dev/null 2>&1; then
+    if jq -e '.expect | has("rule")' "$f" >/dev/null 2>&1; then
+      wv_case_violation["$name"]="${wv_case_violation[$name]:+${wv_case_violation[$name]}; }expect declares both rule and rules; declare exactly one"
+    fi
+    if ! jq -e '.expect.rules | type == "array" and length > 0 and all(.[]; type == "string" and test("^W-[A-Z0-9-]+$"))' "$f" >/dev/null 2>&1; then
+      wv_case_violation["$name"]="${wv_case_violation[$name]:+${wv_case_violation[$name]}; }expect.rules must be a non-empty array of W- rule ids"
+    else
+      while IFS= read -r rr; do
+        [ -n "$rr" ] || continue
+        wv_universe["$rr"]=1
+        case " ${wv_positive[$rr]:-} " in
+          *" $name "*) : ;;
+          *) wv_positive["$rr"]="${wv_positive[$rr]:-} $name" ;;
+        esac
+      done < <(jq -r '.expect.rules[]' "$f" 2>/dev/null)
+    fi
+  fi
+  # expect.stderr_rules: the same exact ordered list, read from stderr (the
+  # only warning channel SubagentStop and PreCompact have); every id it lists
+  # is a positive. It is exclusive with `rule` and with `rules` BY KEY
+  # PRESENCE, exactly as those two are with each other: a case states one
+  # rule claim, and `"rule": ""` / `"rule": null` beside it is still both keys.
+  if jq -e '.expect | has("stderr_rules")' "$f" >/dev/null 2>&1; then
+    if jq -e '.expect | has("rule")' "$f" >/dev/null 2>&1; then
+      wv_case_violation["$name"]="${wv_case_violation[$name]:+${wv_case_violation[$name]}; }expect declares both rule and stderr_rules; declare exactly one"
+    fi
+    if jq -e '.expect | has("rules")' "$f" >/dev/null 2>&1; then
+      wv_case_violation["$name"]="${wv_case_violation[$name]:+${wv_case_violation[$name]}; }expect declares both rules and stderr_rules; declare exactly one"
+    fi
+    if ! jq -e '.expect.stderr_rules | type == "array" and length > 0 and all(.[]; type == "string" and test("^W-[A-Z0-9-]+$"))' "$f" >/dev/null 2>&1; then
+      wv_case_violation["$name"]="${wv_case_violation[$name]:+${wv_case_violation[$name]}; }expect.stderr_rules must be a non-empty array of W- rule ids"
+    else
+      while IFS= read -r rr; do
+        [ -n "$rr" ] || continue
+        wv_universe["$rr"]=1
+        case " ${wv_positive[$rr]:-} " in
+          *" $name "*) : ;;
+          *) wv_positive["$rr"]="${wv_positive[$rr]:-} $name" ;;
+        esac
+      done < <(jq -r '.expect.stderr_rules[]' "$f" 2>/dev/null)
+    fi
+  fi
   if [ -n "$nid" ]; then
     wv_universe["$nid"]=1
     wv_negative["$nid"]=1
@@ -172,14 +220,25 @@ _wv_compare_expect() {
     assert_exit "$want_exit" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
   fi
 
+  # expect.rules (an ordered list) or expect.rule (one id). The shape checks
+  # below take the rule the reason must START with: the single rule, or the
+  # first of the list.
+  local want_rules="" lead_rule
+  if jq -e '.expect | has("rules")' "$path" >/dev/null 2>&1; then
+    want_rules="$(jq -r '.expect.rules // [] | if type == "array" then map(tostring) | join(" ") else "" end' "$path" 2>/dev/null)"
+    lead_rule="${want_rules%% *}"
+  else
+    lead_rule="$(jq -r '.expect.rule // ""' "$path")"
+  fi
+
   local want_decision
   want_decision="$(jq -r '.expect.decision // empty' "$path")"
   case "$want_decision" in
     silent) assert_silent || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
     allow)  assert_allow  || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
-    deny)   assert_deny "$(jq -r '.expect.rule // ""' "$path")" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
-    block)  assert_block "$(jq -r '.expect.rule // ""' "$path")" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
-    warn)   assert_warn "$(jq -r '.expect.rule // ""' "$path")" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
+    deny)   assert_deny "$lead_rule" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
+    block)  assert_block "$lead_rule" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
+    warn)   assert_warn "$lead_rule" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); } ;;
     "") : ;;
     *) ok=0; diffs+=("unknown expect.decision: $want_decision") ;;
   esac
@@ -193,6 +252,17 @@ _wv_compare_expect() {
       fi
       ;;
   esac
+  # The ordered-list check runs whatever the decision: it is the whole claim
+  # of a case that declares `rules`, and an empty list (malformed) fails here
+  # as well as in the pre-pass.
+  if jq -e '.expect | has("rules")' "$path" >/dev/null 2>&1; then
+    assert_rule_tokens "$want_rules" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  fi
+  if jq -e '.expect | has("stderr_rules")' "$path" >/dev/null 2>&1; then
+    local want_err_rules
+    want_err_rules="$(jq -r '.expect.stderr_rules // [] | if type == "array" then map(tostring) | join(" ") else "" end' "$path" 2>/dev/null)"
+    assert_stderr_rule_tokens "$want_err_rules" || { ok=0; diffs+=("$WV_ASSERT_DIFF"); }
+  fi
 
   local want_template
   want_template="$(jq -r '.expect.reason_template // empty' "$path")"

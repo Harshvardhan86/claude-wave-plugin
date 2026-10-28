@@ -1,0 +1,15 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "negative control for W-FAKE2: the same fake hook on a neutral message queues nothing.",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "last_assistant_message": "nothing special here"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "ledger_lines": 1,
+    "negative_control_for": "W-FAKE2"
+  }
+}

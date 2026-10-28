@@ -28,9 +28,20 @@ before="$(cat "$state_file")"
 
 run_cli scripts/wave-set.sh bogus-key true
 [ "$CLI_EXIT" != "0" ] || fail "an unknown key must exit non-zero"
+case "$CLI_STDERR" in
+  *vocabulary*) : ;;
+  *) fail "unknown-key message does not mention vocabulary: '$CLI_STDERR'" ;;
+esac
 
 run_cli scripts/wave-set.sh ui maybe
 [ "$CLI_EXIT" != "0" ] || fail "a non-boolean value must exit non-zero"
+
+run_cli scripts/wave-set.sh vocabulary maybe
+[ "$CLI_EXIT" != "0" ] || fail "vocabulary maybe must exit non-zero"
+case "$CLI_STDERR" in
+  *maybe*) : ;;
+  *) fail "vocabulary maybe: stderr does not name 'maybe': '$CLI_STDERR'" ;;
+esac
 
 after="$(cat "$state_file")"
 [ "$before" = "$after" ] || fail "state.json changed after rejected wave-set.sh calls"

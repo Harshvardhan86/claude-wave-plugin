@@ -15,7 +15,7 @@ mkdir -p "$sibling" "$worktree"
 (cd "$WV_PROJECT" && exec sleep 1000) & root_pid=$!
 (cd "$sibling" && exec sleep 1000) & spared_pid=$!
 (cd "$worktree" && exec sleep 1000) & worktree_pid=$!
-trap 'kill "$root_pid" "$spared_pid" "$worktree_pid" 2>/dev/null; wait 2>/dev/null' EXIT
+wv_on_exit 'kill "$root_pid" "$spared_pid" "$worktree_pid" 2>/dev/null; wait 2>/dev/null'
 lo_case '.stdin.background_tasks = []'
 lo_run stop.sh
 assert_warn W-LEFTOVER || rc=1

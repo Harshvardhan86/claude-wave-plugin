@@ -65,10 +65,16 @@ assert_state '.phases.AD.status == "done" and .phases.AD.agent == "a1"
 assert_ledger_lines 1 || rc=1
 assert_ledger_line '.agent == "a1" and .phase == "AD" and .role == "executor"
                     and .requested == "haiku" and .tier_ok == true' || rc=1
+# The resolved model comes from the agent transcript (all-haiku.jsonl's
+# message.model): the stop deferred by W-BGWAIT must carry it to the line the
+# second stop writes, since post-agent.sh never touches the ledger.
+assert_ledger_line '.resolved == "claude-haiku-4-5-20251001"
+                    and .resolved_from == "transcript"' || rc=1
 
-# post-agent.sh after the stop must not reopen a stopped record.
-# AD is terminal, so the wave may already be closed; seed a still-active
-# copy of the stopped row and run PostToolUse(Agent) against it.
+# post-agent.sh after the stop must not reopen a stopped record. A foreground
+# dispatch's PostToolUse carries status "completed" (measured on the host).
+# AD is anytime and does not close the wave; seed a still-active copy of
+# the stopped row and run PostToolUse(Agent) against it.
 WV_PROJECT="$(mkproj)"
 st="$WV_RUN_TMP/$name-stopped.json"
 jq '.active.a1 = {phase:"AD",role:"executor",requested_model:"haiku",
@@ -82,7 +88,7 @@ jq --arg st "$st" '.script = "post-agent.sh"
     | .stdin.tool_use_id = "toolu_01new"
     | .stdin.tool_input = {description:"[W:1 P:AD R:executor] probe",
         prompt:"done",subagent_type:"general-purpose",model:"haiku"}
-    | .stdin.tool_response = {status:"async_launched",agentId:"a1",
+    | .stdin.tool_response = {status:"completed",agentId:"a1",
         resolvedModel:"claude-haiku-4-5-20251001"}' "$base" > "$c" || exit 1
 run_hook post-agent.sh "$c" || fail 'post-agent run failed'
 assert_allow || rc=1
@@ -140,7 +146,7 @@ assert_ledger_line '.phase == "untagged" and .role == "unknown"' || rc=1
 # out-of-root sidecar path (wv_rel leaves a path outside the project unchanged).
 WV_PROJECT="$(mkproj)"
 stfile="$WV_TESTS_DIR/fixtures/state/bgwait-ad-unjoined.json"
-sidecar_dir="$WV_RUN_TMP/claude-accounts/proharsh/projects/-tmp-wave-plugin-e2e-scenario-I2/49194d68-d614-4504-8f34-520d3adeb949/subagents"
+sidecar_dir="$WV_RUN_TMP/host-accounts/acct1/projects/-tmp-wave-plugin-e2e-scenario-I2/49194d68-d614-4504-8f34-520d3adeb949/subagents"
 mkdir -p "$sidecar_dir"
 printf '%s' "$meta" > "$sidecar_dir/agent-a1.meta.json"
 cp "$WV_TESTS_DIR/fixtures/transcripts/all-haiku.jsonl" "$sidecar_dir/agent-a1.jsonl" || exit 1
@@ -165,7 +171,7 @@ case "$wstate" in
   *) fail "I2: recovered W-STATE must name the sidecar without its path: $wstate" ;;
 esac
 case "$wstate" in
-  *'claude-accounts'*|*"$sidecar_dir"*)
+  *'host-accounts'*|*"$sidecar_dir"*)
     fail "I2: recovered W-STATE interpolated the out-of-root path: $wstate"
     ;;
 esac
@@ -177,7 +183,7 @@ WV_PROJECT="$(mkproj)"
 stfile="$WV_TESTS_DIR/fixtures/state/bgwait-ad-unjoined.json"
 long_model="$(printf 'x%.0s' {1..200})"
 long_meta="$(printf '%s' "$meta" | jq -c --arg m "$long_model" '.model = $m')"
-sidecar_dir="$WV_RUN_TMP/claude-accounts/proharsh/projects/-tmp-wave-plugin-e2e-scenario-I2b/49194d68-d614-4504-8f34-520d3adeb949/subagents"
+sidecar_dir="$WV_RUN_TMP/host-accounts/acct1/projects/-tmp-wave-plugin-e2e-scenario-I2b/49194d68-d614-4504-8f34-520d3adeb949/subagents"
 mkdir -p "$sidecar_dir"
 printf '%s' "$long_meta" > "$sidecar_dir/agent-a1.meta.json"
 cp "$WV_TESTS_DIR/fixtures/transcripts/all-haiku.jsonl" "$sidecar_dir/agent-a1.jsonl" || exit 1

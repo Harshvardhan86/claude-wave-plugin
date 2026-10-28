@@ -1,0 +1,20 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.rule present as an empty string beside a correct expect.stderr_rules: still both keys, still a harness error (exclusivity is by key presence, never by value). No decision field, so nothing but the exclusivity check can reject it. harness_fails inverts.",
+  "seed": {
+    "state": "state/example-active.json"
+  },
+  "stdin": {
+    "hook_event_name": "SubagentStop",
+    "last_assistant_message": "SELFCHECK_STDERR_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "rule": "",
+    "stderr_rules": [
+      "W-FAKE",
+      "W-FAKE2"
+    ],
+    "harness_fails": true
+  }
+}

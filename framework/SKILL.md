@@ -6,12 +6,12 @@ effort: xhigh
 
 # Wave Execution Framework v2 — Model-Routed
 
-A multi-wave, multi-team engineering execution framework. Work is decomposed into waves; each wave runs a strict 17-phase pipeline plus two conditional gates: `[DR]` Design Review at Phase 1.5 (**mandatory** when the wave ships UI — web, mobile, Storybook, or CLI-TUI) and `[CR]` Code Review at Phase 3.5 (optional, opt-in). Maximum surface per wave: 19 phases. Enforced by specialized subagent teams (Stream-Aligned, Quality Gate, Platform, Enabling). **The orchestrator is the single point of coordination and the single throat to choke.**
+A multi-wave, multi-team engineering execution framework. Work is decomposed into waves; each wave runs a strict pipeline of 31 phase rows. 18 of them run in every full-mode wave. 13 are conditional: the seven `[BF-*]` rows run only when the scan before them reported findings, and six more depend on what the wave is — `[UIA]` and `[ES]` when the wave introduces new vocabulary, `[BEN]` when it changes existing behaviour, `[DR]` Design Review at Phase 1.5 when it ships UI (web, mobile, Storybook, CLI-TUI) **or** changes existing behaviour, `[CR]` Code Review at Phase 3.5 when the code-review gate is opted in, and `[BEN-CLOSE]` when `[BEN]` ran. Maximum surface per wave: 31 phases; the smallest full-mode wave runs 18. Enforced by specialized subagent teams (Stream-Aligned, Quality Gate, Platform, Enabling). **The orchestrator is the single point of coordination and the single throat to choke.**
 
-v2 preserves every phase, invariant, and cardinal rule from v1 and adds three changes that realize the framework against the current (2026) Claude Code / Agent SDK primitives:
+v2 preserves every phase, invariant, and cardinal rule from v1 and adds three changes that realize the framework against the current (2026) host CLI / agent SDK primitives:
 
 1. **Model routing.** Every dispatch specifies its model on the `Agent` tool. Opus = advisory (plan, critique, decide). Sonnet = executor (write code, run tests, scan, fix). Haiku = mechanical (dashboard render, version bump). See [`references/10-model-routing.md`](references/10-model-routing.md).
-2. **Team-as-dispatch-pattern.** Nested subagents are not supported in Claude Code, so v2 re-expresses every L2 "team" as either a single Agent dispatch carrying Lead + Executor + Reviewer personas, or a sequence of dispatches the orchestrator coordinates. Fresh-eyes hardening (`[ACB]`, `[BSEA]`, `[BTEET]`) is enforced by *separate* dispatches with only the prior output in context. See [`references/01-architecture.md`](references/01-architecture.md).
+2. **Team-as-dispatch-pattern.** Nested subagents are not supported in the host CLI, so v2 re-expresses every L2 "team" as either a single Agent dispatch carrying Lead + Executor + Reviewer personas, or a sequence of dispatches the orchestrator coordinates. Fresh-eyes hardening (`[ACB]`, `[BSEA]`, `[BTEET]`) is enforced by *separate* dispatches with only the prior output in context. See [`references/01-architecture.md`](references/01-architecture.md).
 3. **Native platform primitives.** `isolation: "worktree"` on writing dispatches; `run_in_background` for Dashboard and long Playwright runs; `PreCompact` / `PostToolUse` / `PreToolUse` hooks to enforce invariants; `TaskCreate` replaces `tasks/todo.md`; `ToolSearch` gates the per-phase tool surface. See [`references/09-platform-deltas.md`](references/09-platform-deltas.md), [`references/11-hooks-and-automation.md`](references/11-hooks-and-automation.md), [`references/12-mcp-and-plugins.md`](references/12-mcp-and-plugins.md).
 
 ## When to use
@@ -30,20 +30,24 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 
 ## Abbreviations
 
-`AC`=Acceptance Criteria · `ACB`=Brutal AC · `DR`=Design Review (UI waves only) · `TDE`=Test-Driven Execution · `CR`=Code Review (optional) · `BC`=Bug Capture · `BF`=Bug Fix · `SEA`=Silent Error Analysis · `BSEA`=Brutal SEA · `DS`=Dependency Scan · `OA`=Output Alignment · `TEET`=True E2E Testing · `TEET-TC`=TEET Test Case Design · `BTEET`=Brutal TEET · `BTEET-X`=Brutal TEET Execution · `CL`=Cleanup · `CCP`=Checkpoint · `AD`=Dashboard Update · `E`=Enabling · `SA`=Stream-Aligned · `QG`=Quality Gate · `P`=Platform
+`UIA`=User-Intent Criteria (vocabulary waves) · `BEN`=Benefit Contract (behaviour-changing waves) · `AC`=Acceptance Criteria · `ACB`=Brutal AC · `DR`=Design Review (UI **or** behaviour-changing waves) · `TDE`=Test-Driven Execution · `CR`=Code Review (optional) · `BC`=Bug Capture · `BF`=Bug Fix · `ES`=Empty-State Scan (vocabulary waves) · `BF-ES`=Fix ES findings · `SEA`=Silent Error Analysis · `BSEA`=Brutal SEA · `DS`=Dependency Scan · `OA`=Output Alignment · `TEET`=True E2E Testing · `TEET-TC`=TEET Test Case Design · `BTEET`=Brutal TEET · `BTEET-X`=Brutal TEET Execution · `BEN-CLOSE`=Benefit Verdict · `CL`=Cleanup · `CCP`=Checkpoint · `AD`=Dashboard Update · `E`=Enabling · `SA`=Stream-Aligned · `QG`=Quality Gate · `P`=Platform
 
-## Wave pipeline (17 sequential phases + 2 conditional gates)
+## Wave pipeline (31 rows — 18 unconditional, 13 conditional)
 
 | # | Code | Phase | Team | Topology | Lead / Executor / Reviewer model |
 |---|------|-------|------|----------|----------------------------------|
+| 0.5 | `[UIA]` | User-intent criteria | AC Team | E | **Opus** / Sonnet / **Opus** |
+| 0.8 | `[BEN]` | Benefit contract | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 1 | `[AC]` | Acceptance Criteria | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 1.2 | `[ACB]` | Brutal AC Review (fresh eyes) | AC Hardening Team | E | **Opus** / **Opus** / **Opus** |
-| 1.5 | `[DR]` | Design Review (**mandatory for UI waves**, skipped otherwise) | Design Review Team | E | **Opus** / Sonnet / **Opus** |
+| 1.5 | `[DR]` | Design Review (**mandatory for UI or behaviour-changing waves**, skipped otherwise) | Design Review Team | E | **Opus** / Sonnet / **Opus** |
 | 2 | `[TDE-RED]` | Write tests, verify FAIL | TDD-RED Team | SA | Sonnet / Sonnet / Sonnet |
 | 3 | `[TDE-GREEN]` | Implement, verify PASS (`isolation: worktree`) | TDD-GREEN Team | SA | Sonnet / Sonnet / **Opus** |
 | 3.5 | `[CR]` | Code Review gate (CodeRabbit — **optional**) | CodeRabbit Plugin | QG | plugin-managed |
 | 4 | `[BC]` | Bug Capture | Bug Capture Team | QG | Sonnet |
 | 4.1 | `[BF-BC]` | Fix BC findings (user approves) | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
+| 4.2 | `[ES]` | Empty-state scan | Silent Error Team | QG | Sonnet |
+| 4.3 | `[BF-ES]` | Fix ES findings (user approves) | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
 | 5 | `[SEA]` | Silent Error Scan | Silent Error Team | QG | Sonnet |
 | 5.1 | `[BF-SEA]` | Fix SEA findings | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
 | 6 | `[DS]` | Dependency Validation | Dependency Audit Team | QG | Sonnet |
@@ -57,6 +61,7 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 | 11 | `[BTEET]` | Brutal E2E Hardening (fresh eyes) | E2E Hardening Team | QG | **Opus** / **Opus** / **Opus** |
 | 12 | `[BTEET-X]` | Execute brutalized E2E tests | E2E Execution Team | SA | Sonnet / Sonnet / Sonnet |
 | 12.1 | `[BF-BTEET]` | Fix BTEET findings | Bug Fix Team | SA | **Opus** / Sonnet / **Opus** |
+| 12.5 | `[BEN-CLOSE]` | Benefit-contract close | AC Team | E | **Opus** / Sonnet / **Opus** |
 | 13 | — | Version Bump (parallel with 14) | Standalone subagent | — | Haiku |
 | 14 | — | Git Commit (specific files only) | Standalone subagent | — | Sonnet |
 | 15 | `[CL]` | Cleanup | Cleanup Team | P | Sonnet |
@@ -65,7 +70,11 @@ v2 preserves every phase, invariant, and cardinal rule from v1 and adds three ch
 
 **Fresh-eyes rule — unchanged from v1:** every hardening phase (`[ACB]`, `[BSEA]`, `[BTEET]`) must be a separate dispatch from the team that did the first pass. Every `[BF-*]` runs only if its preceding scan found bugs, and every fix strategy is user-approved — never auto-resolved.
 
-**Design Review rule (Phase 1.5):** `[DR]` is mandatory for any wave that ships UI (web, mobile, Storybook, CLI-TUI). It is a separate team from `[AC]` and `[ACB]` because its inputs (installed design-system dist files, compiled CSS, route topology) and its outputs (component API audit, per-route mockup, computed-style visual ACs, gaps as OPEN items) are categorically different from functional acceptance criteria. `[DR]` skipped silently on non-UI waves; `[TDE-RED]` does not begin while any DR OPEN item is unresolved.
+**Design Review rule (Phase 1.5):** `[DR]` is mandatory for any wave that ships UI (web, mobile, Storybook, CLI-TUI) **or changes existing behaviour**. It is a separate team from `[AC]` and `[ACB]` because its inputs (installed design-system dist files, compiled CSS, route topology) and its outputs (component API audit, per-route mockup, computed-style visual ACs, gaps as OPEN items) are categorically different from functional acceptance criteria. On a behaviour-changing wave with no UI it reviews the changed behaviour's surface and topology instead of its pixels. `[DR]` is skipped silently only when the wave neither ships UI nor changes behaviour; `[TDE-RED]` does not begin while any DR OPEN item is unresolved.
+
+**Scope rule (v0.3.0):** a full-mode wave answers `vocabulary` and `behaviour-change` before its first dispatch, because `[AC]` names `[UIA]` and `[BEN]` as predecessors and an unanswered flag on a predecessor denies the successor. `ui` and `cr` may still be answered any time before `[TDE-RED]`. Demo mode is unchanged: its five phases and its gates are exactly as they were.
+
+**Benefit rule (v0.3.0):** a wave whose value is an outcome rather than a computation states that outcome as one Benefit AC at `[BEN]` before any criteria are written, and gets a written verdict at `[BEN-CLOSE]` before version bump and commit. `BENEFIT: UNDELIVERED` is a label, not a block — the wave still closes, and the verdict is recorded in state and printed in the scorecard.
 
 ## The 10 Invariant Rules (non-negotiable, verbatim from v1)
 
@@ -94,7 +103,7 @@ Invariants 6, 7 are now **hook-enforced** in v2; see [`references/11-hooks-and-a
 | [`references/06-team-quick-reference.md`](references/06-team-quick-reference.md) | Spinning up a new team and needing membership / topology / model |
 | [`references/07-invariant-rules.md`](references/07-invariant-rules.md) | Pressure to skip a step — re-read the invariants |
 | [`references/08-worktree-strategy.md`](references/08-worktree-strategy.md) | Multi-wave project with 3+ waves; isolating writes |
-| [`references/09-platform-deltas.md`](references/09-platform-deltas.md) | Confirming which Claude Code / Agent SDK primitives the framework assumes |
+| [`references/09-platform-deltas.md`](references/09-platform-deltas.md) | Confirming which host CLI / agent SDK primitives the framework assumes |
 | [`references/10-model-routing.md`](references/10-model-routing.md) | Choosing Opus / Sonnet / Haiku for a dispatch; escalation rules |
 | [`references/11-hooks-and-automation.md`](references/11-hooks-and-automation.md) | Wiring PreCompact / PostToolUse / PreToolUse / TaskCreated hooks into `settings.json` |
 | [`references/12-mcp-and-plugins.md`](references/12-mcp-and-plugins.md) | Playwright for UI TEET; CodeRabbit as optional CR gate; ToolSearch scoping |

@@ -1,9 +1,10 @@
 {
   "script": "stop.sh",
+  "note": "solo mode, clean inventory, a non-empty ledger: Stop prints the once-per-wave W-SCORECARD pointer and no W-LEFTOVER. Negative control for W-LEFTOVER. (The verdict + pointer composition of a full-mode close is leftover-435 / undelivered-close-*.)",
   "seed": {
-    "state": "state/full-all-done.json",
+    "state": "state/solo-bc.json",
     "files": {
-      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"AD\",\"role\":\"executor\",\"output\":100}\n"
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"CCP\",\"role\":\"executor\",\"output\":100}\n"
     }
   },
   "stdin": {
@@ -15,12 +16,14 @@
     "exit": 0,
     "decision": "warn",
     "rule": "W-SCORECARD",
+    "reason_template": "W-SCORECARD",
     "negative_control_for": "W-LEFTOVER",
     "reason_contains": [
-      "W-SCORECARD"
+      "wave-scorecard.sh"
     ],
     "stdout_absent": [
-      "W-LEFTOVER"
+      "W-LEFTOVER",
+      "W-UNDELIVERED"
     ]
   }
 }

@@ -71,13 +71,59 @@ case "$WV_LAST_STDOUT" in
   *W-LEFTOVER*) fail 'leftover warning repeated after a successful emit' ;;
 esac
 
-# ---- SubagentStop: same ordering on the terminal-inventory block -----------
-# The artifact-missing verdict keeps the wave active, so a second fire can retry.
-lo_sa_case() {
-  st="$WV_RUN_TMP/$name-sa-state.json"
+# ---- SubagentStop: the NON-closing final-row inventory (artifact-missing) ---
+# The final demo row (TEET) comes back without its artifact while every other
+# demo row is settled: the hook blocks W-ARTIFACT, takes the inventory and
+# warns W-LEFTOVER itself (this call does not close the wave), and the wave
+# stays active. A failed emit there must leave the wave unmarked, and a retry
+# on that SAME still-active wave must deliver the warning and only then mark.
+lo_r5_case() {
+  st="$WV_RUN_TMP/$name-r5-state.json"
   teet_active="$(stop_active TEET reviewer sonnet)"
   stop_state "$st" ".mode = \"demo\" | .ui = true | .behaviour_change = true | .phases = {AC:{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"},DR:{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"},\"TDE-RED\":{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"},\"TDE-GREEN\":{status:\"done\",at:\"2026-09-09T12:00:00Z\",agent:\"a0\"}} | .active = {a1: $teet_active}" || exit 1
   stop_case "$lo_c" ".seed.state = \"$st\" | .stdin.background_tasks += [{id:\"lo-shell\",type:\"shell\",status:\"running\"}] | .stdin.session_crons = [{id:\"lo-cron\"}]" || exit 1
+}
+
+WV_PROJECT="$(mkproj)"
+lo_r5_case
+lo_shim_on
+lo_run subagent-stop.sh
+assert_block W-ARTIFACT || fail 'artifact-missing final row (emit failing): the W-ARTIFACT block must still be returned'
+lo_no_leftover_in stdout "$WV_LAST_STDOUT"
+lo_no_leftover_in stderr "$WV_LAST_STDERR"
+[ -e "$(lo_marker)" ] && fail 'non-closing SubagentStop marked the wave warned although the emit failed'
+assert_state '.status == "active" and .phases.TEET.status == "artifact-missing"' || fail 'artifact-missing final row must leave the wave active'
+lo_checkpoint
+lo_contains lo-shell
+
+# Retry on the same, still-active wave (no shim): the warning is delivered
+# and only now is the wave marked warned.
+lo_r5_case
+lo_run subagent-stop.sh
+assert_state '.status == "active"' || fail 'retry: the wave must still be active (the retry is on the same wave)'
+assert_stderr_contains W-LEFTOVER || fail 'retry: the non-closing SubagentStop did not deliver W-LEFTOVER'
+[ -e "$(lo_marker)" ] || fail 'non-closing SubagentStop did not mark the wave warned after a successful emit'
+
+# ---- SubagentStop: same emit-first-mark-second on the closing stop ---------
+# The wave closes in the same invocation, so a failed emit cannot retry on
+# SubagentStop (wv_state_read refuses a closed wave). The Stop path above
+# is the retry proof. This leg only proves the marker is absent when emit
+# failed, even though the wave is then closed.
+ALWAYS="AC ACB TDE-RED TDE-GREEN BC SEA DS BSEA OA TEET-TC TEET BTEET BTEET-X VB COMMIT CL CCP"
+done_except() {
+  local skip=" $* "
+  local c
+  {
+    for c in $ALWAYS; do
+      case "$skip" in *" $c "*) continue ;; esac
+      printf '%s\n' "$c"
+    done
+  } | jq -R . | jq -s 'map(select(length>0) | {(.): {status:"done", at:"2026-09-09T12:10:00Z", agent:"a0"}}) | add'
+}
+lo_sa_case() {
+  st="$WV_RUN_TMP/$name-sa-state.json"
+  stop_state "$st" ".active = {a1: $(stop_active CL executor sonnet)} | .phases = $(done_except CL)" || exit 1
+  stop_case "$lo_c" ".seed.state = \"$st\" | .seed.files += $(stop_findings_zero) | .stdin.background_tasks += [{id:\"lo-shell\",type:\"shell\",status:\"running\"}] | .stdin.session_crons = [{id:\"lo-cron\"}]" || exit 1
 }
 
 WV_PROJECT="$(mkproj)"
@@ -90,6 +136,8 @@ lo_no_leftover_in stderr "$WV_LAST_STDERR"
 lo_checkpoint
 lo_contains lo-shell
 
+# Success path: a fresh complete-except-CL project, emit allowed, marker written.
+WV_PROJECT="$(mkproj)"
 lo_sa_case
 lo_run subagent-stop.sh
 assert_stderr_contains W-LEFTOVER || rc=1

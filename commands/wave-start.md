@@ -1,5 +1,5 @@
 ---
-description: Start a new wave. Default runs the canonical v2 framework (17 phases + conditional [DR] for UI waves at 1.5 + optional [CR] gate at 3.5, max 19). Pass --demo for the trimmed 5-phase subset (AC → DR → RED → GREEN → TEET) for live demos and small UI features, or --solo for a directly-driven task with only the cheap invariants enforced.
+description: Start a new wave. Default runs the canonical v2 framework (31 phase rows: 18 always, 13 conditional — [UIA]/[ES] on new vocabulary, [BEN]/[BEN-CLOSE] on changed behaviour, [DR] at 1.5 on UI or changed behaviour, the optional [CR] gate at 3.5, and each [BF-*] row on findings; max 31). Pass --demo for the trimmed 5-phase subset (AC → DR → RED → GREEN → TEET) for live demos and small UI features, or --solo for a directly-driven task with only the cheap invariants enforced.
 argument-hint: "[--demo|--solo] <feature description in quotes>"
 allowed-tools: "Bash(git:*), Bash(npm:*), Bash(pnpm:*), Bash(yarn:*), Bash(npx:*), Bash(curl:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/wave-init.sh:*), Bash(${CLAUDE_PLUGIN_ROOT}/scripts/wave-set.sh:*)"
 ---
@@ -15,7 +15,7 @@ allowed-tools: "Bash(git:*), Bash(npm:*), Bash(pnpm:*), Bash(yarn:*), Bash(npx:*
 
 ## Instructions
 
-The user invoked `/claude-wave-plugin:wave-start` with arguments: **$ARGUMENTS**
+The user invoked `/wave-orchestrator:wave-start` with arguments: **$ARGUMENTS**
 
 ### Step 1 — parse the mode
 
@@ -25,22 +25,34 @@ The user invoked `/claude-wave-plugin:wave-start` with arguments: **$ARGUMENTS**
 
 If the feature description is empty, refuse and remind the user of the syntax:
 ```
-/claude-wave-plugin:wave-start "<feature description>"           # full v2 framework (17 base phases + conditional [DR]/[CR] gates)
-/claude-wave-plugin:wave-start --demo "<feature description>"    # trimmed 5-phase demo subset
-/claude-wave-plugin:wave-start --solo "<feature description>"    # directly-driven task, cheap invariants only
+/wave-orchestrator:wave-start "<feature description>"           # full v2 framework (31 phase rows: 18 always + 13 conditional)
+/wave-orchestrator:wave-start --demo "<feature description>"    # trimmed 5-phase demo subset
+/wave-orchestrator:wave-start --solo "<feature description>"    # directly-driven task, cheap invariants only
 ```
 
 ### Step 0 — start the wave state
 
-Before anything else, start the wave's on-disk state so every hook enforced
-during this wave can find it:
+For `full` and `demo` mode, first ask the two early scope questions in the
+conversation (never guess an answer). They must be answered BEFORE
+`wave-init.sh` runs, and are passed to it as flags:
+
+- **vocabulary** — Does this wave introduce a new kind of record, or a new value of an existing classification (a status, a category, a role), that a user will see?
+- **behaviour-change** — does this wave change existing system behaviour?
+
+Then start the wave's on-disk state so every hook enforced during this wave
+can find it:
 
 ```
 "${CLAUDE_PLUGIN_ROOT}"/scripts/wave-init.sh --wave <next-wave-id> \
-  --mode <full|demo>        # omit and pass --solo instead, for solo mode
+  --mode <full|demo> \
   --enforce block \
+  <--vocabulary|--no-vocabulary> \
+  <--behaviour-change|--no-behaviour-change> \
   --feature "<feature description>"
 ```
+
+Replace each `<…>` with one of its choices. For solo mode, pass `--solo` in
+place of `--mode <full|demo>`.
 
 Pick `<next-wave-id>` as one past the highest wave id already recorded under
 `.wave/archive/`, or `1` if `.wave/` does not exist yet.
@@ -48,22 +60,22 @@ Pick `<next-wave-id>` as one past the highest wave id already recorded under
 If `wave-init.sh` exits non-zero, print its stderr to the user and **stop** —
 do not invoke the orchestrator with no wave state behind it.
 
-For `full` and `demo` mode, then ask the three scope questions in the
-conversation (never guess an answer):
+Then ask the remaining two scope questions (never guess an answer):
 - **ui** — does this wave touch anything the user looks at?
-- **behaviour-change** — does this wave change existing system behaviour?
-- **cr** — is there a Change Request in effect for this wave?
+- **cr** — should this wave run the Code Review gate (`[CR]`, phase 3.5, after `[TDE-GREEN]`)?
 
-Route each answer through `wave-set.sh`, which records it in state and in
-`.wave/approvals/scope.md`:
+Route the ui and cr answers through `wave-set.sh`, which records them in
+state and in `.wave/approvals/scope.md`. The same command can correct a
+vocabulary or behaviour-change answer after init:
 
 ```
 "${CLAUDE_PLUGIN_ROOT}"/scripts/wave-set.sh ui <true|false>
 "${CLAUDE_PLUGIN_ROOT}"/scripts/wave-set.sh behaviour-change <true|false>
 "${CLAUDE_PLUGIN_ROOT}"/scripts/wave-set.sh cr <true|false>
+"${CLAUDE_PLUGIN_ROOT}"/scripts/wave-set.sh vocabulary <true|false>
 ```
 
-`solo` mode skips the three scope questions — `phases.tsv` is not consulted
+`solo` mode skips the four scope questions — `phases.tsv` is not consulted
 in solo mode at all (spec section 6), so there is nothing for them to gate.
 
 **Refusal:** if `.wave/state.json` is not present after this step, stop here

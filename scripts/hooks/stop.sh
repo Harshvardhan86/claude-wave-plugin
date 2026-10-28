@@ -1,40 +1,31 @@
 #!/usr/bin/env bash
 # scripts/hooks/stop.sh — the Stop hook (spec section 9's scorecard pointer).
 #
-# Eligible Stop events refresh the leftover inventory before the scorecard
-# marker or empty-ledger returns. Outstanding or unmeasured resources produce
-# at most one W-LEFTOVER warning per wave (later Stops refresh the inventory
-# in leftovers-stop.md but must not repeat the warning). A clean inventory
-# keeps the existing once-per-wave W-SCORECARD pointer. Solo eligibility
-# still requires a ledger. This hook never closes the wave, blocks a stop,
-# or signals a process.
+# THIS HOOK NEVER CLOSES THE WAVE, blocks a stop, or signals a process. The
+# close-time verdict (W-UNDELIVERED) and the scorecard pointer (W-SCORECARD,
+# or W-LEFTOVER, which names the scorecard) belong to a CLOSED wave: the
+# closing SubagentStop closes it and announces them in that same call. A
+# closed wave is silent here (wv_state_read refuses it).
+#
+# Full and demo: on a wave that is complete (every when=phase row of the
+# active mode settled) but still active — the close failed, the final stop
+# was blocked, or the remaining rows were skipped without a closing stop —
+# the leftover inventory is refreshed (.wave/checkpoints/) and the Stop
+# prints W-STATE "complete but not closed", naming scripts/wave-close.sh,
+# and NOTHING else: no verdict, no pointer, no marker. Every such Stop says
+# it again, because nothing has silenced it; the remedy closes the wave.
+#
+# Solo: no close exists and the verdict is always not-applicable, so a
+# non-empty ledger is the signal, and the warnings come from the SAME
+# composition the closing SubagentStop uses (lib.sh wv_close_announce):
+# W-LEFTOVER when leftovers were found and not warned in a prior call,
+# otherwise the once-per-wave W-SCORECARD, each with its marker.
 
 set -u
 
 WV_HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 # shellcheck source=scripts/hooks/lib.sh
 source "$WV_HOOK_DIR/lib.sh"
-
-wv_stop_terminal_phase_for_mode() {
-  # wv_stop_terminal_phase_for_mode <mode> -> the LAST hooks/phases.tsv row
-  # (file order) whose `modes` column includes <mode>, or empty if none do.
-  # A minimal, read-only copy of scripts/wave-close.sh's function of the same
-  # name. The duplication is deliberate and the reason is here rather than in a
-  # planning document nobody reading this file has open: stop.sh must never invoke
-  # wave-close.sh itself for this, since that
-  # script's bare and --if-terminal forms both have the side effect of
-  # actually CLOSING the wave, which is not this hook's job.
-  local mode="$1" tsv="$WV_PLUGIN_DIR/hooks/phases.tsv"
-  [ -f "$tsv" ] || return 0
-  local last="" code modes rest
-  while IFS=$'\t' read -r code modes rest; do
-    case "$code" in ''|'#'*|code) continue ;; esac
-    case ",$modes," in
-      *",$mode,"*) last="$code" ;;
-    esac
-  done < "$tsv"
-  printf '%s' "$last"
-}
 
 wv_main() {
   wv_parse_stdin || return 0
@@ -47,14 +38,11 @@ wv_main() {
   local settled=0
   case "$WV_MODE" in
     full|demo)
-      local terminal
-      terminal="$(wv_stop_terminal_phase_for_mode "$WV_MODE")"
-      [ -n "$terminal" ] || return 0
-      [ "$(wv_state_phase_status "$terminal")" = "done" ] && settled=1
+      wv_wave_complete && settled=1
       ;;
     *)
-      # Solo mode never runs phases.tsv's pipeline and so has no terminal
-      # phase (AC-324): a non-empty ledger IS the signal to print, once.
+      # Solo mode never runs phases.tsv's pipeline and so has no phase
+      # rows (AC-324): a non-empty ledger IS the signal to print, once.
       [ -s "$ledger" ] && settled=1
       ;;
   esac
@@ -62,36 +50,20 @@ wv_main() {
 
   wv_lo_collect
   wv_lo_write_checkpoint
-  if [ "$WV_LO_WARN" = "1" ]; then
-    if [ -f "$WV_WAVE_DIR/.leftover-warned" ]; then
+
+  case "$WV_MODE" in
+    full|demo)
+      # Complete but not closed (a closed wave never reaches this line). The
+      # inventory above still landed; the verdict, the pointer and every
+      # once-per-wave marker wait for the close.
+      local lo_note=""
+      [ "$WV_LO_WARN" = "1" ] && lo_note="; leftovers found, listed in the newest .wave/checkpoints/ file"
+      wv_rule_warn W-STATE "wave $WV_WAVE is complete but not closed, so no verdict or scorecard pointer yet (Stop never closes a wave)$lo_note; close it with \`scripts/wave-close.sh\`"
       return 0
-    fi
-    # EMIT FIRST, MARK SECOND. The marker silences every later Stop and
-    # SubagentStop in the wave, so writing it before the warning is queued
-    # would trade one failed emit for a wave that is permanently silent about
-    # leftovers nobody was ever told about. A failed emit leaves the wave
-    # unmarked and the next eligible Stop retries.
-    #
-    # `then` IS ON ITS OWN LINE DELIBERATELY. tests/tools/reason-corpus.sh's
-    # arity gate reads an emitter call site as everything from the emitter's
-    # name to the end of the line, so a trailing `; then` is counted as a
-    # second argument to a one-specifier template and reported as a doubled
-    # reason. Collapsing these two lines re-trips that gate.
-    if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
-    then
-      mkdir -p "$WV_WAVE_DIR" 2>/dev/null
-      : > "$WV_WAVE_DIR/.leftover-warned" 2>/dev/null
-    fi
-    return 0
-  fi
+      ;;
+  esac
 
-  [ -f "$WV_WAVE_DIR/.scorecard-printed" ] && return 0
-
-  [ -s "$ledger" ] || return 0   # Nothing to score; the inventory still landed.
-  mkdir -p "$WV_WAVE_DIR" 2>/dev/null
-  : > "$WV_WAVE_DIR/.scorecard-printed" 2>/dev/null
-
-  wv_rule_warn W-SCORECARD "$WV_WAVE" "$WV_PLUGIN_DIR/scripts/wave-scorecard.sh (writes .wave/scorecard.md)"
+  wv_close_announce "$(wv_delivery_verdict)"
   return 0
 }
 

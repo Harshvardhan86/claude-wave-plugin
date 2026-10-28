@@ -211,12 +211,45 @@ wv_write_active() {
   # stopped. Any `status`/`stopped` already on the record therefore WINS; on the
   # ordinary (background) ordering there is no record yet and nothing is kept, so
   # this is a no-op for every previously measured shape.
+  #
+  # `downgraded` (true|false, from WV_PA_DOWNGRADED; absent when no tier
+  # comparison was made) is the DURABLE record of the tier check: `status`
+  # "downgraded" is replaced by "stopped" at SubagentStop, this key is not. A
+  # `downgraded: true` a stop already wrote from the agent transcript is kept.
+  #
+  # THIS HOOK NEVER WRITES OR RECONCILES THE LEDGER (append-only;
+  # subagent-stop.sh owns it; spec section 9 names these record keys).
+  # On a foreground dispatch the stop has already ledgered the model the agent
+  # transcript records (`resolved_from: "transcript"` on the record). What this
+  # hook then learns from tool_response goes to state.active ONLY:
+  #   - a readable id replaces resolved_model and drops resolved_from (which
+  #     described the fill, not this id); when it differs from the fill, the
+  #     fill is kept beside it as `transcript_model`, so the record shows that
+  #     the two sources disagree and the ledger line holds the transcript one;
+  #   - an unreadable id ("unknown") never replaces a fill: resolved_model and
+  #     resolved_from stay as the stop wrote them.
   local id="$1" phase="$2" role="$3" reqm="$4" resm="$5" tuid="$6" status="$7"
   local filter
   filter="$(printf '.active[%s] = ({phase: %s, role: %s, requested_model: %s, resolved_model: %s, tool_use_id: %s, status: %s} + ((.active[%s] // {}) | with_entries(select(.key == "status" or .key == "stopped"))))' \
     "$(wv_jq_str "$id")" "$(wv_jq_str "$phase")" "$(wv_jq_str "$role")" \
     "$(wv_jq_str "$reqm")" "$(wv_jq_str "$resm")" "$(wv_jq_str "$tuid")" \
     "$(wv_jq_str "$status")" "$(wv_jq_str "$id")")"
+  local id_lit
+  id_lit="$(wv_jq_str "$id")"
+  filter="(.active[$id_lit] // {}) as \$old | (\$old.downgraded == true) as \$wasdg | $filter"
+  filter="$filter | if ((\$old.resolved_from // \"\") == \"transcript\") and ((\$old.resolved_model // \"unknown\") != \"unknown\") then
+      (if .active[$id_lit].resolved_model == \"unknown\"
+       then .active[$id_lit] += {resolved_model: \$old.resolved_model, resolved_from: \"transcript\"}
+       elif .active[$id_lit].resolved_model != \$old.resolved_model
+       then .active[$id_lit].transcript_model = \$old.resolved_model
+       else . end)
+    else . end"
+  case "${WV_PA_DOWNGRADED:-}" in
+    true) filter="$filter | .active[$id_lit].downgraded = true" ;;
+    false) filter="$filter | .active[$id_lit].downgraded = (\$wasdg)" ;;
+    # No comparison here: an earlier hook's result (either value) stands.
+    *) filter="$filter | if (\$old.downgraded | type) == \"boolean\" then .active[$id_lit].downgraded = \$old.downgraded else . end" ;;
+  esac
   wv_state_update "$filter"
 }
 
@@ -358,13 +391,25 @@ wv_main() {
   fi
 
   local status_field="launched" resolved_model_val="$resolved_raw"
+  # Both tiers readable and not lower: a check performed and passed.
+  WV_PA_DOWNGRADED=""
+  case "$requested_tier$resolved_tier" in
+    [1-4][1-4]) WV_PA_DOWNGRADED="false" ;;
+  esac
   if [ "$resolved_tier" = "unknown" ]; then
     resolved_model_val="unknown"
     wv_warn W-RESOLVE-UNKNOWN resolvedModel "$(wv_ru_detail_model "$resolved_raw")"
   elif [ -n "$requested_tier" ] && [ "$requested_tier" != "unknown" ] \
     && [ "$resolved_tier" -lt "$requested_tier" ]; then
     status_field="downgraded"
-    wv_warn W-DOWNGRADE "$WV_MODEL_TRIM" "$resolved_raw"
+    WV_PA_DOWNGRADED="true"
+    # ONCE per dispatch: a record that already says downgraded (the stop
+    # compared the transcript model first, a foreground dispatch) has already
+    # reported it, on the ledger line; the flag itself is still re-asserted.
+    if [ "$(printf '%s' "$WV_STATE" | jq -r --arg id "$agent_id" \
+          '((.active // {})[$id].downgraded // false) == true' 2>/dev/null)" != "true" ]; then
+      wv_warn W-DOWNGRADE "$WV_MODEL_TRIM" "$resolved_raw"
+    fi
   elif [ -z "$requested_tier" ]; then
     # NO REQUESTED TIER TO COMPARE AGAINST, and that is worth saying out loud.
     # `requested_tier` is empty only when the dispatch named no model at all or

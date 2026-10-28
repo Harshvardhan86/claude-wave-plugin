@@ -29,7 +29,7 @@
 # a generator that read phases.tsv would agree with it by construction and
 # could never disagree with a wrong cell. The guard against the two copies
 # drifting is `tests/golden/phases-tiers.tsv` plus AC-146's mutation control
-# (each of the 78 cells lowered by one tier must red at least one case), which
+# (each of the 93 cells lowered by one tier must red at least one case), which
 # is why every non-`-` cell here gets both an at-minimum allow and a
 # one-tier-below deny.
 #
@@ -58,7 +58,7 @@ mkdir -p "$WV_CASES_DIR" "$WV_STATE_DIR" || exit 1
 # status == "done" without evaluating the row's condition.
 # ---------------------------------------------------------------------------
 
-PHASES="AC ACB DR TDE-RED TDE-GREEN CR BC BF-BC SEA BF-SEA DS BF-DS BSEA BF-BSEA OA TEET-TC TEET BF-TEET BTEET BTEET-X BF-BTEET VB COMMIT CL CCP AD"
+PHASES="UIA BEN AC ACB DR TDE-RED TDE-GREEN CR BC BF-BC ES BF-ES SEA BF-SEA DS BF-DS BSEA BF-BSEA OA TEET-TC TEET BF-TEET BTEET BTEET-X BF-BTEET BEN-CLOSE VB COMMIT CL CCP AD"
 
 done_map() {
   # done_map <code>... -> a jq object of {code: {status,at,agent}}
@@ -70,12 +70,15 @@ done_map() {
 }
 
 write_state() {
-  # write_state <file> <mode> <ui> <bc> <cr> <phases-json> [wave-json]
-  local file="$1" mode="$2" ui="$3" bc="$4" cr="$5" phases="$6" wave="${7:-\"1\"}"
+  # write_state <file> <mode> <ui> <bc> <cr> <phases-json> [wave-json] [vocab]
+  # vocabulary defaults false so every existing generated fixture keeps its
+  # meaning (ui/behaviour_change/cr_enabled were already false there).
+  local file="$1" mode="$2" ui="$3" bc="$4" cr="$5" phases="$6" wave="${7:-\"1\"}" vocab="${8:-false}"
   jq -n \
     --argjson wave "$wave" \
     --arg mode "$mode" \
     --argjson ui "$ui" --argjson bc "$bc" --argjson cr "$cr" \
+    --argjson vocabulary "$vocab" \
     --argjson phases "$phases" \
     '{
       schema: 1,
@@ -85,6 +88,7 @@ write_state() {
       ui: $ui,
       behaviour_change: $bc,
       cr_enabled: $cr,
+      vocabulary: $vocabulary,
       enforce: "block",
       feature: "hook enforcement layer",
       started: "2026-09-09T12:00:00Z",
@@ -103,6 +107,8 @@ all_done="$(done_map $PHASES)"
 write_state full-all-done.json     full false false false "$all_done"
 write_state full-all-done-ui.json  full true  false false "$all_done"
 write_state full-all-done-cr.json  full false false true  "$all_done"
+write_state full-all-done-vocab.json full false false false "$all_done" '"1"' true
+write_state full-all-done-bc.json  full false true  false "$all_done"
 write_state demo-fresh.json        demo false false false '{}'
 write_state demo-ac-done.json      demo false false false "$(done_map AC)"
 write_state demo-through-green.json demo true false false "$(done_map AC DR TDE-RED TDE-GREEN)"
@@ -201,6 +207,11 @@ mk() {
 NOFIRE='["W-TAG","W-NESTED","W-FORK","W-MODE","W-ROLE","W-MODEL-MISSING","W-TIER","W-MODEL-UNKNOWN","W-DESC"]'
 
 GRAMMAR='[W:<wave> P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]'
+# The W-TAG remedy interpolates the active wave id, which every generated
+# fixture sets to 1. A needle that still says <wave> never appears in the
+# rendered reason (the committed corpus was hand-corrected; keep the
+# generator as the source of truth).
+GRAMMAR_RENDERED='[W:1 P:<PHASE> R:<lead|executor|reviewer|scanner|writer>]'
 
 # ---------------------------------------------------------------------------
 # A. The tag (AC-2, 21, 22, 34-56)
@@ -239,12 +250,12 @@ mk name=tag-035-no-tool-input-silent ac=AC-35 \
 mk name=tag-036-no-description-deny ac=AC-36 \
   note='tool_input present with neither description nor prompt: W-TAG, and the reason says no description was sent and quotes the grammar.' \
   desc=@absent prompt=@absent model=opus \
-  expect='{"exit":0,"decision":"deny","rule":"W-TAG","reason_template":"W-TAG","reason_contains":["no description was sent","'"$GRAMMAR"'"]}'
+  expect='{"exit":0,"decision":"deny","rule":"W-TAG","reason_template":"W-TAG","reason_contains":["no description was sent","'"$GRAMMAR_RENDERED"'"]}'
 
 mk name=tag-037-untagged-deny ac=AC-37 \
   note='an untagged description on an active full-mode wave: W-TAG, reason carries the literal grammar template.' \
   desc='implement AC-3..AC-7' model=opus \
-  expect='{"exit":0,"decision":"deny","rule":"W-TAG","reason_template":"W-TAG","reason_contains":["'"$GRAMMAR"'"]}'
+  expect='{"exit":0,"decision":"deny","rule":"W-TAG","reason_template":"W-TAG","reason_contains":["'"$GRAMMAR_RENDERED"'"]}'
 
 mk name=tag-038-tagged-allow ac=AC-38 \
   note='the AC-37 description with the tag prefixed and a valid model: silent allow. Negative control for W-TAG.' \
@@ -613,6 +624,8 @@ phase_state() {
   case "$1" in
     DR) printf 'state/full-all-done-ui.json' ;;
     CR) printf 'state/full-all-done-cr.json' ;;
+    UIA|ES|BF-ES) printf 'state/full-all-done-vocab.json' ;;
+    BEN|BEN-CLOSE) printf 'state/full-all-done-bc.json' ;;
     *)  printf 'state/full-all-done.json' ;;
   esac
 }
@@ -623,6 +636,7 @@ phase_seed() {
   case "$1" in
     BF-BC) src=BC ;; BF-SEA) src=SEA ;; BF-DS) src=DS ;;
     BF-BSEA) src=BSEA ;; BF-TEET) src=TEET ;; BF-BTEET) src=BTEET ;;
+    BF-ES) src=ES ;;
     *) return 1 ;;
   esac
   jq -nc --arg f ".wave/findings/$src.md" --arg a ".wave/approvals/bf-$src.md" \
@@ -663,6 +677,8 @@ while read -r code lead exe rev acids; do
   emit_cell "$code" executor "$exe" "$acids"
   emit_cell "$code" reviewer "$rev" "$acids"
 done <<'ROWS'
+UIA opus sonnet opus AC-v030-tier
+BEN opus sonnet opus AC-v030-tier
 AC opus sonnet opus AC-132
 ACB opus opus opus AC-133
 DR opus sonnet opus AC-134
@@ -671,6 +687,8 @@ TDE-GREEN sonnet sonnet opus AC-136
 CR - - sonnet AC-137
 BC - sonnet - AC-138
 BF-BC opus sonnet opus AC-139
+ES - sonnet - AC-v030-tier
+BF-ES opus sonnet opus AC-v030-tier
 SEA - sonnet - AC-138
 BF-SEA opus sonnet opus AC-139 (extended: the brief's AC list names BF-BC and BF-BSEA; this row has the same triple and is added for AC-146 cell coverage)
 DS - sonnet - AC-138
@@ -684,6 +702,7 @@ BF-TEET opus sonnet opus AC-139 (extended for AC-146 cell coverage)
 BTEET opus opus opus AC-140
 BTEET-X sonnet sonnet sonnet AC-143
 BF-BTEET opus sonnet opus AC-139 (extended for AC-146 cell coverage)
+BEN-CLOSE opus sonnet opus AC-v030-tier
 VB - haiku - AC-144
 COMMIT - sonnet - AC-145
 CL - sonnet - AC-145
@@ -809,7 +828,7 @@ P2NOFIRE='["W-SCOPE","W-COND","W-ORDER","W-ARTIFACT","W-MARKER","W-DR-OPEN","W-V
 # CR with cr_enabled false) is still marked done: `wv_phase_done`
 # short-circuits on status == "done" before it looks at the condition, so a
 # fixture that over-marks cannot hide a condition bug.
-P2_CHAIN="AC ACB DR TDE-RED TDE-GREEN CR BC BF-BC SEA BF-SEA DS BF-DS BSEA BF-BSEA OA TEET-TC TEET BF-TEET BTEET BTEET-X BF-BTEET VB COMMIT CL CCP"
+P2_CHAIN="UIA BEN AC ACB DR TDE-RED TDE-GREEN CR BC BF-BC ES BF-ES SEA BF-SEA DS BF-DS BSEA BF-BSEA OA TEET-TC TEET BF-TEET BTEET BTEET-X BF-BTEET BEN-CLOSE VB COMMIT CL CCP"
 
 p2_through() {
   # p2_through <code> -> the chain up to and including <code>
@@ -822,16 +841,35 @@ p2_through() {
 }
 
 p2_state() {
-  # p2_state <file> <mode> <ui> <bc> <cr> <rounds-json> <wave-json> [done...]
-  # ui/bc/cr are JSON (`false`, `true` or `"unknown"`), not shell booleans:
+  # p2_state <file> <mode> <ui> <bc> <cr> [vocab] <rounds-json> <wave-json> [done...]
+  # ui/bc/cr/vocab are JSON (`false`, `true` or `"unknown"`), not shell booleans:
   # spec section 4 makes "unknown" a first-class third value.
-  local file="$1" mode="$2" ui="$3" bc="$4" cr="$5" rounds="$6" wave="$7"
-  shift 7
+  # vocabulary is optional: if the next arg is not true/false/"unknown", it is
+  # treated as rounds and vocabulary defaults false — existing call sites keep
+  # their meaning.
+  local file="$1" mode="$2" ui="$3" bc="$4" cr="$5"
+  local vocab="false" rounds wave
+  shift 5
+  case "$1" in
+    true|false|'"unknown"') vocab="$1"; shift ;;
+  esac
+  rounds="$1"; wave="$2"; shift 2
   local phases
   phases="$(done_map "$@")"
+  # Existing fixtures keep their meaning: do not over-mark the new conditional
+  # rows as done when their flag is not true. Otherwise p2_through BTEET-X would
+  # mark BEN done, done:BEN would be met, and COMMIT/VB allow cases would deny
+  # W-ORDER naming BEN-CLOSE.
+  if [ "$vocab" != "true" ]; then
+    phases="$(printf '%s' "$phases" | jq 'del(.UIA, .ES, ."BF-ES")')"
+  fi
+  if [ "$bc" != "true" ]; then
+    phases="$(printf '%s' "$phases" | jq 'del(.BEN, ."BEN-CLOSE")')"
+  fi
   jq -n \
     --argjson wave "$wave" --arg mode "$mode" \
     --argjson ui "$ui" --argjson bc "$bc" --argjson cr "$cr" \
+    --argjson vocabulary "$vocab" \
     --argjson phases "$phases" --argjson rounds "$rounds" \
     '{
       schema: 1,
@@ -841,6 +879,7 @@ p2_state() {
       ui: $ui,
       behaviour_change: $bc,
       cr_enabled: $cr,
+      vocabulary: $vocabulary,
       enforce: "block",
       feature: "hook enforcement layer",
       started: "2026-09-09T12:00:00Z",
@@ -915,6 +954,34 @@ p2_state p2-demo-ui-fresh.json demo true  false false '{}' '"1"'
 p2_state p2-demo-ui-ac.json    demo true  false false '{}' '"1"' AC
 p2_state p2-demo-red.json      demo false false false '{}' '"1"' AC TDE-RED
 p2_state p2-demo-green.json    demo false false false '{}' '"1"' AC TDE-RED TDE-GREEN
+
+# v0.3.0: vocabulary on the writer; existing calls above default it false.
+p2_state p2-ac-early-false.json full '"unknown"' false '"unknown"' false '{}' '"1"'
+p2_state p2-demo-unknown.json demo '"unknown"' '"unknown"' '"unknown"' '"unknown"' '{}' '"1"'
+p2_state p2-vocab.json full false false false true '{}' '"1"'
+p2_state p2-vocab-unknown.json full false false false '"unknown"' '{}' '"1"'
+p2_state p2-bfbc-vocab.json full false false false true '{}' '"1"' $(p2_through BF-BC)
+p2_state p2-es-vocab.json full false false false true '{}' '"1"' $(p2_through ES)
+p2_state p2-bfbteet.json full false false false '{}' '"1"' $(p2_through BF-BTEET)
+p2_state p2-bfbteet-bc.json full false true false false '{}' '"1"' $(p2_through BF-BTEET)
+# 5.3: AC done, BEN never ran — strip BEN so done:BEN is not met even though
+# p2_through BF-BTEET walks past BEN in file order.
+jq '.phases |= del(.BEN, .UIA, ."BEN-CLOSE")' \
+  "$WV_STATE_DIR/p2-bfbteet.json" > "$WV_STATE_DIR/p2-bfbteet-no-ben.json"
+printf 'wrote %s\n' "$WV_STATE_DIR/p2-bfbteet-no-ben.json"
+# The same AC-done/BEN-absent map with behaviour_change TRUE, in two
+# shapes. A 0.3.0 wave (the `vocabulary` key present) still owes BEN, so
+# done:BEN is pending and the tail waits for it. The legacy shape (no
+# `vocabulary` key: started before 0.3.0, the key 0.3.0 wave-init always
+# writes) has passed BEN's position, so BEN is superseded (lib.sh
+# wv_row_superseded) and the tail is unchanged. The phase map carries only
+# the rows the 0.2.x table had (no UIA, BEN, ES, BF-ES, BEN-CLOSE).
+jq '.phases |= del(.BEN, .UIA, .ES, ."BF-ES", ."BEN-CLOSE")' \
+  "$WV_STATE_DIR/p2-bfbteet-bc.json" > "$WV_STATE_DIR/p2-bfbteet-bc-no-ben.json"
+printf 'wrote %s\n' "$WV_STATE_DIR/p2-bfbteet-bc-no-ben.json"
+jq 'del(.vocabulary)' \
+  "$WV_STATE_DIR/p2-bfbteet-bc-no-ben.json" > "$WV_STATE_DIR/p2-bfbteet-bc-legacy.json"
+printf 'wrote %s\n' "$WV_STATE_DIR/p2-bfbteet-bc-legacy.json"
 
 # --- seed helpers ----------------------------------------------------------
 
@@ -1003,12 +1070,12 @@ mk name=order-017-no-phases-key-deny ac=AC-17 \
   expect="$(exp_order 'AC, ACB' 'TDE-RED require(s)')"
 
 mk name=order-067a-ac-empty-phases-allow ac=AC-67 \
-  note='AC has an empty after column: with phases {} there is no order gate at all.' \
+  note='AC after UIA,BEN: with vocabulary and behaviour_change false those predecessors are skipped, so with phases {} there is no order gate.' \
   state=state/valid-full.json desc='[W:1 P:AC R:lead] write the ACs' model=opus \
   expect="$(exp_allow)"
 
 mk name=order-067b-ac-all-done-allow ac=AC-67 \
-  note='the same AC dispatch replayed against an all-done phases map: no state of phases can produce a W-ORDER for the first row.' \
+  note='the same AC dispatch replayed against an all-done phases map: no state of phases can produce a W-ORDER for AC once its conditional predecessors are skipped or done. UIA is now the first row of the file.' \
   state=state/full-all-done.json desc='[W:1 P:AC R:lead] write the ACs' model=opus \
   expect="$(exp_allow)"
 
@@ -1416,10 +1483,15 @@ mk name=scope-110-all-flags-false-allow ac=AC-110 \
   state=state/p2-acb.json desc='[W:1 P:TDE-RED R:executor] write the failing tests' model=sonnet \
   expect="$(exp_allow W-SCOPE)"
 
-mk name=scope-111-unknown-on-ac-allow ac=AC-111 \
-  note='every flag "unknown" and phases {}: an AC dispatch is allowed - the scope gate is on TDE-RED, not on every phase, so a wave can start before the questions are answered.' \
+mk name=scope-111-unknown-on-ac-deny ac=AC-111 \
+  note='every flag "unknown" and phases {}: an AC dispatch is denied W-SCOPE naming vocabulary (UIA is the first unanswered predecessor). A full-mode wave cannot start until vocabulary and behaviour_change are answered.' \
   state=state/unknown-scope.json desc='[W:1 P:AC R:lead] write the ACs' model=opus \
-  expect="$(exp_allow)"
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without vocabulary set' 'scripts/wave-set.sh vocabulary true|false')" -n '$e + {stdout_absent:["W-COND"]}')"
+
+mk name=scope-111-answered-false-on-ac-allow ac=AC-111 \
+  note='vocabulary and behaviour_change answered false, ui and cr still unknown: AC is silent. The rewritten AC-111: an explicit false on the two early flags is enough to start; ui/cr wait until TDE-RED.' \
+  state=state/p2-ac-early-false.json desc='[W:1 P:AC R:lead] write the ACs' model=opus \
+  expect="$(exp_allow W-SCOPE)"
 
 mk name=scope-112a-behaviour-change-true-dr-deny ac=AC-112 \
   note='ui false, behaviour_change true, AC+ACB done, DR not done: TDE-RED is denied W-ORDER naming DR as required because state.behaviour_change is true - DR condition is ui|behaviour_change.' \
@@ -1480,6 +1552,111 @@ mk name=scope-116b-dr-both-false-cond-deny ac='AC-75 (the answered-false control
   note='the same dispatch with both flags answered FALSE: still W-COND, and the reason may still say the wave declares no design review, because now that IS what the state says. The pair 113a/116b is the whole finding: same rule, same phase, different deny, and the difference is answered-versus-unanswered.' \
   state=state/p2-acb.json desc='[W:1 P:DR R:lead] review the design' model=opus \
   expect="$(jq -c --argjson e "$(exp_deny W-COND 'condition `ui|behaviour_change` is false' 'DR' 'state.ui and state.behaviour_change are both false')" -n '$e + {stdout_absent:["W-SCOPE"]}')"
+
+# ---------------------------------------------------------------------------
+# P2.T1b  UIA / BEN / ES / BF-ES / BEN-CLOSE (v0.3.0 table rows)
+# ---------------------------------------------------------------------------
+
+mk name=scope-111-demo-unknown-on-ac-allow ac=AC-111 \
+  note='demo mode with every flag unknown: AC is silent. UIA and BEN are full-only, so they are skipped by mode without their flags being read.' \
+  state=state/p2-demo-unknown.json desc='[W:1 P:AC R:lead] write the ACs' model=opus \
+  expect="$(exp_allow)"
+
+mk name=scope-uia-vocab-unknown-deny ac=AC-v030-scope \
+  note='vocabulary "unknown", behaviour_change false, phases {}: a UIA dispatch is denied W-SCOPE naming vocabulary — not W-COND.' \
+  state=state/p2-vocab-unknown.json desc='[W:1 P:UIA R:lead] write the user-intent criteria' model=opus \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without vocabulary set' 'scripts/wave-set.sh vocabulary true|false')" -n '$e + {stdout_absent:["W-COND"]}')"
+
+mk name=cond-uia-vocab-false-deny ac=AC-v030-cond \
+  note='vocabulary false: a UIA dispatch is denied W-COND naming vocabulary and the wave-set command.' \
+  state=state/valid-full.json desc='[W:1 P:UIA R:lead] write the user-intent criteria' model=opus \
+  expect="$(exp_deny W-COND 'condition `vocabulary` is false' 'UIA' 'scripts/wave-set.sh vocabulary true')"
+
+mk name=cond-uia-vocab-true-allow ac=AC-v030-cond \
+  note='vocabulary true, phases {}: UIA has empty after, so it is allowed. Negative control for the UIA W-COND and W-ORDER denies.' \
+  state=state/p2-vocab.json desc='[W:1 P:UIA R:lead] write the user-intent criteria' model=opus \
+  expect="$(exp_allow W-COND)"
+
+mk name=cond-ben-bc-false-deny ac=AC-v030-cond \
+  note='behaviour_change false: a BEN dispatch is denied W-COND naming behaviour_change.' \
+  state=state/valid-full.json desc='[W:1 P:BEN R:lead] write the benefit contract' model=opus \
+  expect="$(exp_deny W-COND 'condition `behaviour_change` is false' 'BEN' 'scripts/wave-set.sh behaviour-change true')"
+
+mk name=order-ac-before-uia-deny ac=AC-v030-order \
+  note='vocabulary true, UIA not done: AC is denied W-ORDER naming UIA as required because state.vocabulary is true.' \
+  state=state/p2-vocab.json desc='[W:1 P:AC R:lead] write the ACs' model=opus \
+  expect="$(exp_order 'UIA' 'UIA (required because state.vocabulary is true)')"
+
+mk name=order-sea-before-es-deny ac=AC-v030-order \
+  note='vocabulary true, through BF-BC, ES not done: SEA is denied W-ORDER naming ES.' \
+  state=state/p2-bfbc-vocab.json desc='[W:1 P:SEA R:executor] scan for silent errors' model=sonnet \
+  expect="$(exp_order 'ES' 'ES (required because state.vocabulary is true)')"
+
+mk name=cond-es-vocab-false-deny ac=AC-v030-cond \
+  note='vocabulary false, through BF-BC: an ES dispatch is denied W-COND.' \
+  state=state/p2-bfbc.json desc='[W:1 P:ES R:executor] scan empty states' model=sonnet \
+  expect="$(exp_deny W-COND 'condition `vocabulary` is false' 'ES')"
+
+mk name=cond-bf-es-vocab-false-deny ac=AC-v030-cond \
+  note='vocabulary false, ES not done, no findings file: BF-ES is denied W-COND naming findings:ES (never vocabulary) because ES does not run in this wave.' \
+  state=state/p2-bfbc.json desc='[W:1 P:BF-ES R:executor] fix the empty-state findings' model=sonnet \
+  expect="$(exp_deny W-COND 'condition `findings:ES` is false' 'ES does not run in this wave')"
+
+mk name=order-bf-es-before-es-pending-deny ac=AC-v030-order \
+  note='vocabulary true, through BF-BC, ES not done, no findings file: ES applies, so the scan is pending and a direct BF-ES dispatch is denied W-ORDER naming ES, never W-COND. Twin of cond-bf-es-vocab-false-deny (same dispatch, vocabulary false, W-COND), which is its negative control.' \
+  state=state/p2-bfbc-vocab.json desc='[W:1 P:BF-ES R:executor] fix the empty-state findings' model=sonnet \
+  expect="$(exp_order 'ES' 'ES (required because state.vocabulary is true)' 'BF-ES require(s) ES')"
+
+mk name=cond-bf-es-findings-zero-deny ac=AC-v030-cond \
+  note='vocabulary true, ES done, FINDINGS: 0: BF-ES is denied W-COND naming findings:ES and the zero count.' \
+  state=state/p2-es-vocab.json desc='[W:1 P:BF-ES R:executor] fix the empty-state findings' model=sonnet \
+  seed="$(seedspec f:ES:0 a:bf-ES)" \
+  expect="$(exp_deny W-COND 'condition `findings:ES` is false' 'FINDINGS: 0')"
+
+mk name=gate-bf-es-no-approval-deny ac=AC-v030-gate \
+  note='vocabulary true, ES done, FINDINGS: 2, no bf-ES.md: denied W-BF-APPROVAL. The BF- prefix gate is automatic.' \
+  state=state/p2-es-vocab.json desc='[W:1 P:BF-ES R:executor] fix the empty-state findings' model=sonnet \
+  seed="$(seedspec f:ES:2)" \
+  expect="$(exp_deny W-BF-APPROVAL '.wave/approvals/bf-ES.md' 'BF-ES')"
+
+mk name=gate-bf-es-approved-allow ac=AC-v030-gate \
+  note='the same with the approval present: allowed. Negative control for W-BF-APPROVAL on BF-ES.' \
+  state=state/p2-es-vocab.json desc='[W:1 P:BF-ES R:executor] fix the empty-state findings' model=sonnet \
+  seed="$(seedspec f:ES:2 a:bf-ES)" \
+  expect="$(exp_allow W-BF-APPROVAL)"
+
+mk name=order-sea-after-bf-bc-vocab-false-allow ac=AC-v030-order \
+  note='vocabulary false, through BF-BC: SEA is allowed — ES and BF-ES are skipped, so SEA is dispatchable straight after BF-BC. Negative control for the SEA-before-ES W-ORDER.' \
+  state=state/p2-bfbc.json desc='[W:1 P:SEA R:executor] scan for silent errors' model=sonnet \
+  expect="$(exp_allow W-ORDER)"
+
+mk name=scope-sea-vocab-unknown-deny ac=AC-v030-scope \
+  note='vocabulary unknown, phases empty: SEA is denied W-SCOPE naming vocabulary, never skipped through.' \
+  state=state/p2-vocab-unknown.json desc='[W:1 P:SEA R:executor] scan for silent errors' model=sonnet \
+  expect="$(jq -c --argjson e "$(exp_deny W-SCOPE 'without vocabulary set' 'scripts/wave-set.sh vocabulary true|false')" -n '$e + {stdout_absent:["W-COND"]}')"
+
+mk name=order-commit-before-ben-close-deny ac=AC-v030-order \
+  note='behaviour_change true, BEN done (p2_through BF-BTEET includes BEN), BEN-CLOSE not done: COMMIT is denied W-ORDER naming BEN-CLOSE because BEN ran.' \
+  state=state/p2-bfbteet-bc.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
+  expect="$(exp_order 'BEN-CLOSE' 'BEN-CLOSE (required because BEN ran)')"
+
+mk name=order-commit-ben-not-done-allow ac=AC-v030-order \
+  note='behaviour_change false, through BF-BTEET, BEN never ran: COMMIT is allowed. BEN is skipped, done:BEN is not met, so BEN-CLOSE is skipped and the tail is unchanged (5.3). Negative control for the COMMIT-before-BEN-CLOSE W-ORDER. With behaviour_change true see the two cases below.' \
+  state=state/p2-bfbteet-no-ben.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
+  seed="$(seedspec f:BTEET:0)" \
+  expect="$(exp_allow W-ORDER)"
+
+mk name=order-commit-ben-not-done-bc-deny ac=AC-v030-order \
+  note='a 0.3.0 wave (vocabulary key present), behaviour_change true, through BF-BTEET, BEN never ran: COMMIT is denied W-ORDER naming BEN. done:BEN is pending, not unmet, because BEN is still required.' \
+  state=state/p2-bfbteet-bc-no-ben.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
+  seed="$(seedspec f:BTEET:0)" \
+  expect="$(exp_order 'BEN;' 'BEN (required because state.behaviour_change is true)')"
+
+mk name=order-commit-ben-not-done-legacy-allow ac=AC-v030-order \
+  note='the same phase map in a wave started before 0.3.0 (no vocabulary key), behaviour_change true: COMMIT is allowed. AC, which names BEN in its after, is done and BEN has no entry, so BEN is superseded, BEN-CLOSE is skipped and the tail is unchanged. Negative control for the BEN W-ORDER above.' \
+  state=state/p2-bfbteet-bc-legacy.json desc='[W:1 P:COMMIT R:executor] commit the change' model=sonnet \
+  seed="$(seedspec f:BTEET:0)" \
+  expect="$(exp_allow W-ORDER)"
 
 # ---------------------------------------------------------------------------
 # P2.E  Dispatch-time gates (AC-83, AC-147..160)
@@ -1765,7 +1942,7 @@ mk name=budget-179b-fanout-over-two-x-deny ac=AC-179 \
   note='the same phase with the ledger summing 13000 (6.5x the row value): denied, naming the effective budget 6000 and the ratio against it.' \
   state=state/p2-teettc.json desc='[W:1 P:TEET R:executor] run the end-to-end suite' model=sonnet \
   seed="$(jq -nc --arg l "$(p2_ledger TEET 5000 5000 3000)" '{".wave/ledger.jsonl": $l}')" \
-  expect="$(exp_deny W-BUDGET 'spent 13000, limit 6000, 2.1x' '.wave/approvals/budget-TEET.md')"
+  expect="$(exp_deny W-BUDGET 'spent 13000, limit 6000, >2.1x' '.wave/approvals/budget-TEET.md')"
 
 mk name=budget-180-anytime-exempt-allow ac=AC-180 \
   note='a ledger of AD lines summing 2500, five times the 500-token AD budget: allowed with no W-BUDGET - an anytime row is exempt from the budget gate.' \

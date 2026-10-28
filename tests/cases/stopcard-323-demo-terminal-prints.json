@@ -1,7 +1,7 @@
 {
   "script": "stop.sh",
   "ac": "AC-323",
-  "note": "demo mode, TEET done -> prints the scorecard pointer",
+  "note": "demo mode, wave complete (TEET and the other demo phase rows settled) but not closed -> W-STATE 'complete but not closed' naming scripts/wave-close.sh; no pointer, no marker (the closing TEET stop prints the pointer when it closes the wave).",
   "seed": {
     "state": "state/demo-teet-done.json",
     "files": {
@@ -14,7 +14,20 @@
     "session_crons": []
   },
   "expect": {
+    "exit": 0,
     "decision": "warn",
-    "rule": "W-SCORECARD"
+    "rule": "W-STATE",
+    "reason_template": "W-STATE",
+    "reason_contains": [
+      "is complete but not closed",
+      "scripts/wave-close.sh"
+    ],
+    "stdout_absent": [
+      "W-SCORECARD",
+      "W-UNDELIVERED"
+    ],
+    "files_absent": [
+      ".wave/.scorecard-printed"
+    ]
   }
 }

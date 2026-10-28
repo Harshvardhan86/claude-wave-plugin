@@ -67,6 +67,15 @@ WV_REASONS_TSV="$WV_PLUGIN_DIR/hooks/reasons.tsv"
 WV_MODELS_TSV="$WV_PLUGIN_DIR/hooks/models.tsv"
 WV_PHASES_TSV="$WV_PLUGIN_DIR/hooks/phases.tsv"
 
+# The ONE attribution-trailer pattern (ERE, case-sensitive). Both guards read
+# it: the PreToolUse commit guard (pre-commit-guard.sh) and the commit-msg hook
+# wave-init.sh installs (it bakes this value into the hook at install time).
+# Five forms: a Co-Authored-By line naming the AI tool, a Co-Authored-By line
+# whose address is at the vendor domain, a "Generated with" line, a session
+# line, and a session URL. Deliberately narrow, so a FUNCTIONAL mention of the
+# tool or plugin name in code or in a commit message is never touched.
+WV_TRAILER_ERE='Co-Authored-By: Claude|Co-Authored-By: .*@anthropic\.com|Generated with \[Claude Code\]|Claude-Session: https|https://claude\.ai/code/session_'
+
 # ---------------------------------------------------------------------------
 # 2. Every variable this library exports, initialised before anything reads it.
 # ---------------------------------------------------------------------------
@@ -90,6 +99,7 @@ WV_WAVE=""
 WV_UI=""
 WV_BC=""            # behaviour_change
 WV_CR=""            # cr_enabled
+WV_VOCAB=""         # vocabulary
 WV_STATE_OK=0
 
 WV_EMITTED=0        # 1 once one JSON object has been written to stdout
@@ -337,7 +347,7 @@ wv_project_root() {
 
 wv_state_read() {
   # Sets WV_STATE / WV_MODE / WV_STATUS / WV_ENFORCE / WV_WAVE / WV_UI / WV_BC /
-  # WV_CR / WV_STATE_OK, plus WV_WAVE_DIR and WV_STATE_FILE (both resolved).
+  # WV_CR / WV_VOCAB / WV_STATE_OK, plus WV_WAVE_DIR and WV_STATE_FILE (both resolved).
   #
   # Returns 1 — and the caller then exits 0 — when there is no wave, when the
   # wave is not active (silent, per "no wave, no hooks"), or when the state
@@ -350,6 +360,7 @@ wv_state_read() {
   WV_UI=""
   WV_BC=""
   WV_CR=""
+  WV_VOCAB=""
   WV_STATE_OK=0
   WV_WAVE_DIR=""
   WV_STATE_FILE=""
@@ -380,7 +391,8 @@ wv_state_read() {
   blob="$(jq -r '
       def field(k): if has(k) then (.[k] | tostring) else "" end;
       [ field("schema"), field("status"), field("mode"), field("enforce"),
-        field("wave"), field("ui"), field("behaviour_change"), field("cr_enabled") ]
+        field("wave"), field("ui"), field("behaviour_change"), field("cr_enabled"),
+        field("vocabulary") ]
       | join("\u001f")
     ' "$resolved_state" 2>/dev/null)"
   if [ -z "$blob" ]; then
@@ -388,8 +400,8 @@ wv_state_read() {
     return 1
   fi
 
-  local schema status mode enforce wave ui bc cr
-  IFS=$'\x1f' read -r schema status mode enforce wave ui bc cr <<<"$blob"
+  local schema status mode enforce wave ui bc cr vocab
+  IFS=$'\x1f' read -r schema status mode enforce wave ui bc cr vocab <<<"$blob"
 
   WV_STATUS="$status"
   # A closed or unrecognised status enforces nothing, and says nothing.
@@ -435,6 +447,7 @@ wv_state_read() {
   WV_UI="$ui"
   WV_BC="$bc"
   WV_CR="$cr"
+  WV_VOCAB="$vocab"
   WV_STATE_OK=1
   return 0
 }
@@ -929,7 +942,7 @@ wv_list_cap() {
 
 wv_rel() {
   # wv_rel <path> -> the path with the project root stripped, so a reason names
-  # `.wave/ledger.jsonl` and not `/home/<someone>/<their project>/.wave/…`.
+  # `.wave/ledger.jsonl` and not an absolute home-directory path to a project's `.wave/…`.
   #
   # A reason is read by a person and matched by a test. The project root is not
   # information either of them needs: it is the same for every path in the
@@ -1148,11 +1161,14 @@ wv_rule_warn() {
 # These are a MINIMAL, READ-ONLY, ADVISORY-ONLY port of pre-agent.sh's
 # wv_condition_met / wv_phase_done / wv_after_unmet. They answer "what would a
 # human call the last completed step and the next one" for a banner or a
-# reminder — never a gate — so unlike pre-agent.sh's versions they collapse
-# every "cannot be measured" case (an unreadable findings file, an unanswered
-# ui/behaviour_change/cr flag) to a plain "not met" rather than raising a
-# separate W-ARTIFACT / W-MARKER / W-SCOPE deny: nothing here ever denies
-# anything, so there is no reason to distinguish "skip" from "cannot tell".
+# reminder — never a gate. An unreadable findings file still collapses to
+# "not met" (advisory has no W-ARTIFACT channel). An unanswered scope flag
+# (the string "unknown") does not: that is a third outcome, *unanswered*,
+# required and not yet allowed, never skipped. Collapsing it into "not met"
+# made wv_up_phase_settled treat the row as skipped and the reminder name a
+# successor the gate would refuse with W-SCOPE. Absent (empty string) stays
+# false, matching the gate. Mode is tested before condition, matching the
+# gate, so demo is unaffected.
 #
 # The checkpoint helpers do NOT source pre-agent.sh for this — sourcing it would run its
 # entire PreToolUse(Agent) rule chain against whatever event is live and then
@@ -1177,31 +1193,84 @@ wv_state_phase_status() {
 }
 
 wv_up_condition_met() {
-  # wv_up_condition_met <code> -> 0 when the row's condition holds in the
-  # current state, 1 otherwise (including "cannot be measured", which a gate
-  # would refuse to guess and an advisory just treats as not-yet).
-  local code="$1" cond file
+  # wv_up_condition_met <code> ->
+  #   0  met
+  #   1  not met (answered false, or the flag is absent / empty — same as the
+  #      gate)
+  #   2  unanswered: a flag the row reads is the string "unknown", or the
+  #      source of a done:/findings: row is itself unanswered, or a
+  #      findings: row's scan is done but its findings file is missing (the
+  #      gate's W-ARTIFACT case: it neither runs nor skips the BF- row)
+  #   3  unmeasurable: a findings: row's file is present but could not be
+  #      measured — no `FINDINGS: n` line (the gate's W-MARKER), or the scan
+  #      returned no count (unreadable; the gate fails open, so the BF- row
+  #      stays required), or the source of a done: row is itself
+  #      unmeasurable. Never a measured zero.
+  #
+  # 2 and 3 are not bare non-zeros. wv_up_phase_settled must not read 2 as
+  # skipped; it reads 3 as skipped only for the advisory callers (which
+  # treat 3 exactly as they treated 1 before it existed) and as NOT settled
+  # under WV_UP_STRICT=1, which wv_wave_complete sets: completeness must
+  # never close a wave on a condition nobody could measure.
+  local code="$1" cond file src src_rc
   cond="$(wv_row_get "$code" "$WV_COL_CONDITION")" || return 1
   case "$cond" in
     ''|always) return 0 ;;
     'ui|behaviour_change')
       [ "$WV_UI" = "true" ] && return 0
       [ "$WV_BC" = "true" ] && return 0
+      [ "$WV_UI" = "unknown" ] && return 2
+      [ "$WV_BC" = "unknown" ] && return 2
       return 1
       ;;
     cr)
       [ "$WV_CR" = "true" ] && return 0
+      [ "$WV_CR" = "unknown" ] && return 2
+      return 1
+      ;;
+    vocabulary)
+      [ "$WV_VOCAB" = "true" ] && return 0
+      [ "$WV_VOCAB" = "unknown" ] && return 2
+      return 1
+      ;;
+    behaviour_change)
+      [ "$WV_BC" = "true" ] && return 0
+      [ "$WV_BC" = "unknown" ] && return 2
+      return 1
+      ;;
+    done:*)
+      [ "$(wv_state_phase_status "${cond#done:}")" = "done" ] && return 0
+      src="${cond#done:}"
+      wv_up_condition_met "$src"
+      src_rc=$?
+      [ "$src_rc" -eq 2 ] && return 2
+      [ "$src_rc" -eq 3 ] && return 3
+      # The source runs in this wave and has not run yet: the row waits for it
+      # (the gate's pending, named W-ORDER) unless the source is superseded.
+      if [ "$src_rc" -eq 0 ] && ! wv_row_superseded "$src"; then
+        return 0
+      fi
       return 1
       ;;
     findings:*)
       file="$WV_WAVE_DIR/findings/${cond#findings:}.md"
-      [ -f "$file" ] || return 1
-      wv_scan "$file" '^FINDINGS: [0-9]+$' || return 1
-      [ "$WV_SCAN_COUNT" != "0" ] || return 1
+      if [ ! -f "$file" ]; then
+        src="${cond#findings:}"
+        # The scan says it is done and its findings file is missing: the
+        # gate denies W-ARTIFACT here rather than skip, so this is not
+        # "not met" either. Reported as unanswered, the row is not settled.
+        [ "$(wv_state_phase_status "$src")" = "done" ] && return 2
+        wv_up_condition_met "$src"
+        src_rc=$?
+        [ "$src_rc" -eq 2 ] && return 2
+        return 1
+      fi
+      wv_scan "$file" '^FINDINGS: [0-9]+$' || return 3
+      [ "$WV_SCAN_COUNT" != "0" ] || return 3
       local line n
       line="$(command grep -m1 -E '^FINDINGS: [0-9]+$' "$file" 2>/dev/null)"
       n="${line#FINDINGS: }"
-      case "$n" in ''|*[!0-9]*) return 1 ;; esac
+      case "$n" in ''|*[!0-9]*) return 3 ;; esac
       [ "$((10#$n))" -ge 1 ] && return 0
       return 1
       ;;
@@ -1209,29 +1278,95 @@ wv_up_condition_met() {
   esac
 }
 
+wv_row_superseded() {
+  # wv_row_superseded <code> -> 0 when <code> is a row this wave predates and
+  # has already passed: THE LEGACY DISCRIMINATOR, the one definition both the
+  # order gate (pre-agent.sh wv_condition_met, done:) and completeness /
+  # the advisory (wv_up_phase_settled, wv_up_condition_met) use. All three:
+  #   1. state.json has no `vocabulary` key, tested on the state itself with
+  #      jq `has("vocabulary") | not`. Never on WV_VOCAB: wv_state_read maps
+  #      an absent key AND a present empty string to "", so an empty scalar
+  #      proves nothing about the key. Every wave-init.sh since 0.3.0 writes
+  #      the key, "unknown" by default, so its absence means an earlier plugin
+  #      started this wave. Schema stays 1; nothing is migrated.
+  #   2. the row has no entry at all in `.phases`: it was never dispatched. A
+  #      row that was dispatched, failed or redone is not absent and must end
+  #      the ordinary way.
+  #   3. a row whose `after` names <code> is recorded done: the wave was past
+  #      <code>'s position when it was upgraded. This mirrors the order walk's
+  #      own stop (pre-agent.sh wv_after_unmet_walk: a predecessor the state
+  #      records as done ends the walk), which is why the gate never asks for
+  #      such a row in the first place.
+  # A 0.3.0 wave never satisfies (1), so a behaviour-changing new wave whose
+  # answer was corrected after AC still owes BEN. Answering vocabulary with
+  # scripts/wave-set.sh on an old wave writes the key and ends the exemption.
+  #
+  # SCOPE OF THIS VERSION. (1) recognises exactly one upgrade, 0.2.x -> 0.3.0,
+  # by the absent `vocabulary` key. Keying a future exemption on the absence of
+  # a later flag breaks as soon as that flag is set with wave-set.sh, so the
+  # next release keys it on `created_by` (the plugin version wave-init.sh
+  # writes into state.json since 0.3.0; absent = created before 0.3.0) versus
+  # the version that introduced the row. (3) checks only rows that name <code>
+  # DIRECTLY in `after`; the next release needs "any later row done", and this
+  # round deliberately does not widen it (for BEN the direct successor is AC).
+  local code="$1" line rec c after
+  local -a cells=()
+  [ -n "$WV_STATE" ] || return 1
+  printf '%s' "$WV_STATE" | jq -e 'try (has("vocabulary") | not) catch false' >/dev/null 2>&1 || return 1
+  printf '%s' "$WV_STATE" | jq -e --arg c "$code" \
+    'try ((.phases // {}) | type == "object" and (has($c) | not)) catch false' >/dev/null 2>&1 || return 1
+  [ -f "$WV_PHASES_TSV" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
+    rec="${line//$'\t'/$'\x1f'}"
+    IFS=$'\x1f' read -r -a cells <<<"$rec"
+    c="${cells[0]:-}"; after="${cells[4]:-}"
+    case ",$after," in
+      *",$code,"*) [ "$(wv_state_phase_status "$c")" = "done" ] && return 0 ;;
+    esac
+  done < "$WV_PHASES_TSV"
+  return 1
+}
+
 wv_up_phase_settled() {
   # wv_up_phase_settled <code> -> 0 when the row counts as settled for the
   # purpose of walking `after`: its state row says done, its `modes` exclude
-  # the active mode, or its own condition does not hold (the skip rule).
-  local code="$1" modes
+  # the active mode, or its own condition is false (the skip rule). An
+  # unanswered condition is not settled: the row is still required. An
+  # unmeasurable condition (3) is settled for the advisory walk, as before,
+  # and NOT settled when WV_UP_STRICT=1 (completeness; see
+  # wv_up_condition_met). Mode is tested before condition, matching the gate.
+  local code="$1" modes crc
   [ "$(wv_state_phase_status "$code")" = "done" ] && return 0
   modes="$(wv_row_get "$code" "$WV_COL_MODES")" || return 1
   case ",$modes," in
     *",$WV_MODE,"*) : ;;
     *) return 0 ;;
   esac
-  wv_up_condition_met "$code" && return 1
-  return 0
+  wv_row_superseded "$code" && return 0
+  wv_up_condition_met "$code"
+  crc=$?
+  case "$crc" in
+    0) return 1 ;;
+    2) return 1 ;;
+    3) [ "${WV_UP_STRICT:-0}" = "1" ] && return 1; return 0 ;;
+    *) return 0 ;;
+  esac
 }
 
+# Completeness's strict reading of an unmeasurable condition (see
+# wv_up_condition_met). Set here so an inherited environment value can never
+# make the advisory walk strict; wv_wave_complete raises it with `local`.
+WV_UP_STRICT=0
 WV_UP_VISITED=""
 
 wv_up_after_settled() {
   # wv_up_after_settled <code> -> 0 when every predecessor in `after` is
-  # settled (done or skipped), walking through a skipped predecessor into ITS
-  # predecessors the same way pre-agent.sh's order walk does, so a wave with
-  # cr_enabled false still does not report CR's successor as allowed before
-  # TDE-GREEN is actually done.
+  # settled (done or skipped by mode or a false condition), walking through a
+  # skipped predecessor into ITS predecessors the same way pre-agent.sh's
+  # order walk does, so a wave with cr_enabled false still does not report
+  # CR's successor as allowed before TDE-GREEN is actually done. An
+  # unanswered predecessor is not settled, so a successor is never returned.
   WV_UP_VISITED=""
   wv_up_after_settled_walk "$1"
 }
@@ -1279,11 +1414,13 @@ wv_last_done_phase() {
 
 wv_next_allowed_phase() {
   # wv_next_allowed_phase -> the first `when=phase` row (file order) that is
-  # allowed in this mode, not already done, whose own condition holds, and
-  # whose predecessors are all settled — i.e. the phase pre-agent.sh would let
-  # through right now — or "none" when every such row is already settled.
+  # in this mode, not already done, whose predecessors are all settled, and
+  # whose own condition is either met or unanswered. An unanswered row is
+  # returned itself (that is the phase the operator is waiting on) and a
+  # successor of an unanswered row is never returned. "none" when every
+  # such row is already settled. Mode is tested before condition.
   [ -f "$WV_PHASES_TSV" ] || { printf 'none'; return 0; }
-  local code modes when rest
+  local code modes when rest crc
   while IFS=$'\t' read -r code modes when rest; do
     case "$code" in ''|'#'*|code) continue ;; esac
     [ "$when" = "phase" ] || continue
@@ -1292,11 +1429,17 @@ wv_next_allowed_phase() {
       *) continue ;;
     esac
     [ "$(wv_state_phase_status "$code")" = "done" ] && continue
-    wv_up_condition_met "$code" || continue
-    if wv_up_after_settled "$code"; then
-      printf '%s' "$code"
-      return 0
-    fi
+    wv_row_superseded "$code" && continue
+    wv_up_condition_met "$code"
+    crc=$?
+    case "$crc" in
+      0|2)
+        if wv_up_after_settled "$code"; then
+          printf '%s' "$code"
+          return 0
+        fi
+        ;;
+    esac
   done < "$WV_PHASES_TSV"
   printf 'none'
   return 0
@@ -1373,14 +1516,206 @@ WV_LO_INVENTORY='{}'
 WV_LO_SUMMARY=''
 WV_LO_WARN=0
 
-wv_lo_terminal_phase() {
-  local mode="$1" code modes rest last=""
-  [ -f "$WV_PHASES_TSV" ] || return 0
-  while IFS=$'\t' read -r code modes rest; do
+wv_wave_complete() {
+  # wv_wave_complete [<except>] -> 0 when every `when=phase` row of the
+  # active mode is settled: status done, skipped by mode, or skipped by a
+  # false condition. With <except>, that one row is left out of the walk
+  # ("is everything ELSE settled?"), which is the final-row leftover
+  # trigger's question. An unanswered condition is not settled
+  # (wv_up_phase_settled's third outcome). anytime rows never count, so an
+  # AD stop never completes a wave. Solo (and any mode with no phase rows of
+  # its own) is never complete this way — stop.sh keeps its own ledger
+  # signal for that.
+  #
+  # Strict on purpose: a row whose status is failed, artifact-missing or
+  # redo is NOT settled, so a wave that ends on one never closes itself; a
+  # person closes it with bare scripts/wave-close.sh, which records the
+  # honest verdict.
+  #
+  # Settled-ness agrees with the order gate (pre-agent.sh wv_phase_done):
+  #   - a row recorded `done` is settled even when it carries `stale: true`,
+  #     because the gate reads only `.status` (it never consults `stale`);
+  #   - a findings: row whose scan is done but whose findings file is
+  #     MISSING is not settled (the gate raises W-ARTIFACT there, it does not
+  #     skip); a FINDINGS: 0 file skips it; FINDINGS: n>=1 means the BF- row
+  #     must itself be done. wv_up_condition_met answers both.
+  #   - a findings: row whose file cannot be measured (no FINDINGS: line,
+  #     unreadable, a scan with no count) is not settled either: the strict
+  #     reading below. The gate denies W-MARKER or fails open there; neither
+  #     is a skip.
+  local except="${1:-}"
+  case "$WV_MODE" in
+    full|demo) : ;;
+    *) return 1 ;;
+  esac
+  [ -f "$WV_PHASES_TSV" ] || return 1
+  # Dynamic scope: every wv_up_phase_settled this walk reaches sees it, and
+  # it is gone again on any return from this function.
+  local WV_UP_STRICT=1
+  local code modes when rest
+  while IFS=$'\t' read -r code modes when rest; do
     case "$code" in ''|'#'*|code) continue ;; esac
-    case ",$modes," in *",$mode,"*) last="$code" ;; esac
+    [ -n "$except" ] && [ "$code" = "$except" ] && continue
+    [ "$when" = "phase" ] || continue
+    case ",$modes," in
+      *",$WV_MODE,"*) : ;;
+      *) continue ;;
+    esac
+    wv_up_phase_settled "$code" || return 1
   done < "$WV_PHASES_TSV"
-  printf '%s' "$last"
+  return 0
+}
+
+wv_final_row() {
+  # wv_final_row <code> -> 0 when <code> is a FINAL row of the active mode: a
+  # `when=phase` row of the mode that no other `when=phase` row of the same
+  # mode names in its `after`. Derived from hooks/phases.tsv, never a list
+  # (full: VB, COMMIT, CL, CCP; demo: TEET). anytime rows are never final.
+  # Cells are re-delimited to US first, as wv_row_line does, because `after`
+  # is empty on the first row and tab is IFS whitespace.
+  local want="$1" line rec code modes when after found=1
+  local -a cells=() preds=()
+  [ -f "$WV_PHASES_TSV" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*|"code"$'\t'*) continue ;; esac
+    rec="${line//$'\t'/$'\x1f'}"
+    IFS=$'\x1f' read -r -a cells <<<"$rec"
+    code="${cells[0]:-}"; modes="${cells[1]:-}"; when="${cells[2]:-}"; after="${cells[4]:-}"
+    [ "$when" = "phase" ] || continue
+    case ",$modes," in
+      *",$WV_MODE,"*) : ;;
+      *) continue ;;
+    esac
+    if [ "$code" = "$want" ]; then
+      found=0
+      continue
+    fi
+    case ",$after," in
+      *",$want,"*) return 1 ;;
+    esac
+  done < "$WV_PHASES_TSV"
+  return "$found"
+}
+
+wv_delivery_verdict() {
+  # wv_delivery_verdict -> one of delivered, undelivered, unverified,
+  # not-applicable, matching design 5.4. The verdict line is the first line
+  # of .wave/ben-close.md matching the BEN-CLOSE marker, the same predicate
+  # the stop artifact check uses. Nothing unanswered or missing reads as a
+  # pass.
+  #
+  # not-applicable first whenever the BEN row does not run in the active
+  # mode (read from hooks/phases.tsv's `modes` cell, never a hard-coded
+  # mode name), and in solo, which runs no phases at all: the contract
+  # cannot apply there, so behaviour_change is not consulted and nothing
+  # tells the operator to run a phase the mode does not have. A table with
+  # no BEN row falls through to the rows below (unverified for a
+  # behaviour-changing wave), so a missing table never reads as a pass.
+  local line file="$WV_WAVE_DIR/ben-close.md" ben_modes
+  case "$WV_MODE" in
+    solo) printf 'not-applicable'; return 0 ;;
+  esac
+  if ben_modes="$(wv_row_get BEN "$WV_COL_MODES")"; then
+    case ",$ben_modes," in
+      *",$WV_MODE,"*) : ;;
+      *) printf 'not-applicable'; return 0 ;;
+    esac
+  fi
+  if [ "$(wv_state_phase_status BEN)" != "done" ]; then
+    case "$WV_BC" in
+      true|unknown) printf 'unverified' ;;
+      *) printf 'not-applicable' ;;
+    esac
+    return 0
+  fi
+  if [ ! -f "$file" ]; then
+    printf 'unverified'
+    return 0
+  fi
+  line="$(command grep -m1 -E '^BENEFIT: (DELIVERED|UNDELIVERED)$' "$file" 2>/dev/null || true)"
+  case "$line" in
+    'BENEFIT: DELIVERED') printf 'delivered' ;;
+    'BENEFIT: UNDELIVERED') printf 'undelivered' ;;
+    *) printf 'unverified' ;;
+  esac
+}
+
+wv_emit_undelivered() {
+  # wv_emit_undelivered <delivery> -> queues W-UNDELIVERED when <delivery> is
+  # undelivered or unverified. Two messages, one template. `then` is not on
+  # this line: reason-corpus.sh reads a call site to the end of the line.
+  local delivery="$1"
+  case "$delivery" in
+    undelivered)
+      wv_rule_warn W-UNDELIVERED "undelivered" "the benefit test or the close-time sweep failed; read .wave/ben-close.md and the scorecard"
+      ;;
+    unverified)
+      wv_rule_warn W-UNDELIVERED "unverified" "the wave changed behaviour but the benefit was never checked at close (no verdict line in .wave/ben-close.md); scripts/wave-scorecard.sh writes .wave/scorecard.md"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+wv_close_announce() {
+  # wv_close_announce <delivery> — the once-per-wave close-time warnings. ONE
+  # composition for both hooks: subagent-stop.sh calls it only after reading
+  # state.json back and finding the wave CLOSED; stop.sh calls it only in
+  # solo mode, which has no close and whose verdict is always not-applicable.
+  # A wave that is complete but not closed never reaches it: it gets W-STATE
+  # and nothing else, no verdict, no pointer, no marker.
+  #
+  # Needs wv_lo_collect to have run in this call (WV_LO_WARN, WV_LO_SUMMARY).
+  # Three facts are kept apart:
+  #   leftovers EXIST             WV_LO_WARN=1, whatever any marker says;
+  #   warned in a PRIOR call      .leftover-warned present on entry;
+  #   warning QUEUED THIS CALL    lo_now=1 (exist, not warned before, queued).
+  # Composition, in this order (actionable first, the pointer last):
+  #   W-LEFTOVER     leftovers exist and no prior call warned of them; it
+  #                  names the scorecard, so it IS this call's pointer;
+  #   W-UNDELIVERED  the verdict is undelivered/unverified and not yet told;
+  #   W-SCORECARD    unless W-LEFTOVER was queued this call: whenever a
+  #                  verdict was queued (a verdict never goes out without a
+  #                  same-call pointer), and otherwise once per wave when
+  #                  there is a ledger to score.
+  # Markers: EMIT FIRST, MARK SECOND, all in this same call. A marker is
+  # written only for a warning that was actually queued, and
+  # .scorecard-printed is written whichever rule carried the pointer.
+  #
+  # `then` sits on its own line after each emitter: reason-corpus.sh reads an
+  # emitter call site to the end of its line, and a trailing `; then` would be
+  # counted as one more argument than the template takes.
+  local delivery="${1:-}" d="$WV_WAVE_DIR"
+  local lo_now=0 verdict_now=0 pointer=0
+  if [ "$WV_LO_WARN" = "1" ] && [ ! -f "$d/.leftover-warned" ]; then
+    if wv_rule_warn W-LEFTOVER "$WV_LO_SUMMARY"
+    then
+      lo_now=1
+      pointer=1
+    fi
+  fi
+  case "$delivery" in
+    undelivered|unverified)
+      if [ ! -f "$d/.undelivered-warned" ]; then
+        if wv_emit_undelivered "$delivery"
+        then
+          verdict_now=1
+        fi
+      fi
+      ;;
+  esac
+  if [ "$lo_now" = "0" ]; then
+    if [ "$verdict_now" = "1" ] || { [ ! -f "$d/.scorecard-printed" ] && [ -s "$d/ledger.jsonl" ]; }; then
+      if wv_rule_warn W-SCORECARD "$WV_WAVE" "$WV_PLUGIN_DIR/scripts/wave-scorecard.sh (writes .wave/scorecard.md)"
+      then
+        pointer=1
+      fi
+    fi
+  fi
+  mkdir -p "$d" 2>/dev/null
+  if [ "$lo_now" = "1" ]; then : > "$d/.leftover-warned" 2>/dev/null; fi
+  if [ "$verdict_now" = "1" ]; then : > "$d/.undelivered-warned" 2>/dev/null; fi
+  if [ "$pointer" = "1" ]; then : > "$d/.scorecard-printed" 2>/dev/null; fi
+  return 0
 }
 
 wv_lo_proc_scan() {

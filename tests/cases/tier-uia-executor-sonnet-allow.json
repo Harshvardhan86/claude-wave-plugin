@@ -1,9 +1,9 @@
 {
-  "ac": "AC-111",
-  "note": "every flag \"unknown\" and phases {}: an AC dispatch is allowed - the scope gate is on TDE-RED, not on every phase, so a wave can start before the questions are answered.",
+  "ac": "AC-v030-tier",
+  "note": "UIA/executor requires sonnet; the dispatch names exactly sonnet, so this is a silent allow.",
   "script": "pre-agent.sh",
   "seed": {
-    "state": "state/unknown-scope.json"
+    "state": "state/full-all-done-vocab.json"
   },
   "stdin": {
     "session_id": "1a2b0599-4617-4e73-a9c0-2bef462b2626",
@@ -15,28 +15,25 @@
     "tool_name": "Agent",
     "tool_use_id": "toolu_01RXAwe6jcU5LBKHd9geD6sE",
     "tool_input": {
-      "description": "[W:1 P:AC R:lead] write the ACs",
+      "description": "[W:1 P:UIA R:executor] work on UIA",
       "prompt": "Do the thing.",
       "subagent_type": "general-purpose",
-      "model": "opus"
+      "model": "sonnet"
     }
   },
   "expect": {
     "exit": 0,
     "decision": "silent",
     "stdout_absent": [
-      "W-SCOPE",
-      "W-COND",
-      "W-ORDER",
-      "W-ARTIFACT",
-      "W-MARKER",
-      "W-DR-OPEN",
-      "W-VISUAL",
-      "W-BF-APPROVAL",
-      "W-ROUND",
-      "W-PASTE",
-      "W-BUDGET",
-      "W-PROMPT"
+      "W-TAG",
+      "W-NESTED",
+      "W-FORK",
+      "W-MODE",
+      "W-ROLE",
+      "W-MODEL-MISSING",
+      "W-TIER",
+      "W-MODEL-UNKNOWN",
+      "W-DESC"
     ]
   }
 }

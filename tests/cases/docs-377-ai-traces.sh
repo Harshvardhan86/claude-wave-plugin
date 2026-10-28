@@ -4,7 +4,7 @@
 # GIVEN every file this change adds or modifies / WHEN swept for authorship
 # trailer patterns / THEN zero hits, with a planted positive control proving
 # the sweep ran and an absent/declined count treated as a failed scan (never
-# folded into zero) — functional mentions of the `claude` CLI / plugin name
+# folded into zero) — functional mentions of the host CLI command / plugin name
 # and of the model tiers the framework routes to are explicitly not traces.
 #
 # This case scans every file `git ls-files` reports for the repo (never a
@@ -12,6 +12,12 @@
 # only pass if the *actual current tree* is clean, not because the checked
 # file list happened to omit the offending file.
 set -u
+
+# The scratch-hygiene helpers (wv_on_exit) and an owned run directory when
+# run standalone. A mutant copy runs from a scratch directory, so the path
+# goes through the same repo-root override the scan below uses.
+# shellcheck source=tests/lib/assert.sh
+source "${WV_DOCS377_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}/tests/lib/assert.sh"
 
 name="${WV_CASE_NAME:-$(basename "$0" .sh)}"
 log="${WV_CASE_LOG:-$WV_RUN_TMP/logs/$name.log}"
@@ -31,8 +37,8 @@ else
 fi
 
 # The literal trailer patterns AC-377 is about. Deliberately narrow and
-# literal (never a bare "claude" word) — that word alone is how the product
-# and plugin are functionally named ("the claude CLI", "claude-wave-plugin"),
+# literal (never a bare "claude" word) — that word alone is how the host CLI
+# and the plugin are functionally named (the CLI command, the plugin name),
 # and AC-377 explicitly carves those mentions out.
 AI_TRACE_PATTERN='(Co-Authored-By: Claude)|(Co-Authored-By: .*@anthropic\.com)|(Generated with \[Claude Code\])|(Claude-Session: https)|(https://claude\.ai/code/session_)'
 
@@ -55,9 +61,10 @@ AI_TRACE_PATTERN='(Co-Authored-By: Claude)|(Co-Authored-By: .*@anthropic\.com)|(
 #    content used to drive hook scripts under test.
 #  - tests/cases/docs-377-ai-traces.sh (this file) — has to spell the five
 #    literal patterns as regex text to search for them.
-#  - scripts/hooks/pre-commit-guard.sh — defines WV_PCG_TRAILER_RE, the
-#    production regex that DETECTS these trailers; it is the mechanism
-#    under test, not a trace of one.
+#  - scripts/hooks/lib.sh — defines WV_TRAILER_ERE, the one production
+#    regex that DETECTS these trailers (read by the commit guard and baked
+#    into the installed commit-msg hook); it is the mechanism under test,
+#    not a trace of one.
 #  - tests/cases/commit-298-coauthoredby-claude-deny.json — fixture proving
 #    the guard denies a `Co-Authored-By: Claude` trailer (W-COMMIT-TRAILER).
 #  - tests/cases/commit-299-generatedwith-deny.json — fixture proving the
@@ -76,14 +83,28 @@ AI_TRACE_PATTERN='(Co-Authored-By: Claude)|(Co-Authored-By: .*@anthropic\.com)|(
 #  - tests/tools/gen-commit-311-fixtures.py — generates the oversized
 #    fixture commit-311-scale-timing.sh consumes.
 #  - tests/tools/mutants-lifecycle-hooks.sh — mutation-tests the guard by
-#    copying and mutating its own WV_PCG_TRAILER_RE definition.
+#    copying and mutating the WV_TRAILER_ERE definition.
+#  - tests/cases/commit-guards-one-pattern.sh — plants the five trailer forms
+#    as input to prove both guards refuse the same set.
 #  - tests/cases/commitmsg-313-trailer-refused.sh — plants a trailer-bearing
 #    commit message to prove AC-386 (the commit-msg hook refuses it).
+#  - tests/cases/commitmsg-owned-hook-upgrade.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hook-install-failed.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hook-render-fault.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hookspath-remedy.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hookspath.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-linked-worktree.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
 is_excluded_repo_file() {
   case "$1" in
     tests/fixtures/*) return 0 ;;
     tests/cases/docs-377-ai-traces.sh) return 0 ;;
-    scripts/hooks/pre-commit-guard.sh) return 0 ;;
+    scripts/hooks/lib.sh) return 0 ;;
     tests/cases/commit-298-coauthoredby-claude-deny.json) return 0 ;;
     tests/cases/commit-299-generatedwith-deny.json) return 0 ;;
     tests/cases/commit-299-sessionurl-deny.json) return 0 ;;
@@ -94,6 +115,13 @@ is_excluded_repo_file() {
     tests/tools/gen-commit-311-fixtures.py) return 0 ;;
     tests/tools/mutants-lifecycle-hooks.sh) return 0 ;;
     tests/cases/commitmsg-313-trailer-refused.sh) return 0 ;;
+    tests/cases/commit-guards-one-pattern.sh) return 0 ;;
+    tests/cases/commitmsg-owned-hook-upgrade.sh) return 0 ;;
+    tests/cases/init-hook-install-failed.sh) return 0 ;;
+    tests/cases/init-hook-render-fault.sh) return 0 ;;
+    tests/cases/init-hookspath-remedy.sh) return 0 ;;
+    tests/cases/init-hookspath.sh) return 0 ;;
+    tests/cases/init-linked-worktree.sh) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -159,7 +187,7 @@ fi
 # a parallel implementation that could drift from it.
 
 scratch_dir="$(mktemp -d)"
-trap 'rm -rf "$scratch_dir"' EXIT
+wv_on_exit 'rm -rf "$scratch_dir"'
 
 git init -q "$scratch_dir"
 git -C "$scratch_dir" config user.email "wave-selftest@example.invalid"
@@ -169,7 +197,7 @@ printf 'preamble\nCo-Authored-By: Claude <noreply@anthropic.com>\ntrailer\n' \
   > "$scratch_dir/positive-trailer.txt"
 printf 'see https://claude.ai/code/session_abc123 for the transcript\n' \
   > "$scratch_dir/positive-session.txt"
-printf 'Claude Code\nclaude-wave-plugin\n' \
+printf 'Claude Code\nclaude-example-tool\n' \
   > "$scratch_dir/negative-mentions.txt"
 git -C "$scratch_dir" add -A >/dev/null 2>&1
 
@@ -196,7 +224,7 @@ note "negative control alone: total_hits=$negative_total ok=$negative_scan_ok"
 if [ "$negative_scan_ok" -eq 0 ]; then
   fail "negative control scan declined/failed"
 elif [ "$negative_total" != "0" ]; then
-  fail "negative control: 'Claude Code' / 'claude-wave-plugin' alone must report 0 hits, got $negative_total"
+  fail "negative control: 'Claude Code' / 'claude-example-tool' alone must report 0 hits, got $negative_total"
 fi
 
 # ---- 3: non-vacuity proof ----------------------------------------------

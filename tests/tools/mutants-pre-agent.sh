@@ -58,6 +58,11 @@ for tool in jq git python3; do
 done
 
 WV_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wave-mutants.XXXXXX")" || exit 1
+# The harness keeps the scratch directory of every RED run, and every killed
+# mutant is a red run: each run gets TMPDIR inside this temp root, removed
+# after the run (kept with --keep) and with the root on exit
+# (tests/cases/_selfcheck/data-mutant-scratch.sh).
+WV_SCRATCH="$WV_TMP/scratch"
 WV_TREE="$WV_TMP/tree"
 WV_LOGS="$WV_TMP/logs"
 mkdir -p "$WV_TREE" "$WV_LOGS" || exit 1
@@ -66,6 +71,7 @@ cleanup() {
   if [ "$WV_KEEP" = "1" ]; then
     printf 'temp root kept at %s\n' "$WV_TMP"
   else
+    chmod -R u+rwX "$WV_TMP" 2>/dev/null
     rm -rf "$WV_TMP"
   fi
 }
@@ -186,7 +192,9 @@ wv_run_mutant() {
   local f
   for f in "$@"; do args+=(--filter "$f"); done
   local log="$WV_LOGS/$label.log"
-  ( cd "$WV_TREE" && bash tests/run.sh "${args[@]}" ) > "$log" 2>&1
+  mkdir -p "$WV_SCRATCH"
+  ( cd "$WV_TREE" && TMPDIR="$WV_SCRATCH" bash tests/run.sh "${args[@]}" ) > "$log" 2>&1
+  if [ "$WV_KEEP" != "1" ]; then chmod -R u+rwX "$WV_SCRATCH" 2>/dev/null; rm -rf "$WV_SCRATCH"; fi
 
   local summary total
   summary="$(command grep -m1 '^total=' "$log")"
@@ -628,6 +636,107 @@ wv_run_mutant unknownisfalse    wv_body_unknownisfalse    'scope-11*' 'order-071
 wv_run_mutant scanwarnlost      wv_body_scanwarnlost      'gate-scan-warning*' 'cond-080*'
 wv_run_mutant conddenyearly     wv_body_conddenyearly     'order-107*' 'gate-083*'
 wv_run_mutant walkpreempts      wv_body_walkpreempts      'order-107*' 'gate-083*'
+
+# --- v0.3.0: pending-branch rule, done: arm, vocabulary unanswered ----------
+
+wv_body_pendingskipstillpending() { cat <<'PY'
+old = """        wv_row_applies "$src"
+        case "$?" in
+          1)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
+"""
+assert old in s, "anchor missing: the findings pending-branch applies check"
+s = s.replace(old, "        :\n")
+PY
+}
+
+wv_body_pendingappliesskipped() { cat <<'PY'
+old = """        wv_row_applies "$src"
+        case "$?" in
+          1)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
+"""
+new = """        wv_row_applies "$src"
+        case "$?" in
+          0)
+            WV_COND_DETAIL="$src does not run in this wave, so there is nothing for $code to fix"
+            return 1
+            ;;
+          2)
+            return 2
+            ;;
+        esac
+"""
+assert old in s, "anchor missing: the findings pending-branch applies check"
+s = s.replace(old, new)
+PY
+}
+
+wv_body_donenotdonemet() { cat <<'PY'
+old = '''    done:*)
+      src="${cond#done:}"
+      if [ "$(wv_state_phase_status "$src")" = "done" ]; then
+        return 0
+      fi'''
+new = '''    done:*)
+      return 0
+      src="${cond#done:}"
+      if [ "$(wv_state_phase_status "$src")" = "done" ]; then
+        return 0
+      fi'''
+assert old in s, "anchor missing: the done: met check"
+s = s.replace(old, new)
+PY
+}
+
+wv_body_vocabunknownisfalse() { cat <<'PY'
+old = '      wv_unanswered_scope "$WV_VOCAB" vocabulary && return 2\n'
+assert old in s, "anchor missing: the vocabulary unanswered check"
+s = s.replace(old, "")
+PY
+}
+
+WV_EXPECT[pendingskipstillpending]=cond-bf-es-vocab-false-deny
+WV_EXPECT[pendingappliesskipped]=order-bf-es-before-es-pending-deny
+WV_EXPECT[donenotdonemet]=order-commit-ben-not-done-allow
+WV_EXPECT[vocabunknownisfalse]=scope-uia-vocab-unknown-deny
+
+wv_run_mutant pendingskipstillpending wv_body_pendingskipstillpending \
+  'cond-bf-es-vocab-false*' 'order-sea-after-bf-bc*' 'order-081*' 'scope-v030*'
+wv_run_mutant pendingappliesskipped wv_body_pendingappliesskipped \
+  'order-bf-es-before-es-pending*' 'order-sea-before-es*' 'order-sea-after-bf-bc*' 'scope-v030*'
+wv_run_mutant donenotdonemet wv_body_donenotdonemet \
+  'order-commit-ben-not-done*' 'order-commit-before-ben-close*' 'scope-v030*'
+wv_run_mutant vocabunknownisfalse wv_body_vocabunknownisfalse \
+  'scope-uia-vocab-unknown*' 'scope-111-unknown*' 'scope-v030*'
+
+# A done: source that runs in this wave but has not run yet reads as a skip
+# again, so a NEW behaviour-changing wave past AC commits without BEN. Killed
+# by scope-v030-new-rows (commit-ben-not-done-new).
+wv_body_donependingskip() { cat <<'PY'
+old = """          if ! wv_row_superseded "$src"; then
+            WV_COND_PENDING="$src"
+            return 3
+          fi
+"""
+assert old in s, "anchor missing: the done: pending branch"
+s = s.replace(old, "")
+PY
+}
+WV_EXPECT[donependingskip]=scope-v030-new-rows
+wv_run_mutant donependingskip wv_body_donependingskip 'scope-v030*' 'order-commit-ben-not-done*'
 
 # --- the table ------------------------------------------------------------
 

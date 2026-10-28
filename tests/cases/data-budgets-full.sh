@@ -74,7 +74,7 @@ for c in "${!budget_val[@]}"; do
 done
 
 row_count=$(command grep -v '^#' "$BUDGETS" | command grep -vc '^code')
-[ "$row_count" = "26" ] || fail "budgets.tsv should have exactly 26 rows, got $row_count"
+[ "$row_count" = "31" ] || fail "budgets.tsv should have exactly 31 rows, got $row_count"
 
 # Deferred: "a first dispatch against an empty ledger emits no W-BUDGET" is
 # scripts/hooks/pre-agent.sh runtime behaviour; that script does not exist

@@ -1,7 +1,7 @@
 {
   "script": "stop.sh",
   "ac": "AC-320",
-  "note": "a non-empty ledger but AD (full mode's terminal phase) is not done -> silent, no marker file",
+  "note": "a non-empty ledger but the wave is not complete (only TDE-RED done) -> silent, no marker file. Negative control for W-STATE: the complete-but-not-closed W-STATE of stopcard-321 needs a COMPLETE wave.",
   "seed": {
     "state": "state/full-red-done.json",
     "files": {
@@ -17,6 +17,7 @@
     "decision": "silent",
     "files_absent": [
       ".wave/.scorecard-printed"
-    ]
+    ],
+    "negative_control_for": "W-STATE"
   }
 }

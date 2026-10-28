@@ -6,6 +6,7 @@
   "ui": "unknown",
   "behaviour_change": "unknown",
   "cr_enabled": false,
+  "vocabulary": false,
   "enforce": "block",
   "feature": "hook enforcement layer",
   "started": "2026-09-09T12:00:00Z",

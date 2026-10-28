@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/stopcard-324-solo-prints-once.sh - AC-324.
 #
-# mode:solo has no terminal phase at all (phases.tsv is never consulted in
+# mode:solo has no when=phase rows at all (phases.tsv is never consulted in
 # solo), so a non-empty ledger IS the signal to print the scorecard pointer.
 # It still prints only once: a second Stop in the same wave is silent.
 set -u

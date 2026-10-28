@@ -1,0 +1,14 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.stderr_rules reads STDERR only: the fake hook puts [W-FAKE] then [W-FAKE2] in a stdout additionalContext and nothing on stderr, so a correct list must still be rejected (the check must not fall back to stdout). No decision field. harness_fails inverts.",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "PreToolUse",
+    "last_assistant_message": "SELFCHECK_WARN_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "stderr_rules": ["W-FAKE", "W-FAKE2"],
+    "harness_fails": true
+  }
+}

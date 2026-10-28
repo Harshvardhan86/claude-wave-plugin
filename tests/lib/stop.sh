@@ -38,6 +38,19 @@ stop_state() {
   return 0
 }
 
+stop_findings_zero() {
+  # stop_findings_zero -> a jq object literal mapping every scan's findings
+  # file (hooks/phases.tsv's `findings` column, "-" excluded) to "FINDINGS:
+  # 0\n", for `.seed.files += $(stop_findings_zero)`. A scan the state
+  # records as done always has its findings file in a real wave (it is the
+  # scan's own artifact), and a done scan WITHOUT one is the gate's
+  # W-ARTIFACT case, which completeness does not read as skipped — so a
+  # "whole pipeline done" fixture must carry them to be complete.
+  local tsv="$WV_STOP_TESTS_DIR/../hooks/phases.tsv"
+  awk -F'\t' 'NR > 1 && $12 != "" && $12 != "-" { print $12 }' "$tsv" \
+    | jq -R . | jq -sc 'map({(".wave/findings/" + . + ".md"): "FINDINGS: 0\n"}) | add // {}'
+}
+
 stop_active() {
   # stop_active <phase> <role> <requested-model> -> the jq object literal for
   # one state.active entry, in the exact shape post-agent.sh writes.

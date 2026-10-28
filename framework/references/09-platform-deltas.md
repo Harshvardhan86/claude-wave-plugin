@@ -1,6 +1,6 @@
 # Part 9 — Platform Deltas (Oct 2025 → Apr 2026)
 
-v2 is a realization of v1's methodology against Claude Code / Agent SDK primitives that shipped after v1 was written. This file names each primitive the framework assumes. If a primitive is unavailable in your environment (older Claude Code build, SDK-only, API-only), the framework still works — substitute the v1 manual pattern noted in each row.
+v2 is a realization of v1's methodology against host CLI / agent SDK primitives that shipped after v1 was written. This file names each primitive the framework assumes. If a primitive is unavailable in your environment (older host CLI build, SDK-only, API-only), the framework still works — substitute the v1 manual pattern noted in each row.
 
 ## 9.1 Subagents (`Agent` tool)
 
@@ -37,7 +37,7 @@ v2 is a realization of v1's methodology against Claude Code / Agent SDK primitiv
 
 | Primitive | Used for | v1 fallback if unavailable |
 |-----------|----------|----------------------------|
-| 1M context window on Opus 4.7 | Orchestrator holds full plan + summaries of every prior wave without compacting. | Compact early, lose plan fidelity. |
+| Long context window on the Opus tier | Orchestrator holds full plan + summaries of every prior wave without compacting. | Compact early, lose plan fidelity. |
 | Prompt caching 1-hour TTL (`ENABLE_PROMPT_CACHING_1H`) | Framework's own system prompt + reference files cache across phases — each phase pays cache-read, not cache-write. | 5-minute default TTL; more cache misses. |
 | `ToolSearch` + deferred tools | Per-phase tool surface (Playwright only in TEET, etc.). | All tools loaded every dispatch; context bloat. |
 | Workspace-level prompt-cache isolation (Feb 2026) | Cache bleeds don't cross sessions. | Monitor cache hit rate manually. |

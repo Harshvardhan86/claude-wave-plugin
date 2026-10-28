@@ -8,7 +8,7 @@ phase, tier, budget, path and reason data live in `hooks/*.tsv`.
 
 ## 11.1 Registration and real hook schema
 
-Claude Code auto-loads a plugin's `hooks/hooks.json`. **Do not add a `hooks` field
+The host CLI auto-loads a plugin's `hooks/hooks.json`. **Do not add a `hooks` field
 to `.claude-plugin/plugin.json`.** Duplicate registration can make the client
 report `Duplicate hooks file detected` / `Hook load failed` and drop all plugin
 hooks. Manifest validation does not catch that failure; verify an actual load.
@@ -81,7 +81,7 @@ subagent-issued tool call from a main-session call. Script-specific reads are:
 | `pre-bash.sh` | `tool_input.command` |
 | `pre-commit-guard.sh` | `tool_input.command`; common `cwd` selects the git index |
 | `pre-compact.sh` | `trigger` (`manual` or `auto`) |
-| `stop.sh` | none; terminal phase and ledger state select the scorecard pointer |
+| `stop.sh` | none; never closes a wave: a complete, unclosed full/demo wave gets `W-STATE` naming `scripts/wave-close.sh`, and a solo ledger selects the scorecard pointer |
 
 In the table, `.prompt`, `.model` and similar abbreviations remain under
 `tool_input`. Other payload fields, such as `permission_mode`, `session_id`,
@@ -100,7 +100,7 @@ PreToolUse.tool_use_id → PostToolUse.tool_response.agentId → SubagentStop.ag
 ```
 
 The requested tier is checked before dispatch. At launch, a lower resolved tier
-warns. At stop, the modal tier of assistant turns with output tokens is compared
+warns. At stop, the modal tier of model-reply turns with output tokens is compared
 with the requirement; a downgrade records taint and warns, including on dependent
 dispatches, but does not block them. Unknown models warn and allow.
 
@@ -139,6 +139,23 @@ Full checks every applicable phase. Demo checks `AC`, `DR`, `TDE-RED`,
 or out-of-mode row is looked through transitively via its own `after`; it cannot
 hide an unfinished applicable predecessor. `AD` is `anytime` and exempt from
 order, rounds and budgets.
+
+A row's `condition` is one of `always`, `ui|behaviour_change`, `cr`, `vocabulary`,
+`behaviour_change`, `findings:<CODE>` (that scan reported at least one finding)
+or `done:<CODE>` (that row's ledger status is `done`). An unanswered scope flag
+is neither met nor skipped: the row is required and not yet allowed, and the
+dispatch is denied `W-SCOPE` naming the flag. Because `AC` names `UIA` and `BEN`
+as predecessors, `AC` and everything after it wait until `vocabulary` and
+`behaviour_change` are both answered (`UIA` itself needs only `vocabulary`;
+`/wave-orchestrator:wave-start` asks both up front); `ui` and `cr` are still only needed by
+`TDE-RED`. A demo wave is unaffected — a full-only predecessor is skipped on
+mode before its condition is read. A `findings:` or `done:` row whose source row
+does not run in this wave is not left pending: the condition reports not met,
+naming the source, so the rows after it stay reachable. A `done:` row whose
+source does run but has not yet run waits for it (`W-ORDER` names the source),
+unless the wave predates the source row and is already past it (no `vocabulary`
+key in `state.json`, no entry for the source, a successor done): then the source
+is superseded and the `done:` row is skipped.
 
 Solo keeps only the explicit-model rule, commit guard, PreCompact checkpoint
 and ledger. It has no required tag, prompt caps, order, tier, orchestrator-only
@@ -211,11 +228,12 @@ hooks emit at most one JSON object, use no asynchronous deny and never use
 Reasons are rendered from `hooks/reasons.tsv` in precedence order. A deny names
 one rule, the measured problem and its remedy. Satisfy that remedy and retry;
 obtain the user's decision before recording an approval. Warning and information
-ids are included below so every shipped id has an interpretation.
+ids are included below so every shipped id has an interpretation; the table is
+all 38 rules of `hooks/reasons.tsv`, in that precedence order.
 
 | Rule id | One-line meaning and remedy |
 |---|---|
-| `W-STATE` | State/input/scan cannot be trusted; repair it or scope flags; unreadable data warns and allows. |
+| `W-STATE` | State/input/scan cannot be trusted; repair it or scope flags; unreadable data warns and allows. A wave reported complete but not closed is closed with `scripts/wave-close.sh`; if that exits 1 the wave changed or closed while it waited, so check `.wave/state.json` and re-run. |
 | `W-NESTED` | A subagent dispatched an Agent; return the result and let the orchestrator dispatch. |
 | `W-FORK` | Fork context cannot be routed; use a typed subagent with an explicit model. |
 | `W-TAG` | Dispatch tag is missing or invalid; prefix description or prompt's first line correctly. |
@@ -237,9 +255,11 @@ ids are included below so every shipped id has an interpretation.
 | `W-EDIT` | Main session edits protected tracked source; delegate the edit to a subagent. |
 | `W-READ` | Main session reads project source outside `.wave/`; locate, then delegate the read. |
 | `W-BASH` | Main session runs a recognised build/test command; delegate that run. |
+| `W-POLL` | Command is an unbounded wait or an over-long bare sleep; prefix `timeout <s>`, shorten the sleep, leave Monitor to the main session. |
 | `W-COMMIT-DOC` | Staged planning paths are guarded; unstage or approve via `approvals/commit-doc.md`. |
 | `W-COMMIT-TRAILER` | Message contains a prohibited attribution/session line; remove it and retry. |
 | `W-LONG-RETURN` | Return exceeds 2,000 characters; save the report under `.wave/reports/` and summarise. |
+| `W-BGWAIT` | Background shell tasks are still running at a stop; wait for each in a bounded foreground command, or stop it, then return. |
 | `W-MODEL-UNKNOWN` | Requested tier is unmapped; warning only, verify the alias or update `models.tsv`. |
 | `W-DESC` | Description exceeds 120 characters; warning only, shorten it or use a prompt-line tag. |
 | `W-PROMPT` | Prompt exceeds 8,000 or 24,000 characters; warning only, move lengthy data to files. |
@@ -248,7 +268,9 @@ ids are included below so every shipped id has an interpretation.
 | `W-RESOLVE-UNKNOWN` | Launch/model resolution is unreadable; verify the launch or transcript mapping. |
 | `W-SESSION` | Active-wave banner or restart/staleness advisory; resume its checkpoint or close the wave. |
 | `W-REMINDER` | Full/demo orchestrator reminder; follow the next allowed tagged dispatch. |
-| `W-SCORECARD` | Terminal-phase spend summary is available; run the named scorecard command. |
+| `W-LEFTOVER` | Tasks, crons or watcher processes remain at wave close; stop or wait out each named item — the hook never kills anything. |
+| `W-SCORECARD` | The wave closed (solo: has a ledger) and its spend summary is available; run the named scorecard command. |
+| `W-UNDELIVERED` | The wave closed `undelivered` or `unverified`; read `## Delivery` in the scorecard and decide what the next wave owes. |
 
 Every `approvals/` path in the table is relative to `.wave/`. Rerun approvals
 are phase **and role** scoped: `rerun-<PHASE>.md` alone does not count.
@@ -256,7 +278,7 @@ are phase **and role** scoped: `rerun-<PHASE>.md` alone does not count.
 ## 11.5 Ledger, checkpoints and commit guard
 
 `SubagentStop` appends one record per agent to `.wave/ledger.jsonl`, including
-failed hand-offs. It sums transcript assistant usage into input, output,
+failed hand-offs. It sums transcript reply usage into input, output,
 cache-read and cache-creation tokens, with requested/resolved models, phase,
 role, turns, stop time and tier verification. Missing transcripts or oversized
 ones are noted; absent usage fields count as zero. The transcript reader has a
@@ -271,8 +293,14 @@ phases bypass these gates.
 
 `scripts/wave-scorecard.sh` writes `.wave/scorecard.md` with phase, role, model,
 output, budget ratio and rework, plus GREEN output per changed line since
-`base_sha` and the passing-test count in `green.md`. `Stop` provides a once-only pointer at the terminal phase
-(`AD` full, `TEET` demo), tracked by `.wave/.scorecard-printed`.
+`base_sha` and the passing-test count in `green.md`. When the closed wave
+recorded a delivery verdict, a `## Delivery` section is printed directly under
+the title — including on a wave with an empty ledger. For `undelivered` it
+quotes the reasons from `.wave/ben-close.md`; for `unverified` it says the
+benefit was never checked at close. The once-only scorecard pointer is emitted
+by the call that closes the wave (in solo, by the first `Stop` with a ledger),
+tracked by `.wave/.scorecard-printed`; see "Wave completion" below for how it
+composes with `W-LEFTOVER` and `W-UNDELIVERED`.
 
 Invariant 7's **checkpoint is enforced; its stop is advised**. `PreCompact`
 writes `.wave/checkpoints/<ts>-precompact.md` directly from state and ledger:
@@ -280,20 +308,148 @@ goal, phase, artifacts, token totals, trigger and resume command. It spawns no
 agent. An unwritable directory warns and allows compaction. The platform ignores
 PreCompact output, so the hook cannot prevent compaction. On `SessionStart`
 with source `compact`, the latest checkpoint is named with a fresh-terminal
-advisory. `/claude-wave-plugin:wave-checkpoint` is the manual form; CCP separately requires a
+advisory. `/wave-orchestrator:wave-checkpoint` is the manual form; CCP separately requires a
 `*-ccp.md` file.
 
 Invariant 6 uses `scripts/hooks/pre-commit-guard.sh` on `Bash`. It recognises git
 commit command shapes, checks staged paths against `hooks/planning-paths.tsv`
 (including `.wave/**`) and checks visible message text for prohibited trailers
-or session links. For `--amend --no-edit`, it reads the previous message.
+or session links. For `--amend --no-edit`, it reads the previous message. The
+prohibited forms are one pattern, `WV_TRAILER_ERE` in `scripts/hooks/lib.sh`,
+which the installed `commit-msg` hook below carries verbatim, so the two guards
+refuse exactly the same five forms.
 Git inspection uses stdin `cwd`, including inside worktree subagents.
 
 `wave-init.sh` also installs `.git/hooks/commit-msg` to inspect the final message
-from a file, template, heredoc or editor. It never overwrites an existing hook:
-it reports the conflict and records `skipped-existing` in state. The installed
-Git hook is separate from Claude Code event hooks and currently checks messages
+from a file, template, heredoc or editor. The installed hook is versioned: its
+second line is `# wave-orchestrator-owned commit-msg hook; template <N>`. A hook
+carrying that line is regenerated to the current template on every
+`wave-init.sh` (state `upgraded` when it changed, `installed` when it was
+current), so an older install receives the current pattern. The unmarked hook
+0.2.0 and 0.2.1 installed is recognised by comparing the whole file with that
+exact template and is upgraded the same way only while it is unmodified. It
+never overwrites any other existing hook, including a changed 0.2.x hook: it
+reports the conflict and records `skipped-existing` in state. In a linked
+worktree the hook and the `.wave/` exclude go to the repository's common git
+directory. When the project sets `core.hooksPath` (to any value, an empty one
+included), nothing is written to that directory: state `skipped-hookspath`,
+the check is saved as `.wave/hooks/commit-msg`, and the notice says to call it
+from the project's own `commit-msg` hook (the printed path is shell-quoted).
+`installed` and `upgraded` are recorded only when the file now at the hook
+path is byte-identical to the intended template: it is rendered into a temp
+file with every command's status checked, compared with an independently
+rendered reference copy and checked with `bash -n`, made executable, moved into
+place and compared with the reference once more. When any step fails (an
+unwritable or missing hooks directory, or a render that differs from its
+reference, for example) the state is `install-failed`, the notice names the
+failed step, and the same `.wave/hooks/commit-msg` check is saved, verified the
+same way. The state field `commit_msg_check` records that check: `written`,
+`failed` (the notice then says it could not be written and verified, and prints
+no command to run it), or `none` when no check was needed. When the project is
+not a git repository, or is a bare one (no work tree, so no hook would ever
+run), no hook or check is written and nothing is written under a bare
+repository's git directory (no exclude line; only the wave's own `.wave/` state
+is created): state `not-a-repo` and a notice that the commit-msg guard was not
+installed because there is no work-tree repository (the session's commit guard
+still applies). The installed
+Git hook is separate from host CLI event hooks and currently checks messages
 even after a wave closes; it does not consult `enforce`.
+
+### Wave completion (v0.3.0)
+
+Through v0.2.1 a wave closed when the last table row of its mode was marked
+done. In full mode that row is `AD`, an `anytime` dashboard row, so the first
+time a dashboard executor stopped the wave closed — whatever else had or had
+not run — and every hook was silent for the rest of the work. The scorecard
+pointer could not fire either, because the same call that recorded the terminal
+phase closed the wave in the same breath.
+
+The notion of a terminal phase is replaced by **wave complete**: every
+`when=phase` row of the active mode is settled, meaning done, or skipped by mode
+or by a condition that is answered false. A row recorded `done` is settled even
+when it is marked stale, as the order gate reads it. Not settled: an unanswered
+condition; a `findings:` row whose scan is done but whose findings file is
+missing, or cannot be measured (no `FINDINGS: n` line, an unreadable file, a
+scan that returned no count); and a row that is `failed`, `artifact-missing` or
+`redo`. `anytime` rows never count, and only the stop of a `when=phase` row
+triggers the close, so an `AD` stop never closes a wave, not even one that is
+already complete. Full mode therefore closes when `VB`, `COMMIT`, `CL` and `CCP`
+are all done; demo closes when `TEET` is done, as before; solo has no automatic
+close.
+
+**Who closes, and what it says.** Only `SubagentStop` closes: the closing role's
+stop of a phase recorded done, with no block, that leaves the wave complete. It
+takes the leftover inventory, runs `wave-close.sh --if-complete`, and then reads
+`state.json` back. Only when the state says `closed` does it announce, on
+stderr, in this order, each at most once per wave and each marker written after
+its warning is queued:
+
+| Leftovers | Verdict `undelivered`/`unverified`, not yet told | Rule ids, in order | Markers written |
+|---|---|---|---|
+| found, not warned before | no | `W-LEFTOVER` | `.leftover-warned`, `.scorecard-printed` |
+| found, not warned before | yes | `W-LEFTOVER`, `W-UNDELIVERED` | all three |
+| none, or warned before | no | `W-SCORECARD` when not yet printed and the ledger is non-empty, else nothing | `.scorecard-printed` if printed |
+| none, or warned before | yes | `W-UNDELIVERED`, `W-SCORECARD` | `.undelivered-warned`, `.scorecard-printed` |
+
+`W-LEFTOVER` names the scorecard, so it is that call's pointer. A verdict never
+goes out without a pointer in the same call, even when the pointer was printed
+before. A close that did not happen (a lock race, an unwritable `.wave/`, a
+missing closer) gets `W-STATE` alone — "complete but could not be closed",
+naming `scripts/wave-close.sh` — and nothing is announced or marked; the next
+closing stop retries the whole composition.
+
+A closing-role stop of a **final row** (full: `VB`, `COMMIT`, `CL`, `CCP`;
+demo: `TEET`; derived from `after` in `hooks/phases.tsv`) whose every other row
+is settled also takes the leftover inventory when it ends `failed`,
+`artifact-missing` or `redo`, or its stop is blocked. Such a stop does not
+close the wave, so it warns `W-LEFTOVER` once on its own. A wave left on a
+failed final row never completes (the completeness check is strict); a person
+closes it with bare `wave-close.sh`.
+
+**A Stop never closes.** In full and demo mode, a `Stop` on a wave that is
+complete but still active (the close failed, the final stop was blocked, or the
+remaining rows were skipped without a closing stop) refreshes the leftover
+inventory and prints only `W-STATE`: the wave is complete but not closed, with a
+note when leftovers were found, and the remedy `scripts/wave-close.sh`. No
+verdict, no pointer, no marker; it repeats on every `Stop` until the wave is
+closed. A `Stop` on an incomplete or closed wave is silent. In solo mode, which
+has no close and whose verdict is always `not-applicable`, a non-empty ledger
+gets the same composition as the closing `SubagentStop`: `W-LEFTOVER` or the
+once-per-wave `W-SCORECARD`.
+
+`wave-close.sh --if-complete` is the flag the hooks use; it prints nothing to
+stdout. `--if-terminal <PHASE>` is kept as an accepted alias with the same
+meaning and its argument ignored, so anything that already calls it keeps
+working. Bare `wave-close.sh` closes at any point, and the delivery verdict then
+records honestly what was and was not checked; it prints `W-UNDELIVERED` itself
+when the verdict calls for it. Both forms take the wave lock before reading the
+state that authorises the close, re-read it, check that it is the same active
+wave (id and start time) they first saw, and decide completeness and the
+verdict and write under that one lock. A wave that changed or closed while they
+waited is not closed: `--if-complete` exits 0 silently and the bare form says
+so and exits 1.
+
+### The delivery verdict
+
+`wave-close.sh` folds a `delivery` field into its single state write. The verdict
+is the first line of `.wave/ben-close.md` matching `^BENEFIT: (DELIVERED|UNDELIVERED)$`,
+found with the same predicate the stop marker uses, so the two can never disagree.
+
+| `BEN` done | `behaviour_change` | first matching line of `.wave/ben-close.md` | `delivery` |
+|---|---|---|---|
+| any | any (solo, or a mode `BEN` does not run in, such as demo) | n/a | `not-applicable` |
+| no | `false`, or absent | n/a | `not-applicable` |
+| no | `true` or `unknown` | n/a | `unverified` |
+| yes | any | `BENEFIT: DELIVERED` | `delivered` |
+| yes | any | `BENEFIT: UNDELIVERED` | `undelivered` |
+| yes | any | file absent or no matching line | `unverified` |
+
+Nothing unanswered or missing ever reads as a pass. `W-UNDELIVERED` (rule 38) is
+emitted at the close for `undelivered` and for `unverified`, in the same call as
+a scorecard pointer; `wave-close.sh` run by hand prints the same sentence.
+`UNDELIVERED` never blocks: the wave still commits and closes. A hard block here
+would only invite weakening the Benefit AC to get out of it. What the plugin
+guarantees is that the verdict cannot be silent.
 
 ## 11.6 Escape hatch and lifecycle
 
@@ -302,7 +458,7 @@ the default is `block`. For an active wave, change `enforce` to `warn` in
 `.wave/state.json`, retaining the other fields. Each event-hook deny becomes a
 warning with the same rule id. This does not disable the separately installed
 Git `commit-msg` hook. `wave-set.sh` accepts only
-`ui|behaviour-change|cr true|false`, not an enforcement setting.
+`ui|behaviour-change|cr|vocabulary true|false`, not an enforcement setting.
 
 For a methodology repository that intentionally commits plan-shaped documents,
 record the decision in `.wave/approvals/commit-doc.md`. This changes only
@@ -312,13 +468,16 @@ audit history; a checkpoint can carry the committable account of an exception.
 `wave-init.sh` excludes `.wave/` via `.git/info/exclude`, creates state and the
 lock, archives a closed state and refuses to replace an active one without
 `--force`. It accepts `--mode full|demo` or `--solo`, `--wave`, `--feature`,
-`--ui|--no-ui`, `--cr|--no-cr` and `--enforce block|warn`. Set behaviour-change
-scope afterwards through `wave-set.sh`. Its usage is in the script header;
-there is no implemented `--help` switch.
+`--ui|--no-ui`, `--cr|--no-cr`, `--vocabulary|--no-vocabulary`,
+`--behaviour-change|--no-behaviour-change` and `--enforce block|warn`. Any scope
+answer can be corrected afterwards through `wave-set.sh`. Its usage is in the
+script header; there is no implemented `--help` switch.
 
-`scripts/wave-close.sh` sets `status: "closed"` and `ended`. Terminal phase
-completion also closes full/demo waves; solo has no automatic terminal phase.
-An active state older than 24 hours produces a session-start close advisory.
+`scripts/wave-close.sh` sets `status: "closed"` and `ended`, and records the
+delivery verdict in the same write. The closing `SubagentStop` also closes a
+complete full/demo wave through `--if-complete`; a `Stop` never closes, and solo
+never closes automatically. An active state older than 24 hours produces a
+session-start close advisory.
 
 ## 11.7 Verification and rollback
 

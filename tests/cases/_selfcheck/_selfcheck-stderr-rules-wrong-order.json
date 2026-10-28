@@ -1,0 +1,14 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.stderr_rules, WRONG order: the same run as _selfcheck-stderr-rules-order with the list reversed and no decision field, so the ordered stderr check is the only assertion that can reject it. harness_fails inverts: PASS means the harness caught the wrong order.",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "SubagentStop",
+    "last_assistant_message": "SELFCHECK_STDERR_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "stderr_rules": ["W-FAKE2", "W-FAKE"],
+    "harness_fails": true
+  }
+}

@@ -25,6 +25,8 @@ the whole tree.
     "exit": 0,
     "decision": "deny|block|warn|allow|silent",
     "rule": "W-TAG",
+    "rules": ["W-TAG", "W-OTHER"],
+    "stderr_rules": ["W-TAG", "W-OTHER"],
     "reason_template": "W-TAG",
     "reason_contains": ["substring the rendered reason must carry"],
     "stdout_absent": ["substring stdout must not carry"],
@@ -37,8 +39,10 @@ the whole tree.
 }
 ```
 
-All fields are optional except `stdin`; `expect` fields are checked only when
-present (a case does not need to assert every field).
+`script` is required: a case without it fails (`case is missing required
+'script' field`). Every other field is optional; `stdin` defaults to `{}` when
+it is absent, and `expect` fields are checked only when present (a case does
+not need to assert every field).
 
 - **`script`** — a hook script name. A bare name (no `/`) resolves to
   `scripts/hooks/<name>`; a path containing `/` resolves relative to the repo
@@ -50,8 +54,7 @@ present (a case does not need to assert every field).
 - **`env`** — extra environment variables exported to the script's process.
 - **`seed.state`** — a path relative to `tests/fixtures/` (or an absolute
   path) copied to `<tmp-project>/.wave/state.json` before the run; an empty
-  `.wave/lock` file is also created (mirroring `wave-init.sh`, which does not
-  exist yet).
+  `.wave/lock` file is also created (mirroring `wave-init.sh`).
 - **`seed.started_hours_before_now`** — rewrites the seeded state's `started` to
   that many whole hours before the instant this case runs at (`env.WV_NOW` if the
   case names one, else the pinned clock in `tests/lib/assert.sh`). Needs
@@ -92,7 +95,51 @@ present (a case does not need to assert every field).
     state/ledger side effect rather than an stdout shape; assert that kind
     with `assert_state` / `assert_ledger_lines` instead of `assert_warn`.
 - **`expect.rule`** — the rule id (`W-...`) the rendered reason must carry.
-  Declaring this makes the case the **positive** case for that rule id.
+  Declaring this makes the case the **positive** case for that rule id. With a
+  `deny`/`block`/`warn` decision the reason must start with `[<rule>] ` AND
+  carry exactly one `W-` token in total.
+- **`expect.rules`** — for a hook call that queues SEVERAL warnings into its one
+  JSON object (on a stdout warn channel; the close-time W-LEFTOVER /
+  W-UNDELIVERED / W-SCORECARD composition is written by the closing SubagentStop
+  to stderr, see `stderr_rules`): the exact ORDERED list of `W-` rule tokens the WHOLE reason (for
+  a warn, the whole `additionalContext`) must carry. Both the count and the order
+  are asserted — every `W-[A-Z0-9-]+` token in the text is extracted, the same
+  way the single-token check counts them, and the list must equal this one — and
+  the reason must start with `[<first rule>] `. With a `deny`/`block`/`warn`
+  decision the shape check takes the first rule of the list. Every id in the list
+  counts as a **positive** case for coverage. A case declares `rule` OR `rules`,
+  never both, and the two are exclusive by KEY PRESENCE: `"rule": ""` or
+  `"rule": null` beside `rules` is still both keys. A case declaring both, or a
+  `rules` that is not a non-empty array of `W-` ids, fails as a harness error.
+  Self-checks: `_selfcheck-rules-order` (right order, passes) and the inverted
+  `_selfcheck-rules-wrong-order` / `_selfcheck-rules-short` /
+  `_selfcheck-rules-and-rule` / `_selfcheck-rules-and-rule-empty` /
+  `_selfcheck-rules-and-rule-null` (reversed list, a list missing a rendered
+  token, both keys declared with a real, an empty and a null `rule` — each must be
+  rejected; the three both-keys cases carry no `decision`, so the exclusivity
+  check is the only assertion that can reject them).
+- **`expect.stderr_rules`** — the same exact ORDERED list, read from **stderr**:
+  the only warning channel `SubagentStop` and `PreCompact` have, so this is how a
+  case asserts the close-time composition the closing `SubagentStop` writes
+  there (one warning per line). Count and order are asserted with the same token
+  regex, stderr must start with `[<first rule>] `, and it never falls back to
+  stdout. Independent of `decision`. A case declares exactly ONE of `rule`,
+  `rules` and `stderr_rules`: `stderr_rules` is exclusive with `rule` and with
+  `rules` by KEY PRESENCE, as those two are with each other (`"rule": ""` or
+  `"rule": null` beside `stderr_rules` is still both keys), and a case declaring
+  both is a harness error.
+  Every id in the list counts as a **positive** case for coverage, and
+  `tests/tools/reason-corpus.sh` drives each listed id on its own line of the
+  text. A `stderr_rules` that is not a non-empty array of `W-` ids is a harness
+  error. Self-checks: `_selfcheck-stderr-rules-order` (passes) and the inverted
+  `_selfcheck-stderr-rules-wrong-order` / `_selfcheck-stderr-rules-stdout-only`
+  (reversed list; the right list but on stdout only — both must be rejected),
+  plus the inverted exclusivity checks `_selfcheck-stderr-rules-and-rule` /
+  `_selfcheck-stderr-rules-and-rule-empty` / `_selfcheck-stderr-rules-and-rule-null`
+  / `_selfcheck-stderr-rules-and-rules` (a real, an empty and a null `rule`, and a
+  `rules` list, beside a correct `stderr_rules`). None carries a `decision`, and
+  the `rules` one drives a fake-hook trigger that writes the list on both
+  channels, so the exclusivity check is the only assertion that can reject them.
 - **`expect.negative_control_for`** — the rule id this case proves does
   *not* fire on a neighbouring, otherwise-similar input (paired with
   `expect.decision: "allow"` or `"silent"`). Declaring this makes the case
@@ -142,22 +189,31 @@ A case may instead be a `tests/cases/<area>-<name>.sh` script for multi-step
 or concurrency scenarios. It is executed directly (not sourced); it must
 `source "$(dirname "$0")/../lib/assert.sh"`, drive `run_hook` itself as many
 times as it needs (e.g. to fire N concurrent callers against one seeded
-project), and exit 0 for PASS / non-zero for PASS, printing its own diff on
+project), and exit 0 for PASS and non-zero for FAIL, printing its own diff on
 failure. Every `run_hook` call it makes writes the same positive run marker
 as the JSON path, so the harness's "case log carries its run marker" check
 covers `.sh` cases too.
 
 ## The rule-id coverage self-check
 
-The id universe is the union of every `expect.rule` / `expect.negative_control_for`
-value declared anywhere under `tests/cases/`, plus every id in
-`hooks/reasons.tsv` when that file exists (it ships with the plugin; a
-missing file contributes nothing to the universe). For
-every id in that universe, at least one case must declare it via
-`expect.rule` (a positive case) **and** at least one case must declare it via
-`expect.negative_control_for` (a negative control on a neighbouring valid
-input). `tests/run.sh` fails, naming the id, when either is missing
+The id universe is the union of every id in `hooks/reasons.tsv` when that
+file exists (it ships with the plugin; a missing file contributes nothing) and
+every id the selected JSON cases declare. A case is a **positive** for an id
+when it declares it in `expect.rule`, or lists it in `expect.rules` or
+`expect.stderr_rules` (every listed id counts); it is a **negative control**
+when it declares it in `expect.negative_control_for`. For every id in the
+universe, at least one positive and at least one negative control must exist
 (AC-402).
+
+The pre-pass reads only the cases the run selected, so under `--filter` the
+check is about the filtered set, and it reports a gap in one of two ways:
+
+- **A selected positive whose id has no selected negative control fails that
+  case**, with or without `--coverage` (`rule W-X: no negative control` is
+  appended to its result). Select the negative control too, or run the family.
+- **An id with no selected positive at all** is a suite-level line,
+  `coverage: rule W-X: ...`. It is printed on every run and fails the run only
+  under `--coverage`, so a narrow `--filter` prints many of these harmlessly.
 
 ## `tests/fixtures/state/` and `tests/fixtures/transcripts/`
 
@@ -218,15 +274,36 @@ run loop bailed out early), if any case file is 0 bytes or unparseable
 run marker (`RAN <script> <case> decision=<x>`) after the harness attempted
 to run it.
 
-**Coverage gate (default: disabled).** The harness always scans for rule IDs
-with no positive test case and no negative control. By default, it prints these
-lines but does not fail (exits 0 and does not increment `failed=`). To enforce
-coverage at release time, run with `--coverage` flag: `tests/run.sh --coverage`
-fails if any rule lacks cases. During development, the default mode lets you add
-test cases incrementally without blocking other work.
+**Coverage gate.** See "The rule-id coverage self-check" above for its two
+paths. The suite-level lines (an id with no positive case) are printed but do
+not fail by default; `tests/run.sh --coverage` makes each one a failure, which
+is how coverage is enforced at release time. A positive case whose id has no
+negative control in the run fails as a case either way.
 
 **A suite that cannot run at all — the whole file, not one case — is
 reported `SKIPPED`, never counted as a pass.** This applies repo-wide: for
 example `tests/e2e.sh` (added in a later task) is documented to skip itself
-loudly when `claude` is not on `PATH`; a `SKIPPED` suite must never be
+loudly when the host CLI is not on `PATH`; a `SKIPPED` suite must never be
 reported or logged as if it had passed.
+
+**Scratch directory.** Each run creates `${TMPDIR:-/tmp}/wave-plugin-tests.XXXXXX`
+(`WV_RUN_TMP`). The process that created it removes it on exit when it ended
+green; after any failure, or with `WV_KEEP_TMP=1`, it is kept and its path is
+printed so the case logs inside stay readable. A case file run standalone does
+the same for its own directory, an interrupted run is cleaned like a green one,
+and a `WV_RUN_TMP` supplied by the caller is never removed
+(`tests/cases/_selfcheck/data-scratch-cleanup.sh`). A killed mutant is a red
+run by design, so every `tests/tools/mutants-*.sh` driver runs the harness with
+`TMPDIR` inside its own temp root and removes it after each run (kept with
+`--keep`): a mutation sweep leaves no scratch behind
+(`tests/cases/_selfcheck/data-mutant-scratch.sh`).
+
+**Case cleanups compose; never `trap ... EXIT` in a case.** bash keeps one
+EXIT trap per process, so a case that installs its own replaces the scratch
+cleanup and, run standalone, leaks its run directory. Register a cleanup with
+`wv_on_exit '<command>'` (tests/lib/assert.sh) instead: handlers run in
+registration order, each sees the original exit status in `$?`, the scratch
+cleanup runs after them, and the process keeps the status it was exiting
+with. `_selfcheck/data-scratch-cleanup.sh` runs a real case that registers
+its own cleanup (`data-reasons.sh`) standalone, green and red, and refuses
+any case file that still installs an EXIT trap.

@@ -1,0 +1,14 @@
+{
+  "script": "tests/fixtures/fake-hook.sh",
+  "note": "expect.stderr_rules, right order: the fake hook writes [W-FAKE] then [W-FAKE2] to stderr (the SubagentStop / PreCompact channel) and the case declares exactly that list. The plain half of the stderr ordered-list self-check; _selfcheck-stderr-rules-wrong-order is the same run with the list reversed.",
+  "seed": { "state": "state/example-active.json" },
+  "stdin": {
+    "hook_event_name": "SubagentStop",
+    "last_assistant_message": "SELFCHECK_STDERR_TWO"
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "allow",
+    "stderr_rules": ["W-FAKE", "W-FAKE2"]
+  }
+}

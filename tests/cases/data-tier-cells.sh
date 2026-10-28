@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/data-tier-cells.sh — AC-344
 #
-# data-all.sh's AC-344 check only counted 78 cells; it never compared a
+# data-all.sh's AC-344 check only counted 93 cells; it never compared a
 # single cell's VALUE against tests/golden/phases-tiers.tsv, so it could not
 # fail on a wrong tier. This test does the real cell-by-cell diff, and
 # proves the diff is non-vacuous by mutating a temp copy of phases.tsv (one
@@ -28,7 +28,7 @@ GOLDEN=tests/golden/phases-tiers.tsv
 [ -f "$GOLDEN" ] || { fail "$GOLDEN does not exist"; exit 1; }
 
 # diff_tiers <phases-file> <golden-file> -> prints one "phase col: got != want"
-# line per mismatching cell; empty output means all 78 cells match.
+# line per mismatching cell; empty output means all 93 cells match.
 diff_tiers() {
   local phases="$1" golden="$2"
   awk -F'\t' '
@@ -58,14 +58,14 @@ fi
 # cell count sanity (kept from the original check)
 cells=$(( $(command grep -vc '^#' "$PHASES") - 1 ))
 cells=$(( cells * 3 ))
-[ "$cells" = "78" ] || fail "should have 78 tier cells, got $cells"
+[ "$cells" = "93" ] || fail "should have 93 tier cells, got $cells"
 printf 'cells=%s\n' "$cells" >&2
 
 # ---- mutation proof: lower one tier cell in a temp copy, show the diff
 # catches it (finding 4: "do this for at least one tier cell") -----------
 
 tmp_phases="$(mktemp "${TMPDIR:-/tmp}/phases-mutated.XXXXXX.tsv")"
-trap 'rm -f "$tmp_phases"' EXIT
+wv_on_exit 'rm -f "$tmp_phases"'
 
 # ACB executor is `opus` (100%-Opus hardening phase); lower it to `sonnet`.
 awk -F'\t' 'BEGIN{OFS="\t"} $1=="ACB"{$8="sonnet"} {print}' "$PHASES" > "$tmp_phases"

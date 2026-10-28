@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cases/lib-state-unknown.sh — the state file as `wave-init.sh` actually
-# writes it (spec section 4): `ui`, `behaviour_change` and `cr_enabled` all
-# `"unknown"`, not `false`.
+# writes it (spec section 4): `ui`, `behaviour_change`, `cr_enabled` and
+# `vocabulary` all `"unknown"`, not `false`.
 #
 # That is the deploy-day default and the one every later wave inherits: a
 # `false` there silently switches off `[DR]` and the visual gate, which is the
@@ -58,9 +58,9 @@ assert_deny W-TAG || rc=1        # "unknown" is not a reason to stop enforcing
 case "$WV_LAST_STDOUT" in
   *W-STATE*) fail "the documented initial state must not be reported as unreadable: '$WV_LAST_STDOUT'" ;;
 esac
-assert_state '.ui == "unknown" and .behaviour_change == "unknown" and .cr_enabled == "unknown"' || rc=1
+assert_state '.ui == "unknown" and .behaviour_change == "unknown" and .cr_enabled == "unknown" and .vocabulary == "unknown"' || rc=1
 
-# --- and the library exports the three values verbatim ---------------------
+# --- and the library exports the four values verbatim ---------------------
 # Read directly, because the values the later waves gate on are library
 # variables, not anything that reaches stdout.
 # shellcheck source=scripts/hooks/lib.sh
@@ -75,6 +75,7 @@ if wv_state_read; then
   [ "$WV_UI" = "unknown" ] || fail "WV_UI: want unknown, got '$WV_UI'"
   [ "$WV_BC" = "unknown" ] || fail "WV_BC: want unknown, got '$WV_BC'"
   [ "$WV_CR" = "unknown" ] || fail "WV_CR: want unknown, got '$WV_CR'"
+  [ "$WV_VOCAB" = "unknown" ] || fail "WV_VOCAB: want unknown, got '${WV_VOCAB-UNSET}'"
   [ "$WV_MODE" = "full" ] || fail "WV_MODE: want full, got '$WV_MODE'"
   [ "$WV_ENFORCE" = "block" ] || fail "WV_ENFORCE: want block, got '$WV_ENFORCE'"
   [ "$WV_WAVE" = "1" ] || fail "WV_WAVE: want 1, got '$WV_WAVE'"
@@ -91,6 +92,33 @@ if wv_state_read; then
   [ "$WV_CR" = "false" ] || fail "explicit false: WV_CR: want false, got '$WV_CR'"
 else
   fail "wv_state_read refused valid-full.json"
+fi
+
+# WV_VOCAB: true, false, "unknown" (above) and ABSENT (empty string).
+# valid-full.json has no vocabulary key — that is the absent case.
+if wv_state_read; then
+  [ "$WV_VOCAB" = "" ] || fail "absent vocabulary: WV_VOCAB: want empty string, got '${WV_VOCAB-UNSET}'"
+else
+  fail "wv_state_read refused valid-full.json on the absent-vocabulary read"
+fi
+
+vocab_true="$WV_RUN_TMP/$name-vocab-true.json"
+vocab_false="$WV_RUN_TMP/$name-vocab-false.json"
+jq '.vocabulary = true' "$WV_TESTS_DIR/fixtures/state/valid-full.json" > "$vocab_true"
+jq '.vocabulary = false' "$WV_TESTS_DIR/fixtures/state/valid-full.json" > "$vocab_false"
+
+seed_state "$vocab_true"
+if wv_state_read; then
+  [ "$WV_VOCAB" = "true" ] || fail "explicit true: WV_VOCAB: want true, got '${WV_VOCAB-UNSET}'"
+else
+  fail "wv_state_read refused a state with vocabulary true"
+fi
+
+seed_state "$vocab_false"
+if wv_state_read; then
+  [ "$WV_VOCAB" = "false" ] || fail "explicit false: WV_VOCAB: want false, got '${WV_VOCAB-UNSET}'"
+else
+  fail "wv_state_read refused a state with vocabulary false"
 fi
 
 exit $rc

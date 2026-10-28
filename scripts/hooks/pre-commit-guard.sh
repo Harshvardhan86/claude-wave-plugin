@@ -47,13 +47,9 @@ source "$WV_HOOK_DIR/lib.sh"
 # 0 or right after such a separator, so this bound is never hit by them.
 WV_PCG_COMMIT_RE='(^|[;&|])[[:space:]]*git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+commit\b'
 
-# The five literal attribution-trailer forms (task brief, binding details):
-# deliberately narrow so a FUNCTIONAL mention of "claude" in code or in a
-# commit message — this very plugin is named claude-wave-plugin — is never
-# touched. `[` and `]` are escaped for ERE; `.` in "anthropic.com" is escaped
-# for precision, though an unescaped `.` there would still only ever match a
-# character, never widen what counts as a trailer.
-WV_PCG_TRAILER_RE='Co-Authored-By: Claude|Co-Authored-By: [^[:space:]]*@anthropic\.com|Generated with \[Claude Code\]|Claude-Session: https|https://claude\.ai/code/session_'
+# The attribution-trailer pattern is defined once, in lib.sh (WV_TRAILER_ERE),
+# and shared with the commit-msg hook wave-init.sh installs.
+WV_PCG_TRAILER_RE="$WV_TRAILER_ERE"
 
 declare -a WV_PCG_GLOBS=() WV_PCG_LABELS=()
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # tests/e2e.sh — the real headless load proof (spec section 12, AC-378/379)
 # PLUS seven real headless-session scenarios that prove the hooks
-# actually fire and decide inside the real `claude` harness, not only when
+# actually fire and decide inside the real host-CLI harness, not only when
 # fed by tests/run.sh's fixture-driven cases.
 #
 # AC coverage note (the original seven "End to end" scenarios,
 # AC-380..387): AC-380/381/382/383/385 are each a dedicated scenario below
 # (a/b/c/e/f). AC-386 ("a real trailer-bearing commit refused") is a plain
 # `git commit -F file` against the installed `.git/hooks/commit-msg` — no
-# `claude` session is involved in that mechanism at all, and it is already
+# host-CLI session is involved in that mechanism at all, and it is already
 # covered, unit-fixture style, by tests/cases/commitmsg-313-trailer-refused.sh
 # (which this file does not duplicate). AC-384 (the additionalContext-vs-
 # deny channel probe for `enforce:"warn"`) is NOT covered by a live session
@@ -18,7 +18,7 @@
 # below — retained as a separate live-validation concern rather than
 # silently dropped.
 #
-# Usage: tests/e2e.sh [--keep] [--scenario=a|b|c|d|e|f|g|load|all]
+# Usage: tests/e2e.sh [--keep] [--scenario=a|b|c|d|e|f|f2|g|load|all]
 #   --scenario=g runs only the background-wait proof (one parent and one
 #                subagent, both haiku, bounded at 120 seconds). Default: all.
 #   All runs have a combined timeout ceiling of 13 minutes, plus setup.
@@ -32,14 +32,14 @@
 # field in .claude-plugin/plugin.json produces (Global Constraint 1) —
 # that mode was hit org-wide on 2026-09-09 with another plugin, and the
 # published docs are silent on it. This script is the only thing that
-# would catch a regression: it runs real headless `claude` sessions with
+# would catch a regression: it runs real headless host-CLI sessions with
 # this repo loaded as a --plugin-dir and inspects both the client's
 # --debug-file log (the load proof) and the session transcripts under the
 # account's `projects/` directory (the scenarios).
 #
 # Skips itself LOUDLY with exit 3 — never a silent pass — in two cases:
-#   1. `claude` is not on PATH.
-#   2. `claude` refuses non-interactive auth (the exact error is printed).
+#   1. the host CLI is not on PATH.
+#   2. the host CLI refuses non-interactive auth (the exact error is printed).
 # Both print a banner naming every assertion that was not run, so a reader
 # can tell "this box cannot run the proof" from "the proof failed".
 #
@@ -89,9 +89,9 @@ WV_E2E_SCENARIO=all
 for wv_arg in "$@"; do
   case "$wv_arg" in
     --keep) WV_KEEP=1 ;;
-    --scenario=all|--scenario=load|--scenario=[a-g]) WV_E2E_SCENARIO="${wv_arg#*=}" ;;
+    --scenario=all|--scenario=load|--scenario=[a-g]|--scenario=f2) WV_E2E_SCENARIO="${wv_arg#*=}" ;;
     *)
-      printf 'tests/e2e.sh: unknown argument: %s (use --keep or --scenario=a|b|c|d|e|f|g|load|all)\n' "$wv_arg" >&2
+      printf 'tests/e2e.sh: unknown argument: %s (use --keep or --scenario=a|b|c|d|e|f|f2|g|load|all)\n' "$wv_arg" >&2
       exit 1
       ;;
   esac
@@ -110,10 +110,11 @@ WV_E2E_ASSERTIONS=(
   "load-proof: hooks/hooks.json loads with no 'Duplicate hooks'/'Hook load failed', and this plugin's per-plugin load lines plus the aggregate registered-hook count appear in --debug-file"
   "scenario-a (AC-380): an UNTAGGED Agent dispatch during an active wave (mode full, ui/behaviour_change/cr_enabled all false, enforce block) is denied; the FIRST Agent tool call in the main transcript was denied and its denial text carries [W-TAG]; if a subagent transcript exists, its sidecar description matches the dispatch-tag grammar (a retry with a valid tag is allowed and reported as retried-with-tag)"
   "scenario-b (AC-381): [W:1 P:AC R:lead] dispatched with model \"haiku\" is denied, the transcript's tool_result carries the [W-TIER] reason naming \"opus\""
-  "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true and a real resolved model, state.active records a real agentId + resolvedModel written by post-agent.sh, and state.phases.AD.status == \"done\""
+  "scenario-c (AC-382): [W:1 P:AD R:executor] dispatched with model \"haiku\" (AD has no predecessors, so no extra state-seeding is needed) is ALLOWED, the subagent runs, .wave/ledger.jsonl gets exactly one AD/executor line with tier_ok true, state.active records a real agentId written by post-agent.sh, and state.phases.AD.status == \"done\"; the resolved model is a real id when the host ran the dispatch synchronously (dispatch=sync); when the host launched it asynchronously (dispatch=async, read from the transcript) ledger and state.active agree on either a real id or the honest \"unknown\""
   "scenario-d: a main-session Write to a git-tracked src/x.ts during the wave is denied with [W-EDIT] and the file is left unchanged; a Write to .wave/notes.md in the same session is allowed and the file exists afterwards"
   "scenario-e (AC-383): with no .wave/ directory at all, the same untagged Agent dispatch that scenario (a) denies is ALLOWED — the negative control proving \"no wave, no hooks\" in the real harness, and no .wave/ directory is created by the dispatch"
-  "scenario-f (AC-385): /<plugin>:wave-start \"x\" run WITHOUT --dangerously-skip-permissions needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json"
+  "scenario-f (AC-385): /<plugin>:wave-start \"x\" with the two early scope answers (no new vocabulary, no behaviour change) in the same message, run WITHOUT --dangerously-skip-permissions, needs zero permission decisions (commands/wave-start.md's own allowed-tools pre-approves its wave-init.sh/wave-set.sh calls) and produces .wave/state.json with vocabulary=false and behaviour_change=false"
+  "scenario-f2: the same /<plugin>:wave-start with NO scope answers produces NO .wave/state.json and the reply asks the vocabulary and behaviour-change scope questions"
   "scenario-g: a full-mode subagent backgrounds sleep 20, receives exactly one W-BGWAIT stop block in its transcript, then either waits with timeout 30 bash -c 'sleep 25' (AD done, no orphans) or stops while the task still runs (AD failed, bg_orphaned ids match); ledger phase AD / role executor"
 )
 
@@ -252,7 +253,7 @@ fi
 
 # ===========================================================================
 # The seven real dispatch/edit/background-wait scenarios. Each drives its own
-# headless `claude -p` session, with this repo as a --plugin-dir, against a
+# headless host-CLI session, with this repo as a --plugin-dir, against a
 # FRESH scratch git project under mktemp (never the load-proof's own $proj),
 # and asserts against BOTH the session's --output-format json result AND the
 # session transcript located via its session_id.
@@ -297,20 +298,14 @@ wv_e2e_new_scratch() {
 wv_e2e_seed_wave() {
   # wv_e2e_seed_wave <dir> — starts an active wave 1, mode full, matching
   # AC-380's GIVEN clause exactly: ui:false, behaviour_change:false,
-  # cr_enabled:false, enforce block, no phase done yet. wave-init.sh has no
-  # --behaviour-change flag (state.json's behaviour_change is always
-  # written "unknown" by wave-init.sh itself, spec section 4), so it is set
-  # to false separately through scripts/wave-set.sh, the same locked
-  # read-modify-write every lifecycle script uses — not a hand-rolled jq
-  # edit, per the brief's "document how".
+  # vocabulary:false, cr_enabled:false, enforce block, no phase done yet.
+  # The four boolean scope flags are passed to wave-init.sh (--no-ui,
+  # --no-cr, --no-behaviour-change, --no-vocabulary) rather than written
+  # afterwards.
   local d="$1"
   local out
-  if ! out="$(cd "$d" && "$WV_REPO_ROOT/scripts/wave-init.sh" --wave 1 --mode full --no-ui --no-cr --feature "e2e-test" 2>&1)"; then
+  if ! out="$(cd "$d" && "$WV_REPO_ROOT/scripts/wave-init.sh" --wave 1 --mode full --no-ui --no-cr --no-behaviour-change --no-vocabulary --feature "e2e-test" 2>&1)"; then
     printf 'tests/e2e.sh: could not seed a wave in %s: %s\n' "$d" "$out" >&2
-    return 1
-  fi
-  if ! out="$(cd "$d" && "$WV_REPO_ROOT/scripts/wave-set.sh" behaviour-change false 2>&1)"; then
-    printf 'tests/e2e.sh: could not set behaviour-change false in %s: %s\n' "$d" "$out" >&2
     return 1
   fi
   return 0
@@ -355,8 +350,8 @@ wv_e2e_run_session_no_bypass() {
 wv_e2e_find_transcript() {
   # wv_e2e_find_transcript <session-id> -> the transcript .jsonl path on
   # stdout, or empty. Searched across both locations this box is known to
-  # use (a nested claude session's own CLAUDE_CONFIG_DIR is not honoured by
-  # a further-nested nohup'd `claude -p`, measured while building this
+  # use (a nested session's own CLAUDE_CONFIG_DIR is not honoured by
+  # a further-nested nohup'd headless run, measured while building this
   # file: the account's projects/ dir was NOT where these scratch sessions'
   # transcripts landed — the default $HOME/.claude/projects/ was), so both
   # roots are always searched rather than assumed.
@@ -385,7 +380,7 @@ wv_e2e_scenario_a() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="probe untagged", prompt="Reply with the single word: DONE". Do not add any bracket tag, prefix, or other text to the description or prompt. Do this immediately without asking any questions or explaining your plan.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -469,7 +464,7 @@ wv_e2e_scenario_b() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="[W:1 P:AC R:lead] probe tier", prompt="Reply with the single word: DONE". Do this immediately without asking any questions. If the dispatch is denied, do not retry with a different model; just report the denial reason.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -527,7 +522,7 @@ wv_e2e_scenario_b() {
 # SubagentStop arriving before the client had flushed the stopping agent's own
 # transcript (measured at roughly one live run in five while this file was written).
 # The hook fixes that — scripts/hooks/subagent-stop.sh now waits, bounded
-# at 12 x 200 ms, for the transcript to hold a complete assistant line and to stop
+# at 12 x 200 ms, for the transcript to hold a complete model-reply line and to stop
 # growing before reading it, and marks the ledger line transcript_incomplete if it
 # cannot confirm — and tests/cases/stop-181-transcript-settle.sh drives that exact
 # race deterministically with a background writer.
@@ -541,6 +536,35 @@ wv_e2e_scenario_b() {
 # scenario (c) on the first attempt with tier_ok true, tier_verified true, turns 2.
 # Three runs do not by themselves exclude a one-in-five rate — the mechanism is the
 # primary evidence and the runs are the confirmation.
+# wv_e2e_dispatch_mode <transcript>
+# Prints exactly one of: sync | async | undetermined. The host CLI sometimes runs
+# a subagent dispatch to completion inside the tool call (sync) and sometimes
+# launches it in the background (async). Measured on real transcripts
+# (2026-10-27): the Agent tool_use's paired user line carries a structured
+# toolUseResult object. Sync: status "completed", carries agentType/content/
+# totalDurationMs, no isAsync. Async: status "async_launched" AND isAsync true
+# (also canReadOutputFile/outputFile). The mode is read from that object of the
+# line whose tool_result.tool_use_id equals the id of the Agent tool_use; both
+# fields must agree, anything else (no Agent call, two calls, mixed fields) is
+# "undetermined" and the scenario fails rather than guessing a branch.
+wv_e2e_dispatch_mode() {
+  local transcript="$1"
+  jq -rs '
+    [ .[] | select(.type == "assistant" and (.message.content | type == "array"))
+          | .message.content[] | select(.type == "tool_use" and .name == "Agent") | .id ] as $ids
+    | if ($ids | length) != 1 then "undetermined"
+      else
+        [ .[] | select(.type == "user" and (.message.content | type == "array")
+                       and any(.message.content[]; .type == "tool_result" and .tool_use_id == $ids[0])
+                       and (.toolUseResult | type == "object"))
+              | .toolUseResult ] as $r
+        | if ($r | length) != 1 then "undetermined"
+          elif $r[0].status == "async_launched" and $r[0].isAsync == true then "async"
+          elif $r[0].status == "completed" and ($r[0].isAsync // false) == false then "sync"
+          else "undetermined" end
+      end' "$transcript" 2>/dev/null
+}
+
 WV_SC_C_OK=0
 WV_SC_C_RACE=0
 WV_SC_C_MSG=""
@@ -557,7 +581,7 @@ wv_e2e_scenario_c_attempt() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { WV_SC_C_MSG="could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] probe allowed", prompt="Reply with the single word: DONE". Do this immediately without asking any questions.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -582,6 +606,16 @@ wv_e2e_scenario_c_attempt() {
     WV_SC_C_MSG="the correctly tagged AD/executor/haiku dispatch was denied $denials time(s); result: $(printf '%s' "$WV_E2E_JSON" | jq -r '.result')"
     return
   fi
+
+  local mode
+  mode="$(wv_e2e_dispatch_mode "$transcript")"
+  case "$mode" in
+    sync|async) : ;;
+    *)
+      WV_SC_C_MSG="could not tell whether the probe dispatch ran synchronously or asynchronously from $transcript (expected exactly one Agent tool_use whose paired toolUseResult is status completed, or status async_launched with isAsync true); got \"$mode\""
+      return
+      ;;
+  esac
 
   local ledger="$d/.wave/ledger.jsonl"
   if [ ! -f "$ledger" ]; then
@@ -617,12 +651,26 @@ wv_e2e_scenario_c_attempt() {
   fi
 
   resolved="$(jq -sr '[.[] | select(.phase == "AD" and .role == "executor")][0].resolved' "$ledger" 2>/dev/null)"
-  case "$resolved" in
-    ''|null|unknown)
-      WV_SC_C_MSG="the ledger line's resolved model is \"$resolved\", expected a real model id"
-      return
-      ;;
-  esac
+  if [ "$mode" = "sync" ]; then
+    case "$resolved" in
+      ''|null|unknown)
+        WV_SC_C_MSG="[dispatch=sync] the ledger line's resolved model is \"$resolved\", expected a real model id (the host transcript's own tool result says resolvedModel=\"$(jq -rs '[.[] | select(.toolUseResult | type == "object") | .toolUseResult.resolvedModel][0] // "<absent>"' "$transcript" 2>/dev/null)\"; ledger: $(cat "$ledger"); state.active: $(jq -c '.active' "$d/.wave/state.json" 2>/dev/null))"
+        return
+        ;;
+    esac
+  else
+    # Async launch: the host's launch response is metadata. Observed on real
+    # transcripts, it may or may not carry a resolved model by the time the
+    # post-dispatch hook reads it, so post-agent.sh records either the real id
+    # or the honest "unknown" (with W-RESOLVE-UNKNOWN) and must never invent
+    # one. Both are accepted here; an empty/null value is not.
+    case "$resolved" in
+      ''|null)
+        WV_SC_C_MSG="[dispatch=async] the ledger line has no resolved model value (\"$resolved\"), expected a real model id or \"unknown\""
+        return
+        ;;
+    esac
+  fi
 
   local state="$d/.wave/state.json"
   local active_count active_resolved active_id
@@ -633,12 +681,25 @@ wv_e2e_scenario_c_attempt() {
   fi
   active_resolved="$(jq -r '[.active[] | select(.phase == "AD" and .role == "executor")][0].resolved_model' "$state" 2>/dev/null)"
   active_id="$(jq -r '.active | to_entries[] | select(.value.phase == "AD" and .value.role == "executor") | .key' "$state" 2>/dev/null)"
-  case "$active_resolved" in
-    ''|null|unknown)
-      WV_SC_C_MSG="state.active's AD/executor record has resolved_model \"$active_resolved\", expected a real model id (post-agent.sh should have written it)"
-      return
-      ;;
-  esac
+  if [ "$mode" = "sync" ]; then
+    case "$active_resolved" in
+      ''|null|unknown)
+        WV_SC_C_MSG="[dispatch=sync] state.active's AD/executor record has resolved_model \"$active_resolved\", expected a real model id (post-agent.sh should have written it)"
+        return
+        ;;
+    esac
+  elif [ "$active_resolved" != "$resolved" ]; then
+    # Async: the ledger line is built from the state.active record, so the two
+    # must agree whichever of the two values (real id / "unknown") was recorded.
+    WV_SC_C_MSG="[dispatch=async] state.active's AD/executor record has resolved_model \"$active_resolved\" but the ledger line has \"$resolved\", expected them to agree"
+    return
+  fi
+  # The W-RESOLVE-UNKNOWN warning that goes with the async branch travels on
+  # PostToolUse additionalContext, which the host does NOT write into the
+  # session transcript (measured: no PostToolUse attachment exists in any
+  # scenario transcript). It is therefore not asserted here; its observable
+  # consequences (resolved "unknown" in ledger and state.active) are, and the
+  # warning itself is pinned by the fixture cases for post-agent.sh.
   [ -n "$active_id" ] || { WV_SC_C_MSG="state.active has no agentId key for the AD/executor record"; return; }
 
   # AC-382's other half, preserved by the AD substitution: the phase itself
@@ -654,8 +715,8 @@ wv_e2e_scenario_c_attempt() {
   fi
 
   WV_SC_C_OK=1
-  WV_SC_C_DETAIL="$(printf '  prompt: %s\n  session: %s (%s)\n  ledger line: %s\n  state.active[%s]: phase=AD role=executor resolved_model=%s\n  state.phases.AD.status: %s\n' \
-    "$prompt" "$sid" "$transcript" \
+  WV_SC_C_DETAIL="$(printf '  dispatch=%s resolved=%s\n  prompt: %s\n  session: %s (%s)\n  ledger line: %s\n  state.active[%s]: phase=AD role=executor resolved_model=%s\n  state.phases.AD.status: %s\n' \
+    "$mode" "$resolved" "$prompt" "$sid" "$transcript" \
     "$(jq -sc '[.[] | select(.phase == "AD" and .role == "executor")][0]' "$ledger" 2>/dev/null)" \
     "$active_id" "$active_resolved" "$phase_status")"
 }
@@ -685,7 +746,7 @@ wv_e2e_scenario_d() {
   printf 'old\n' > "$d/src/x.ts"
   ( cd "$d" && git add src/x.ts && git commit -q -m "add x.ts" ) >/dev/null 2>&1
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
   abs_x="$d/src/x.ts"
   abs_notes="$d/.wave/notes.md"
 
@@ -748,7 +809,7 @@ wv_e2e_scenario_e() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   # Deliberately no wv_e2e_seed_wave call: no .wave/ directory at all.
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
   local prompt='Use the Agent tool exactly once to dispatch a subagent with these exact parameters: subagent_type="general-purpose", model="haiku", description="probe nowave", prompt="Reply with the single word: DONE". Do this immediately without asking any questions.'
   wv_e2e_run_session "$d" "$prompt" 90 "$errfile"
@@ -798,9 +859,12 @@ wv_e2e_scenario_f() {
   local d sid errfile
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
 
-  local prompt="/${plugin_name}:wave-start \"e2e probe feature\""
+  # Since 0.3.0 /wave-start must ask the vocabulary and behaviour-change
+  # scope questions BEFORE wave-init.sh runs, so the prompt answers both in
+  # the same message, the way a user would.
+  local prompt="/${plugin_name}:wave-start \"e2e probe feature\" -- Scope answers: this wave introduces no new vocabulary (no new record kind or status value), and it does not change any existing behaviour."
   wv_e2e_run_session_no_bypass "$d" "$prompt" 90 "$errfile"
 
   if [ -z "$WV_E2E_JSON" ]; then
@@ -831,10 +895,61 @@ wv_e2e_scenario_f() {
   wave_val="$(jq -r '.wave // empty' "$d/.wave/state.json" 2>/dev/null)"
   [ -n "$wave_val" ] || { wv_sc_fail "$name" "$d/.wave/state.json has no .wave key: $(cat "$d/.wave/state.json")"; return; }
 
+  local vocab_val bc_val
+  vocab_val="$(jq -c '.vocabulary' "$d/.wave/state.json" 2>/dev/null)"
+  bc_val="$(jq -c '.behaviour_change' "$d/.wave/state.json" 2>/dev/null)"
+  if [ "$vocab_val" != "false" ] || [ "$bc_val" != "false" ]; then
+    wv_sc_fail "$name" "state.json scope answers not recorded as answered: vocabulary=$vocab_val behaviour_change=$bc_val (expected false/false); $(cat "$d/.wave/state.json")"
+    return
+  fi
+
   wv_sc_pass "$name"
   printf '  prompt: %s\n' "$prompt"
   printf '  session: %s\n' "$sid"
-  printf '  permission_denials: 0; %s/.wave/state.json produced (wave=%s)\n' "$d" "$wave_val"
+  printf '  permission_denials: 0; %s/.wave/state.json produced (wave=%s vocabulary=%s behaviour_change=%s)\n' "$d" "$wave_val" "$vocab_val" "$bc_val"
+}
+
+# Scenario (f2): the bare prompt, with no scope answers, is refused until the
+# two early scope questions are answered — no state.json, and the reply asks
+# both questions. Positive assertion of the 0.3.0 refusal.
+wv_e2e_scenario_f2() {
+  local name="scenario-f2-wave-start-asks-scope"
+  local d sid errfile
+  d="$(wv_e2e_new_scratch)"
+  WV_E2E_SCRATCH_DIRS+=("$d")
+  errfile="$wv_tmp/$name.stderr.log"
+
+  local prompt="/${plugin_name}:wave-start \"e2e probe feature\""
+  wv_e2e_run_session_no_bypass "$d" "$prompt" 90 "$errfile"
+
+  if [ -z "$WV_E2E_JSON" ]; then
+    if wv_e2e_looks_like_auth_error "$(cat "$errfile" 2>/dev/null)"; then
+      wv_e2e_print_skip_banner "the host CLI refused non-interactive auth during $name: $(cat "$errfile" 2>/dev/null)"
+      exit 3
+    fi
+    wv_sc_fail "$name" "empty output (rc=$WV_E2E_RC); stderr: $(cat "$errfile" 2>/dev/null)"
+    return
+  fi
+
+  sid="$(wv_e2e_session_id)"
+  [ -n "$sid" ] || { wv_sc_fail "$name" "no session_id in output: $WV_E2E_JSON"; return; }
+
+  if [ -e "$d/.wave/state.json" ]; then
+    wv_sc_fail "$name" "$d/.wave/state.json was produced although no scope answer was given: $(cat "$d/.wave/state.json")"
+    return
+  fi
+
+  local result
+  result="$(printf '%s' "$WV_E2E_JSON" | jq -r '.result // empty')"
+  if ! printf '%s' "$result" | command grep -qi 'vocabulary' || ! printf '%s' "$result" | command grep -qi 'behaviou\?r'; then
+    wv_sc_fail "$name" "reply does not ask the vocabulary and behaviour-change scope questions; result: $result"
+    return
+  fi
+
+  wv_sc_pass "$name"
+  printf '  prompt: %s\n' "$prompt"
+  printf '  session: %s\n' "$sid"
+  printf '  no %s/.wave/state.json; reply asks the scope questions\n' "$d"
 }
 
 # Scenario (g): one real background-task stop block, then either a sanctioned
@@ -845,7 +960,7 @@ wv_e2e_scenario_g() {
   d="$(wv_e2e_new_scratch)"
   WV_E2E_SCRATCH_DIRS+=("$d")
   wv_e2e_seed_wave "$d" || { wv_sc_fail "$name" "could not seed the wave"; return; }
-  errfile="$d/.e2e-stderr.log"
+  errfile="$wv_tmp/$name.stderr.log"
   local prompt='Use the Agent tool exactly once with subagent_type="general-purpose", model="haiku", description="[W:1 P:AD R:executor] background wait probe", prompt="Use Bash exactly once with command sleep 20 and run_in_background true. Immediately return DONE without waiting or calling any other tool first. If a stop hook blocks that return, run exactly timeout 30 bash -c '\''sleep 25'\'' once in the foreground using Bash, then stop. Do not start another background task, use Monitor, or repeat the hook message." Wait for this subagent to finish, then reply DONE. Do not perform other work.'
   wv_e2e_run_session "$d" "$prompt" 120 "$errfile"
   if [ -z "$WV_E2E_JSON" ]; then
@@ -890,7 +1005,7 @@ wv_e2e_scenario_g() {
     wv_sc_fail "$name" "expected exactly one background sleep 20 call, found ${count:-unreadable} in $child"
     return
   fi
-  # Count feedback records, not assistant paraphrases or prompt text. The prompt
+  # Count feedback records, not model paraphrases or prompt text. The prompt
   # contains no rule token. A durable latch alone cannot prove message delivery.
   count="$(jq -s '[.[] | select(.type == "user" or .type == "system") |
     select(any(.. | strings; contains("[W-BGWAIT]")))] | length' "$child" 2>/dev/null)"
@@ -938,7 +1053,7 @@ wv_e2e_scenario_g() {
     "$sid" "$child" "$count" "$outcome" "$shape"
 }
 
-for wv_scenario in a b c d e f g; do
+for wv_scenario in a b c d e f f2 g; do
   if [ "$WV_E2E_SCENARIO" = all ] || [ "$WV_E2E_SCENARIO" = "$wv_scenario" ]; then
     "wv_e2e_scenario_$wv_scenario"
   fi

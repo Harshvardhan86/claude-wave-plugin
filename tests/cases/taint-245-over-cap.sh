@@ -31,7 +31,7 @@ printf 'measured cap: %s bytes\n' "$cap"
 
 drive() {
   # drive <step> <size in bytes> — a sparse file of exactly <size>, whose first
-  # line is a valid assistant turn.
+  # line is a valid model-reply turn.
   WV_PROJECT="$(mkproj)"
   local st="$WV_RUN_TMP/$name-$1-state.json" c="$WV_RUN_TMP/$name-$1.json"
   local tr="$WV_PROJECT/.wave/tr/a1.jsonl"

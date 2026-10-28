@@ -1,0 +1,21 @@
+{
+  "script": "stop.sh",
+  "note": "demo wave with behaviour_change true but TEET not done: the wave is not complete, so the Stop prints nothing at all (no W-SCORECARD, no W-UNDELIVERED). Negative control for W-SCORECARD inside the undelivered family.",
+  "seed": {
+    "state": "state/demo-through-green-bc.json",
+    "files": {
+      ".wave/ledger.jsonl": "{\"agent\":\"a1\",\"phase\":\"TDE-GREEN\",\"role\":\"executor\",\"output\":100}\n"
+    }
+  },
+  "stdin": {
+    "hook_event_name": "Stop",
+    "background_tasks": [],
+    "session_crons": []
+  },
+  "expect": {
+    "exit": 0,
+    "decision": "silent",
+    "negative_control_for": "W-SCORECARD",
+    "files_absent": [".wave/.scorecard-printed", ".wave/.undelivered-warned"]
+  }
+}

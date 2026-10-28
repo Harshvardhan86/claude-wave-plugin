@@ -2,7 +2,7 @@
 # tests/tools/mutants-tier-cells.sh [--keep]
 #
 # AC-146: the mutation control that makes AC-344's cell-by-cell tier comparison
-# non-vacuous. The phase table has 78 (phase, role) cells — 26 rows x
+# non-vacuous. The phase table has 93 (phase, role) cells — 31 rows x
 # {lead, executor, reviewer}. AC-344 proves the shipped table MATCHES
 # tests/golden/phases-tiers.tsv; it cannot prove that any given cell is actually
 # ENFORCED. A cell nothing exercises is a minimum the plugin claims and does not
@@ -30,7 +30,7 @@
 #
 # A `-` cell is reported N/A: the phase has no such role, there is no minimum to
 # enforce, and there is nothing to lower. Those are counted and printed so the
-# 78 are all accounted for, never silently dropped.
+# 93 are all accounted for, never silently dropped.
 #
 # Exit status: 0 only when every non-`-` cell was mutated, every mutation was
 # applied, every one was killed by one of its own cases, and both files restored
@@ -57,6 +57,11 @@ for tool in jq git python3; do
 done
 
 WV_TMP="$(mktemp -d "${TMPDIR:-/tmp}/wave-mutants-cells.XXXXXX")" || exit 1
+# The harness keeps the scratch directory of every RED run, and every killed
+# mutant is a red run: each run gets TMPDIR inside this temp root, removed
+# after the run (kept with --keep) and with the root on exit
+# (tests/cases/_selfcheck/data-mutant-scratch.sh).
+WV_SCRATCH="$WV_TMP/scratch"
 WV_TREE="$WV_TMP/tree"
 WV_LOGS="$WV_TMP/logs"
 mkdir -p "$WV_TREE" "$WV_LOGS" || exit 1
@@ -65,6 +70,7 @@ cleanup() {
   if [ "$WV_KEEP" = "1" ]; then
     printf 'temp root kept at %s\n' "$WV_TMP"
   else
+    chmod -R u+rwX "$WV_TMP" 2>/dev/null
     rm -rf "$WV_TMP"
   fi
 }
@@ -121,7 +127,7 @@ if [ "${#WV_RANK_OF[@]}" -lt 2 ]; then
   exit 1
 fi
 
-# ---- the 78 cells, read from the PRISTINE table ---------------------------
+# ---- the 93 cells, read from the PRISTINE table ---------------------------
 
 declare -a WV_CELLS=()
 while IFS=$'\t' read -r code lead executor reviewer; do
@@ -130,8 +136,8 @@ while IFS=$'\t' read -r code lead executor reviewer; do
 done < <(awk -F'\t' '{print $1"\t"$7"\t"$8"\t"$9}' "${WV_PRISTINE_OF[$WV_PHASES_REL]}")
 
 wv_cells=${#WV_CELLS[@]}
-if [ "$wv_cells" -ne 78 ]; then
-  printf 'mutants-tier-cells.sh: enumerated %s cells out of %s, expected 78 (26 rows x 3 roles)\n' \
+if [ "$wv_cells" -ne 93 ]; then
+  printf 'mutants-tier-cells.sh: enumerated %s cells out of %s, expected 93 (31 rows x 3 roles)\n' \
     "$wv_cells" "$WV_PHASES_REL" >&2
   exit 1
 fi
@@ -224,7 +230,9 @@ wv_run_cell() {
   touch "$WV_TREE/$WV_PHASES_REL" "$WV_TREE/$WV_GOLDEN_REL"
 
   local log="$WV_LOGS/$label.log"
-  ( cd "$WV_TREE" && bash tests/run.sh --filter "$filter" ) > "$log" 2>&1
+  mkdir -p "$WV_SCRATCH"
+  ( cd "$WV_TREE" && TMPDIR="$WV_SCRATCH" bash tests/run.sh --filter "$filter" ) > "$log" 2>&1
+  if [ "$WV_KEEP" != "1" ]; then chmod -R u+rwX "$WV_SCRATCH" 2>/dev/null; rm -rf "$WV_SCRATCH"; fi
 
   # A red counts only when the case that went red is one of THIS cell's own
   # cases. Coverage FAIL lines (the artefact every narrow --filter produces) and
