@@ -88,6 +88,18 @@ AI_TRACE_PATTERN='(Co-Authored-By: Claude)|(Co-Authored-By: .*@anthropic\.com)|(
 #    as input to prove both guards refuse the same set.
 #  - tests/cases/commitmsg-313-trailer-refused.sh — plants a trailer-bearing
 #    commit message to prove AC-386 (the commit-msg hook refuses it).
+#  - tests/cases/commitmsg-owned-hook-upgrade.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hook-install-failed.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hook-render-fault.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hookspath-remedy.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-hookspath.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
+#  - tests/cases/init-linked-worktree.sh — plants a session-line trailer as INPUT to prove the
+#    installed commit-msg hook refuses it.
 is_excluded_repo_file() {
   case "$1" in
     tests/fixtures/*) return 0 ;;
@@ -104,6 +116,12 @@ is_excluded_repo_file() {
     tests/tools/mutants-lifecycle-hooks.sh) return 0 ;;
     tests/cases/commitmsg-313-trailer-refused.sh) return 0 ;;
     tests/cases/commit-guards-one-pattern.sh) return 0 ;;
+    tests/cases/commitmsg-owned-hook-upgrade.sh) return 0 ;;
+    tests/cases/init-hook-install-failed.sh) return 0 ;;
+    tests/cases/init-hook-render-fault.sh) return 0 ;;
+    tests/cases/init-hookspath-remedy.sh) return 0 ;;
+    tests/cases/init-hookspath.sh) return 0 ;;
+    tests/cases/init-linked-worktree.sh) return 0 ;;
     *) return 1 ;;
   esac
 }
